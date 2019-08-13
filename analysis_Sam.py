@@ -13,6 +13,8 @@ import getData
 import probeSync
 import analysis_utils
 import numpy as np
+import scipy
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -142,6 +144,27 @@ def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin):
     return meanMod, semMod, changeLat
 
 
+def calculateHitRate(hits,misses,adjusted=False):
+    n = hits+misses
+    if n==0:
+        return np.nan
+    hitRate = hits/n
+    if adjusted:
+        if hitRate==0:
+            hitRate = 0.5/n
+        elif hitRate==1:
+            hitRate = 1-0.5/n
+    return hitRate
+
+
+def calculateDprime(hits,misses,falseAlarms,correctRejects):
+    hitRate = calculateHitRate(hits,misses,adjusted=True)
+    falseAlarmRate = calculateHitRate(falseAlarms,correctRejects,adjusted=True)
+    z = [scipy.stats.norm.ppf(r) for r in (hitRate,falseAlarmRate)]
+    return z[0]-z[1]
+
+
+
 baseDir = 'Z:\\'
 localDir = r'C:\Users\svc_ccg\Desktop\Analysis\Probe'
 
@@ -180,10 +203,71 @@ Aexps,Bexps = [[mouseID+'_'+exp[0] for exp in mouseInfo for mouseID,probes,imgSe
 exps = Aexps+Bexps
 
 
+###### behavior analysis
+hitRate = []
+falseAlarmRate = []
+dprime = []
+for exp in exps:
+    response = data[exp]['response'][:]
+    hit,miss,fa,cr = [np.sum(response==r) for r in ('hit','miss','falseAlarm','correctReject')]
+    hitRate.append(hit/(hit+miss))
+    falseAlarmRate.append(fa/(cr+fa))
+    dprime.append(calculateDprime(hit,miss,fa,cr))
+
+mouseAvg = []    
+mouseID = [exp[-6:] for exp in exps]
+for param in (hitRate,falseAlarmRate,dprime):
+    d = []
+    for mouse in set(mouseID):
+        mouseVals = [p for p,m in zip(param,mouseID) if m==mouse]
+        d.append(sum(mouseVals)/len(mouseVals))
+    mouseAvg.append(d)
+hitRate,falseAlarmRate,dprime = mouseAvg
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+for h,fa in zip(hitRate,falseAlarmRate):
+    ax.plot([0,1],[h,fa],'0.5')
+for x,y in enumerate((hitRate,falseAlarmRate)):
+    m = np.mean(y)
+    s = np.std(y)/(len(y)**0.5)
+    ax.plot(x,m,'ko',ms=10,mec='k',mfc='k')
+    ax.plot([x,x],[m-s,m+s],'k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=16)
+ax.set_xticks([0,1])
+ax.set_xticklabels(['Change','False Alarm'])
+ax.set_xlim([-0.25,1.25])
+ax.set_ylim([0,1])
+ax.set_ylabel('Response Probability',fontsize=16)
+ax.set_title('n = 7 mice',fontsize=16)
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+ax.plot(np.zeros(len(dprime)),dprime,'o',ms=10,mec='0.5',mfc='none')
+m = np.mean(dprime)
+s = np.std(dprime)/(len(dprime)**0.5)
+ax.plot(0,m,'ko',ms=10,mec='k',mfc='k')
+ax.plot([0,0],[m-s,m+s],'k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=16)
+ax.set_xticks([])
+ax.set_ylim([0,3])
+ax.set_ylabel('d prime',fontsize=16)
+ax.set_title('n = 7 mice',fontsize=16)
+
+
 
 ###### change mod and latency analysis
 
 allPre,allChange = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:].mean(axis=1) for exp in exps for probe in data[exp]['sdfs']]) for state in ('active','passive')] for epoch in ('preChange','change')]
+
+expNames = np.concatenate([[exp]*len(data[exp]['sdfs'][probe]['active']['change']) for exp in exps for probe in data[exp]['sdfs']])
+expDates = np.array([exp[:8] for exp in expNames])
+expMouseIDs = np.array([exp[-6:] for exp in expNames])
+
 (hasSpikesActive,hasRespActive),(hasSpikesPassive,hasRespPassive) = [findResponsiveUnits(sdfs,baseWin,respWin) for sdfs in allChange]
 baseRate = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
 activePre,passivePre,activeChange,passiveChange = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
@@ -206,38 +290,64 @@ regionNames = (
               )
 regionNames = regionNames[:6]
 
+anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
+areas = anatomyData['areas']
+hierScore = anatomyData['Computed among 8 regions']
+regionLabels = [r[1] for r in regionNames]
+regionHierScore = [h for r in regionLabels for a,h in zip(areas,hierScore) if a in r]
+
 nUnits = []
-figs = [plt.figure(figsize=(12,6)) for _ in range(5)]
+nExps = []
+nMice = []
+changeModActive = []
+changeModPassive = []
+behModChange = []
+behModPre = []
+figs = [plt.figure(figsize=(12,6)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionLabels) in enumerate(regionNames):
     inRegion = np.in1d(regions,regionLabels) & hasResp
     nUnits.append(inRegion.sum())
+    nExps.append(len(set(expDates[inRegion])))
+    nMice.append(len(set(expMouseIDs[inRegion])))
     
     # plot baseline and response spike rates
-    for sdfs,base,clr in zip((activePre,passivePre,activeChange,passiveChange),baseRate,([1,0.7,0.7],[0.7,0.7,1],'r','b')):
+    for sdfs,base,mec,mfc,lbl in zip((activePre,passivePre,activeChange,passiveChange),baseRate,('rbrb'),('none','none','r','b'),('Active Pre','Passive Pre','Active Change','Passive Change')):
         meanResp = sdfs[inRegion,respWin].mean(axis=1)
         peakResp = sdfs[inRegion,respWin].max(axis=1)
         for r,ax in zip((base[inRegion],meanResp,peakResp),axes[:3]):
             m = r.mean()
             s = r.std()/(r.size**0.5)
-            ax.plot(ind,m,'o',mec=clr,mfc=clr)
-            ax.plot([ind,ind],[m-s,m+s],color=clr)
+            lbl = None if ind>0 else lbl
+            ax.plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
+            ax.plot([ind,ind],[m-s,m+s],color=mec)
     
     # plot mean change mod and latencies
     (activeChangeMean,activeChangeSem,activeChangeLat),(passiveChangeMean,passiveChangeSem,passiveChangeLat),(diffChangeMean,diffChangeSem,diffChangeLat),(diffPreMean,diffPreSem,diffPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
+    changeModActive.append(activeChangeMean)
+    changeModPassive.append(passiveChangeMean)
+    behModChange.append(diffChangeMean)
+    behModPre.append(diffPreMean)
+    
     activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,respWin) for sdfs in (activeChange,passiveChange)]
     
-    for m,s,ec,fc in zip((activeChangeMean,passiveChangeMean,diffChangeMean,diffPreMean),(activeChangeSem,passiveChangeSem,diffChangeSem,diffPreSem),'rbkk',['r','b','k','none']):
-        axes[-2].plot(ind,m,'o',mec=ec,mfc=fc)
-        axes[-2].plot([ind,ind],[m-s,m+s],ec)
+    for m,s,mec,mfc,lbl in zip((activeChangeMean,passiveChangeMean),(activeChangeSem,passiveChangeSem),'rb','rb',('Active','Passive')):
+        lbl = None if ind>0 else lbl
+        axes[-3].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
+        axes[-3].plot([ind,ind],[m-s,m+s],mec)
+        
+    for m,s,mec,mfc,lbl in zip((diffChangeMean,diffPreMean),(diffChangeSem,diffPreSem),'kk',('k','none'),('Change','Pre-change')):
+        lbl = None if ind>0 else lbl
+        axes[-2].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
+        axes[-2].plot([ind,ind],[m-s,m+s],mec)
             
-    for lat,ec,fc in zip((activeLat,passiveLat,activeChangeLat,passiveChangeLat,diffChangeLat),'rbrbk',('none','none','r','b','k')):
+    for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeLat,passiveChangeLat,diffChangeLat),'rbrbk',('none','none','r','b','k')):
         m = np.nanmean(lat)
         s = np.nanstd(lat)/(lat.size**0.5)
-        axes[-1].plot(ind,m,'o',mec=ec,mfc=fc)
-        axes[-1].plot([ind,ind],[m-s,m+s],ec)
+        axes[-1].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12)
+        axes[-1].plot([ind,ind],[m-s,m+s],mec)
     
     # plot pre and post change responses and their difference
     fig = plt.figure(figsize=(8,8))
@@ -286,7 +396,7 @@ for ind,(region,regionLabels) in enumerate(regionNames):
         ax.set_ylabel('Spikes/s')
         ax.set_title(region+' '+lbl)
 
-for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp (spikes/s)','Modulation Index','Latency (ms)')):
+for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp (spikes/s)','Change Modulation Index','Behavior Modulation Index','Latency (ms)')):
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False,labelsize=14)
@@ -294,7 +404,12 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     ax.set_xticks(np.arange(len(regionNames)))
     ax.set_xticklabels([r[0]+'\nn='+str(n) for r,n in zip(regionNames,nUnits)],fontsize=16)
     ax.set_ylabel(ylbl,fontsize=16)
+    ax.legend()
 
+
+for v in (changeModActive,changeModPassive,behModChange,behModPre):
+    r,p = scipy.stats.pearsonr(regionHierScore,v)
+    print(r**2,p)
 
 
 ###### decoding analysis
