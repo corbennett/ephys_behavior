@@ -138,7 +138,7 @@ def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin):
     pre = preChangeSDFs[:,respWin].mean(axis=1)
     change = changeSDFs[:,respWin].mean(axis=1)
     changeMod = np.clip((change-pre)/(change+pre),-1,1)
-    meanMod = changeMod.mean()
+    meanMod = np.mean(changeMod)
     semMod = changeMod.std()/(changeMod.size**0.5)
     changeLat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin)
     return meanMod, semMod, changeLat
@@ -176,19 +176,20 @@ mouseInfo = (
              ('421323',('04252019','04262019'),('ABCDEF','ABCDEF'),'AB',(True,True)),
              ('422856',('04302019',),('ABCDEF',),'A',(True,)),
              ('423749',('05162019','05172019'),('ABCDEF','ABCDEF'),'AB',(True,True)),
-             ('427937',('06062019','06072019'),('ABCDEF','ABCDF'),'AB',(True,True)),
-#             ('423745',('06122019',),('ABCDEF',),'A',(True,)),
+             ('427937',('06072019',),('ABCDF',),'B',(True,)),
+             ('423745',('06122019',),('ABCDEF',),'A',(True,)),
              ('429084',('07112019','07122019'),('ABCDEF','ABCDE'),'AB',(True,True)),
             )
 
 # make new experiment hdf5s without updating popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('429084',))
 
+# make new experiment hdf5s and add to existing popData.hdf5
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423745',))
+
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
 
-# make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=(''))
 
 
 data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
@@ -214,15 +215,17 @@ for exp in exps:
     falseAlarmRate.append(fa/(cr+fa))
     dprime.append(calculateDprime(hit,miss,fa,cr))
 
-mouseAvg = []    
 mouseID = [exp[-6:] for exp in exps]
-for param in (hitRate,falseAlarmRate,dprime):
-    d = []
-    for mouse in set(mouseID):
-        mouseVals = [p for p,m in zip(param,mouseID) if m==mouse]
-        d.append(sum(mouseVals)/len(mouseVals))
-    mouseAvg.append(d)
-hitRate,falseAlarmRate,dprime = mouseAvg
+nMice = len(set(mouseID))
+
+#mouseAvg = []    
+#for param in (hitRate,falseAlarmRate,dprime):
+#    d = []
+#    for mouse in set(mouseID):
+#        mouseVals = [p for p,m in zip(param,mouseID) if m==mouse]
+#        d.append(sum(mouseVals)/len(mouseVals))
+#    mouseAvg.append(d)
+#hitRate,falseAlarmRate,dprime = mouseAvg
 
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
@@ -241,7 +244,7 @@ ax.set_xticklabels(['Change','False Alarm'])
 ax.set_xlim([-0.25,1.25])
 ax.set_ylim([0,1])
 ax.set_ylabel('Response Probability',fontsize=16)
-ax.set_title('n = 7 mice',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
 
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
@@ -256,7 +259,7 @@ ax.tick_params(direction='out',top=False,right=False,labelsize=16)
 ax.set_xticks([])
 ax.set_ylim([0,3])
 ax.set_ylabel('d prime',fontsize=16)
-ax.set_title('n = 7 mice',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
 
 
 
@@ -276,6 +279,7 @@ hasResp = hasSpikesActive & hasSpikesPassive & hasRespActive
 regions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['regions']])    
 #regionNames = sorted(list(set(regions)))
 regionNames = (
+               ('LGN',('LGd',)),
                ('V1',('VISp',)),
                ('LM',('VISl',)),
                ('AL',('VISal',)),
@@ -288,11 +292,13 @@ regionNames = (
                ('MRN',('MRN',)),
                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'))
               )
-regionNames = regionNames[:6]
+regionNames = regionNames[1:7]
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
 areas = anatomyData['areas']
 hierScore = anatomyData['Computed among 8 regions']
+#hierScore = anatomyData['Computed with ALL other cortical & thalamic regions']
+
 regionLabels = [r[1] for r in regionNames]
 regionHierScore = [h for r in regionLabels for a,h in zip(areas,hierScore) if a in r]
 
@@ -323,13 +329,13 @@ for ind,(region,regionLabels) in enumerate(regionNames):
             ax.plot([ind,ind],[m-s,m+s],color=mec)
     
     # plot mean change mod and latencies
-    (activeChangeMean,activeChangeSem,activeChangeLat),(passiveChangeMean,passiveChangeSem,passiveChangeLat),(diffChangeMean,diffChangeSem,diffChangeLat),(diffPreMean,diffPreSem,diffPreLat) = \
+    (activeChangeMean,activeChangeSem,activeChangeLat),(passiveChangeMean,passiveChangeSem,passiveChangeLat),(behChangeMean,behChangeSem,behChangeLat),(behPreMean,behPreSem,behPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
     changeModActive.append(activeChangeMean)
     changeModPassive.append(passiveChangeMean)
-    behModChange.append(diffChangeMean)
-    behModPre.append(diffPreMean)
+    behModChange.append(behChangeMean)
+    behModPre.append(behPreMean)
     
     activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,respWin) for sdfs in (activeChange,passiveChange)]
     
@@ -338,12 +344,12 @@ for ind,(region,regionLabels) in enumerate(regionNames):
         axes[-3].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
         axes[-3].plot([ind,ind],[m-s,m+s],mec)
         
-    for m,s,mec,mfc,lbl in zip((diffChangeMean,diffPreMean),(diffChangeSem,diffPreSem),'kk',('k','none'),('Change','Pre-change')):
+    for m,s,mec,mfc,lbl in zip((behChangeMean,behPreMean),(behChangeSem,behPreSem),'kk',('k','none'),('Change','Pre-change')):
         lbl = None if ind>0 else lbl
         axes[-2].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
         axes[-2].plot([ind,ind],[m-s,m+s],mec)
             
-    for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeLat,passiveChangeLat,diffChangeLat),'rbrbk',('none','none','r','b','k')):
+    for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeLat,passiveChangeLat,behChangeLat),'rbrbk',('none','none','r','b','k')):
         m = np.nanmean(lat)
         s = np.nanstd(lat)/(lat.size**0.5)
         axes[-1].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12)
@@ -408,6 +414,8 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
 
 
 for v in (changeModActive,changeModPassive,behModChange,behModPre):
+    plt.figure()
+    plt.plot(regionHierScore, v,'ko')
     r,p = scipy.stats.pearsonr(regionHierScore,v)
     print(r**2,p)
 
