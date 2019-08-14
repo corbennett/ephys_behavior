@@ -295,12 +295,8 @@ regionNames = (
 regionNames = regionNames[1:7]
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-areas = anatomyData['areas']
-hierScore = anatomyData['Computed among 8 regions']
-#hierScore = anatomyData['Computed with ALL other cortical & thalamic regions']
-
 regionLabels = [r[1] for r in regionNames]
-regionHierScore = [h for r in regionLabels for a,h in zip(areas,hierScore) if a in r]
+hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a in r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
 
 nUnits = []
 nExps = []
@@ -413,11 +409,55 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     ax.legend()
 
 
-for v in (changeModActive,changeModPassive,behModChange,behModPre):
-    plt.figure()
-    plt.plot(regionHierScore, v,'ko')
-    r,p = scipy.stats.pearsonr(regionHierScore,v)
-    print(r**2,p)
+fig = plt.figure(facecolor='w',figsize=(18,7))
+gs = matplotlib.gridspec.GridSpec(2,4)
+for j,(param,ylab) in enumerate(zip((changeModActive,changeModPassive,behModChange,behModPre),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre'))):
+    for i,(hier,xlab) in enumerate(zip((hierScore_8regions,hierScore_allRegions),('8 Region Hierarchy','All Region Hierarchy'))):
+        ax = plt.subplot(gs[i,j])
+        ax.plot(hier,param,'ko',ms=6)
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.set_xticks(hier)
+        ax.set_xticklabels([r[0] for r in regionNames])
+        ax.set_xlabel(xlab,fontsize=10)
+        ax.set_ylabel(ylab,fontsize=10)
+        r,p = scipy.stats.pearsonr(hier,param)
+        title = 'Pearson: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
+        r,p = scipy.stats.spearmanr(hier,param)
+        title += '\nSpearman: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
+        ax.set_title(title,fontsize=8)
+line = matplotlib.lines.Line2D((0,1),(0.5,0.5),color='k',transform=fig.transFigure)
+fig.lines = [line]
+plt.tight_layout()
+
+#fig = plt.figure(facecolor='w',figsize=(18,7))
+#gs = matplotlib.gridspec.GridSpec(2,4)
+#regionColors = plt.cm.jet(np.linspace(0,1,len(regionNames)))[:,:3]
+#for j,(param,ylab) in enumerate(zip((changeModActive,changeModPassive,behModChange,behModPre),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre'))):
+#    for i,(hier,xlab) in enumerate(zip((hierScore_8regions,hierScore_allRegions),('8 Region Hierarchy','All Region Hierarchy'))):
+#        hierRepeated = [a+np.zeros(len(b)) for a,b in zip(hier,param)]
+#        h = np.concatenate(hierRepeated)
+#        d = np.concatenate(param)
+#        ax = plt.subplot(gs[i,j])
+#        for x,y,clr in zip(hierRepeated,param,regionColors):
+#            ax.plot(x+(np.random.rand(x.size)-0.5)/20,y,'o',ms=2,mec=clr,mfc='none')
+#        for side in ('right','top'):
+#            ax.spines[side].set_visible(False)
+#        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+#        ax.set_xticks(hier)
+#        ax.set_xticklabels([r[0] for r in regionNames])
+#        ax.set_xlabel(xlab,fontsize=10)
+#        ax.set_ylabel(ylab,fontsize=10)
+#        r,p = scipy.stats.pearsonr(h,d)
+#        title = 'Pearson: r^2 = '+str(round(r**2,3))+', p = '+str(round(p,6))
+#        r,p = scipy.stats.spearmanr(h,d)
+#        title += '\nSpearman: r^2 = '+str(round(r**2,3))+', p = '+str(round(p,6))
+#        ax.set_title(title,fontsize=8)
+#line = matplotlib.lines.Line2D((0,1),(0.5,0.5),color='k',transform=fig.transFigure)
+#fig.lines = [line]
+#plt.tight_layout()
+
 
 
 ###### decoding analysis
