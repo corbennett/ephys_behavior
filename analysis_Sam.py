@@ -494,7 +494,7 @@ truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 preTruncTimes = np.arange(-750,0,50)
 
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
-models = (RandomForestClassifier(n_estimators=100), LinearSVC(C=1.0)) # SVC(kernel='linear',C=1.0,probability=True)
+models = (RandomForestClassifier(n_estimators=100), LinearSVC(C=1.0,max_iter=1e5)) # SVC(kernel='linear',C=1.0,probability=True)
 modelNames = ('randomForest', 'supportVector')
 behavStates = ('active','passive')
 result = {exp: {probe: {state: {'changeScore':{model:[] for model in modelNames},
@@ -965,7 +965,7 @@ for model in modelNames:
 
 
 # plot predicted vs actual performance
-for model in modelNames:
+for model in ('randomForest',):
     fracSame = {exp: {region: {state: np.nan for state in ('active','passive')} for region in regionLabels} for exp in result}
     for exp in data:
         response = data[exp]['response'][:]

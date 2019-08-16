@@ -13,6 +13,7 @@ import pandas as pd
 import fileIO
 from sync import sync
 import probeSync
+import visual_behavior
 from visual_behavior.translator.core import create_extended_dataframe
 from visual_behavior.translator.foraging2 import data_to_change_detection_core
 from analysis_utils import find_run_transitions
@@ -174,17 +175,20 @@ class behaviorEphys():
         self.pkl_file = glob.glob(os.path.join(self.dataDir,'*[0-9].pkl'))[0]
         behaviordata = pd.read_pickle(self.pkl_file)
         self.core_data = data_to_change_detection_core(behaviordata)
-
-        self.images = self.core_data['image_set']['images']
-        newSize = tuple(int(s/10) for s in self.images[0].shape[::-1])
-        self.imagesDownsampled = [cv2.resize(img,newSize,interpolation=cv2.INTER_AREA) for img in self.images]
-        self.imageNames = [i['image_name'] for i in self.core_data['image_set']['image_attributes']]
         
         self.trials = create_extended_dataframe(
             trials=self.core_data['trials'],
             metadata=self.core_data['metadata'],
             licks=self.core_data['licks'],
             time=self.core_data['time'])
+        
+        self.behaviorVsyncCount = self.core_data['time'].size # same as self.trials['endframe'].values[-1] + 1
+        
+        self.images = self.core_data['image_set']['images']
+        newSize = tuple(int(s/10) for s in self.images[0].shape[::-1])
+        self.imagesDownsampled = [cv2.resize(img,newSize,interpolation=cv2.INTER_AREA) for img in self.images]
+        self.imageNames = [i['image_name'] for i in self.core_data['image_set']['image_attributes']]
+        
         # get running data
         self.behaviorRunTime = self.vsyncTimes[self.core_data['running'].frame]
         self.behaviorRunSpeed = self.core_data['running'].speed
@@ -253,23 +257,25 @@ class behaviorEphys():
             
             self.rfStimParams = self.rfFlashStimDict['stimuli'][0]
             rf_pre_blank_frames = int(self.rfFlashStimDict['pre_blank_sec']*self.rfFlashStimDict['fps'])
-            first_rf_frame = self.trials['endframe'].values[-1] + rf_pre_blank_frames + 1
+            first_rf_frame = self.behaviorVsyncCount + rf_pre_blank_frames
             self.rf_frameTimes = self.frameAppearTimes[first_rf_frame:]
             self.rf_trial_start_times = self.rf_frameTimes[np.array([f[0] for f in np.array(self.rfStimParams['sweep_frames'])]).astype(np.int)]
             
             self.flashStimParams = self.rfFlashStimDict['stimuli'][1]
-            
+    
+        
     def getPassiveStimInfo(self):
-        self.passive_pickle_file = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
-        if len(self.passive_pickle_file)>0:
-            if len(self.passive_pickle_file)>1:
-                vsynccount = [pd.read_pickle(f)['vsynccount'] for f in self.passive_pickle_file]
+        passivePklFiles = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
+        if len(passivePklFiles)>0:
+            if len(passivePklFiles)>1:
+                vsynccount = [pd.read_pickle(f)['vsynccount'] for f in passivePklFiles]
                 goodPklInd = np.argmax(vsynccount)
-                self.passive_pickel_file = self.passive_pickle_file[goodPklInd]
+                self.passive_pickle_file = passivePklFiles[goodPklInd]
                 abortedVsyncs = sum(vsynccount)-vsynccount[goodPklInd]
             else:
+                self.passive_pickle_file = passivePklFiles[0]
                 abortedVsyncs = 0
-            self.passiveStimDict = pd.read_pickle(self.passive_pickle_file[-1])
+            self.passiveStimDict = pd.read_pickle(self.passive_pickle_file)
             self.passiveStimParams = self.passiveStimDict['stimuli'][0]
             self.passiveFrameImages = np.array(self.passiveStimParams['sweep_params']['ReplaceImage'][0])
             passiveImageNames = [img for img in np.unique(self.passiveFrameImages) if img is not None]
@@ -277,8 +283,13 @@ class behaviorEphys():
             self.passiveImageOnsetFrames = np.where(np.diff(nonGrayFrames.astype(int))>0)[0]+1
             self.passiveChangeFrames = np.array([frame for i,frame in enumerate(self.passiveImageOnsetFrames[1:]) if self.passiveFrameImages[frame]!=self.passiveFrameImages[self.passiveImageOnsetFrames[i]]])
             self.passiveChangeImages = self.passiveFrameImages[self.passiveChangeFrames]
-            firstPassiveFrame = self.trials['endframe'].values[-1] + self.rfFlashStimDict['vsynccount'] + abortedVsyncs + 1
+            firstPassiveFrame = self.behaviorVsyncCount + self.rfFlashStimDict['vsynccount'] + abortedVsyncs
             self.passiveFrameAppearTimes = self.frameAppearTimes[firstPassiveFrame:]
+            
+            # get running data
+            dx,vsig,vin = [self.passiveStimDict['items']['foraging']['encoders'][0][key] for key in ('dx','vsig','vin')]
+            self.passiveRunTime = self.vsyncTimes[firstPassiveFrame:]
+            self.passiveRunSpeed = visual_behavior.analyze.compute_running_speed(dx,self.passiveRunTime,vsig,vin)
             
     
     def getVisualResponsiveness(self):
