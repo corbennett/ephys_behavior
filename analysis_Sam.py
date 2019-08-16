@@ -182,12 +182,16 @@ mouseInfo = (
             )
 
 
+# A or B days that have passive session
+Aexps,Bexps = [[mouseID+'_'+exp[0] for exp in mouseInfo for mouseID,probes,imgSet,hasPassive in zip(*exp[1:]) if imgSet==im and hasPassive] for im in 'AB']
+exps = Aexps+Bexps
+
 
 # make new experiment hdf5s without updating popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('429084',))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423745',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423749',))
 
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
@@ -199,11 +203,6 @@ data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
 baseWin = slice(0,250)
 respWin = slice(250,500)
 
-exps = data.keys() # all experiments
-
-# A or B days that have passive session
-Aexps,Bexps = [[mouseID+'_'+exp[0] for exp in mouseInfo for mouseID,probes,imgSet,hasPassive in zip(*exp[1:]) if imgSet==im and hasPassive] for im in 'AB']
-exps = Aexps+Bexps
 
 
 ###### behavior analysis
@@ -272,17 +271,15 @@ for mouseID,ephysDates,probeIDs,imageSet,passiveSession in mouseInfo:
         expName = date+'_'+mouseID
         if expName in exps:
             print(expName)
+            hdf5Path = os.path.join(localDir,expName+'.hdf5')
             dataDir = os.path.join(baseDir,expName)
             obj = getData.behaviorEphys(dataDir,probes)
-            hdf5Path = os.path.join(localDir,expName+'.hdf5')
+            obj.getFrameTimes()
             obj.getBehaviorData()
             obj.getRFandFlashStimInfo()
-            try:
-                obj.getPassiveStimInfo()
-                activeRunSpeed.append(np.median(obj.behaviorRunSpeed))
-                passiveRunSpeed.append(np.median(obj.passiveRunSpeed))
-            except:
-                errorExps.append(expName)
+            obj.getPassiveStimInfo()
+            activeRunSpeed.append(np.median(obj.behaviorRunSpeed))
+            passiveRunSpeed.append(np.median(obj.passiveRunSpeed))
             
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)

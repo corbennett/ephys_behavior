@@ -159,13 +159,18 @@ class behaviorEphys():
     def getFrameTimes(self):
         # Get frame times from sync file
         frameRising, frameFalling = probeSync.get_sync_line_data(self.syncDataset, 'stim_vsync')
-
+        
         #diode = probeSync.get_sync_line_data(syncDataset, 'photodiode')
         #monitorLags = diode[0][4:4+frameFalling[60::120].size][:100] - frameFalling[60::120][:100]
+
+        # some experiments appear to have an extra frameFalling at the beginning that doesn't have a corresponding
+        # frame in the behavior pkl file; this is probably caused by the DAQ starting high and being reinitialized
+        # to zero a few seconds before psychopy and the normal vsyncs start
+        self.vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
         
-        self.vsyncTimes = frameFalling #use for all data streams except the stimulus frame times, which are subject to monitor lag
+        # use vsyncTimes for all data streams except the stimulus frame times, which are subject to monitor lag
         monitorLag = 0.036
-        self.frameAppearTimes = frameFalling + monitorLag    
+        self.frameAppearTimes = self.vsyncTimes + monitorLag    
     
     
     def getBehaviorData(self):
