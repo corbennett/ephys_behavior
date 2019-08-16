@@ -33,7 +33,7 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
         for date,probes in zip(ephysDates,probeIDs):
             expName = date+'_'+mouseID
             print(expName)
-            dataDir = baseDir+expName
+            dataDir = os.path.join(baseDir,expName)
             obj = getData.behaviorEphys(dataDir,probes)
             hdf5Path = os.path.join(localDir,expName+'.hdf5')
             
@@ -181,6 +181,8 @@ mouseInfo = (
              ('429084',('07112019','07122019'),('ABCDEF','ABCDE'),'AB',(True,True)),
             )
 
+
+
 # make new experiment hdf5s without updating popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('429084',))
 
@@ -260,6 +262,41 @@ ax.set_xticks([])
 ax.set_ylim([0,3])
 ax.set_ylabel('d prime',fontsize=16)
 ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
+
+# compare active and passive running
+activeRunSpeed = []
+passiveRunSpeed = []
+errorExps = []
+for mouseID,ephysDates,probeIDs,imageSet,passiveSession in mouseInfo:
+    for date,probes in zip(ephysDates,probeIDs):
+        expName = date+'_'+mouseID
+        if expName in exps:
+            print(expName)
+            dataDir = os.path.join(baseDir,expName)
+            obj = getData.behaviorEphys(dataDir,probes)
+            hdf5Path = os.path.join(localDir,expName+'.hdf5')
+            obj.getBehaviorData()
+            obj.getRFandFlashStimInfo()
+            try:
+                obj.getPassiveStimInfo()
+                activeRunSpeed.append(np.median(obj.behaviorRunSpeed))
+                passiveRunSpeed.append(np.median(obj.passiveRunSpeed))
+            except:
+                errorExps.append(expName)
+            
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+amax = 1.05*max(np.max(activeRunSpeed),np.max(passiveRunSpeed))
+ax.plot([0,amax],[0,amax],'k--')
+ax.plot(activeRunSpeed,passiveRunSpeed,'o',ms=10,mec='k',mfc='none')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim([0,amax])
+ax.set_ylim([0,amax])
+ax.set_aspect('equal')
+ax.set_xlabel('Median Active Run Speed (cm/s)')
+ax.set_ylabel('Median Passive Run Speed (cm/s)')
 
 
 

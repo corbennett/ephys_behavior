@@ -58,6 +58,7 @@ class behaviorEphys():
         self.syncDataset = sync.Dataset(self.sync_file)
         self.getBehaviorData()
         self.getRFandFlashStimInfo()
+        self.getPassiveStimInfo()
     
     def loadFromRawData(self):        
         #self.getLFP()
