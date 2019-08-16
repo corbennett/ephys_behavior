@@ -188,10 +188,10 @@ exps = Aexps+Bexps
 
 
 # make new experiment hdf5s without updating popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('429084',))
+getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('427937','429084'))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423749',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('429084',))
 
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
@@ -521,7 +521,7 @@ nUnits = [19]
 nRepeats = 3
 nCrossVal = 3
 
-truncInterval = 10
+truncInterval = 5
 lastTrunc = 200
 truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
