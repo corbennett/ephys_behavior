@@ -134,14 +134,17 @@ def findLatency(data,baseWin=None,respWin=None,method='rel',thresh=3,minPtsAbove
     return np.array(latency)
 
 
-def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin):
+def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin, returnMean=True):
     pre = preChangeSDFs[:,respWin].mean(axis=1)
     change = changeSDFs[:,respWin].mean(axis=1)
     changeMod = np.clip((change-pre)/(change+pre),-1,1)
     meanMod = np.mean(changeMod)
     semMod = changeMod.std()/(changeMod.size**0.5)
     changeLat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin)
-    return meanMod, semMod, changeLat
+    if returnMean:
+        return meanMod, semMod, changeLat
+    else:
+        return changeMod
 
 
 def calculateHitRate(hits,misses,adjusted=False):
@@ -258,7 +261,7 @@ for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False,labelsize=16)
 ax.set_xticks([])
-ax.set_ylim([0,3])
+ax.set_ylim([0,3.5])
 ax.set_ylabel('d prime',fontsize=16)
 ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
 
@@ -339,6 +342,10 @@ changeModActive = []
 changeModPassive = []
 behModChange = []
 behModPre = []
+changeModActive_all = []
+changeModPassive_all = []
+behModChange_all = []
+behModPre_all = []
 figs = [plt.figure(figsize=(12,6)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionLabels) in enumerate(regionNames):
@@ -361,6 +368,14 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     # plot mean change mod and latencies
     (activeChangeMean,activeChangeSem,activeChangeLat),(passiveChangeMean,passiveChangeSem,passiveChangeLat),(behChangeMean,behChangeSem,behChangeLat),(behPreMean,behPreSem,behPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
+    
+    activeChange_a,passiveChange_a,behChange_a,behPre_a = \
+    [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin,returnMean=False) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
+    
+    changeModActive_all.append(activeChange_a)
+    changeModPassive_all.append(passiveChange_a)
+    behModChange_all.append(behChange_a)
+    behModPre_all.append(behPre_a)
     
     changeModActive.append(activeChangeMean)
     changeModPassive.append(passiveChangeMean)
@@ -431,7 +446,11 @@ for ind,(region,regionLabels) in enumerate(regionNames):
             ax.set_ylim(ylim)
         ax.set_ylabel('Spikes/s')
         ax.set_title(region+' '+lbl)
+            
+#Stats for region effects
+changeModActive_kruskalStats, changeModPassive_kruskalStats, behModChange_kruskalStats, behModPre_kruskalStats = [scipy.stats.kruskal(*metric) for metric in [changeModActive_all, changeModPassive_all, behModChange_all, behModPre_all]]            
 
+#axis labels for all the figures
 for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp (spikes/s)','Change Modulation Index','Behavior Modulation Index','Latency (ms)')):
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
@@ -441,7 +460,30 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     ax.set_xticklabels([r[0]+'\nn='+str(n) for r,n in zip(regionNames,nUnits)],fontsize=16)
     ax.set_ylabel(ylbl,fontsize=16)
     ax.legend()
+    if ylbl=='Change Modulation Index':
+        ax.text(1, ax.get_ylim()[1], str(changeModActive_kruskalStats), {'color':'r'})
+        ax.text(1, ax.get_ylim()[1]*.95, str(changeModPassive_kruskalStats), {'color':'b'})
+    elif ylbl=='Behavior Modulation Index':
+        ax.text(1, ax.get_ylim()[1], str(behModChange_kruskalStats), {'color':'k', 'weight':'heavy'})
+        ax.text(1, ax.get_ylim()[1]*.95, str(behModPre_kruskalStats), {'color':'k', 'weight': 'light'})
 
+#Pairwise stats for each region combo
+statsMats = []
+for metric,title in zip([changeModActive_all, changeModPassive_all, behModChange_all, behModPre_all],['changeModActive', 'changeModPassive', 'behModChange', 'behModPre']):
+    statsMat = np.zeros([len(regionNames), len(regionNames)])
+    for i in np.arange(len(regionNames)):
+        for j in np.arange(len(regionNames)):
+            statsMat[i,j] = scipy.stats.ranksums(metric[i], metric[j])[1]
+    
+    fig,ax=plt.subplots()
+    fig.suptitle(title)
+    im=ax.imshow(statsMat, clim=[0,0.5], cmap='plasma')
+    ax.set_xticks(np.arange(len(regionNames)))
+    ax.set_yticks(np.arange(len(regionNames)))
+    ax.set_xticklabels([r[0] for r in regionNames])
+    ax.set_yticklabels([r[0] for r in regionNames])
+    plt.colorbar(im)
+    statsMats.append(statsMat)
 
 fig = plt.figure(facecolor='w',figsize=(18,7))
 gs = matplotlib.gridspec.GridSpec(2,4)
@@ -722,6 +764,7 @@ for model in modelNames:
                     for probe in result[exp]:
                         if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
                             for s in result[exp][probe][state][score][model]:
+                                print(exp, region, score, model, np.max(s))
                                 ax.plot(truncTimes,s,'k')
                 for side in ('right','top'):
                     ax.spines[side].set_visible(False)
@@ -787,45 +830,6 @@ for model in modelNames:
                 ax.set_yticklabels([])
             if i==1 and j==1:
                 ax.legend()
-                
-# compare scores for full window
-x = np.arange(len(regionLabels))
-for model in ('supportVector',):#modelNames:
-    fig = plt.figure(facecolor='w',figsize=(10,8))
-    fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
-    ax = plt.subplot(1,1,1)
-    for score in ('changeScore','imageScore'):
-        for state in ('active','passive'):
-            m = np.full(len(regionLabels),np.nan)
-            sem = m.copy()
-            for i,region in enumerate(regionLabels):
-                regionScore = []
-                for exp in result:
-                    for probe in result[exp]:
-                        if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                            s = result[exp][probe][state][score][model]
-                            if len(s)>0:
-                                regionScore.append(s[0][-1])
-                n = len(regionScore)
-                if n>0:
-                    m[i] = np.mean(regionScore)
-                    sem[i] = np.std(regionScore)/(len(regionScore)**0.5)
-            clr = [0]*3 if score=='changeScore' else [0.5]*3
-            if state=='active':
-                clr[0] = 1
-            else:
-                clr[2] = 1
-            ax.plot(x,m,color=clr,label=score[:score.find('S')]+', '+state)
-            ax.fill_between(x,m+sem,m-sem,color=clr,alpha=0.25)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xticks(x)
-    ax.set_xticklabels(regionLabels)
-    ax.set_yticks([0.5,0.75,1])
-    ax.set_ylim([0.5,1])
-    ax.set_ylabel('Decoder Accuracy')
-    ax.legend()
 
 # compare avg change and image scores for each area
 for model in modelNames:
