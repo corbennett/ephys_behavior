@@ -101,7 +101,8 @@ def getUnitRegions(obj,probes='all'):
         regions[probe] = []
         units = probeSync.getOrderedUnits(obj.units[probe])
         for u in units:
-            r = obj.probeCCF[probe]['ISIRegion'] if obj.units[probe][u]['inCortex'] else obj.units[probe][u]['ccfRegion']
+            isiRegion = obj.probeCCF[probe]['ISIRegion']
+            r = isiRegion if str(isiRegion)!='nan' and obj.units[probe][u]['inCortex'] else obj.units[probe][u]['ccfRegion']
             regions[probe].append(r)
     return regions
 
@@ -179,6 +180,7 @@ mouseInfo = (
              ('427937',('06072019',),('ABCDF',),'B',(True,)),
              ('423745',('06122019',),('ABCDEF',),'A',(True,)),
              ('429084',('07112019','07122019'),('ABCDEF','ABCDE'),'AB',(True,True)),
+             ('423744',('08082019','08092019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
             )
 
 
@@ -188,13 +190,16 @@ exps = Aexps+Bexps
 
 
 # make new experiment hdf5s without updating popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('427937','429084'))
+getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('423744',))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('429084',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423744',))
 
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
+
+# append new experiment hdf5s to existing popData.hdf5
+getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('423744',))
 
 
 
@@ -326,7 +331,7 @@ regionNames = (
                ('MRN',('MRN',)),
                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'))
               )
-regionNames = regionNames[1:7]
+regionNames = regionNames[:8]
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
 regionLabels = [r[1] for r in regionNames]
@@ -339,7 +344,7 @@ changeModActive = []
 changeModPassive = []
 behModChange = []
 behModPre = []
-figs = [plt.figure(figsize=(12,6)) for _ in range(6)]
+figs = [plt.figure(figsize=(12,9)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionLabels) in enumerate(regionNames):
     inRegion = np.in1d(regions,regionLabels) & hasResp
@@ -438,7 +443,7 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     ax.tick_params(direction='out',top=False,right=False,labelsize=14)
     ax.set_xlim([-0.5,len(regionNames)-0.5])
     ax.set_xticks(np.arange(len(regionNames)))
-    ax.set_xticklabels([r[0]+'\nn='+str(n) for r,n in zip(regionNames,nUnits)],fontsize=16)
+    ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionNames,nUnits,nExps,nMice)],fontsize=16)
     ax.set_ylabel(ylbl,fontsize=16)
     ax.legend()
 
@@ -499,23 +504,23 @@ plt.tight_layout()
 regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 
-for exp in data:
-    print(exp)
-    response = data[exp]['response'][:]
-    trials = (response=='hit') | (response=='miss')
-    for thresh in (5,10,15):
-        print(thresh)
-        for probe in data[exp]['regions']:
-            n = []
-            for region in regionLabels:
-                inRegion = data[exp]['regions'][probe][:]==region
-                if any(inRegion):
-                    sdfs = data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials]
-                    hasSpikes,hasResp = findResponsiveUnits(sdfs,baseWin,respWin,thresh)
-                    n.append(np.sum(hasSpikes & hasResp))
-                else:
-                    n.append(0)
-            print(probe,n)
+#for exp in data:
+#    print(exp)
+#    response = data[exp]['response'][:]
+#    trials = (response=='hit') | (response=='miss')
+#    for thresh in (5,10,15):
+#        print(thresh)
+#        for probe in data[exp]['regions']:
+#            n = []
+#            for region in regionLabels:
+#                inRegion = data[exp]['regions'][probe][:]==region
+#                if any(inRegion):
+#                    sdfs = data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials]
+#                    hasSpikes,hasResp = findResponsiveUnits(sdfs,baseWin,respWin,thresh)
+#                    n.append(np.sum(hasSpikes & hasResp))
+#                else:
+#                    n.append(0)
+#            print(probe,n)
 
 nUnits = [19]
 nRepeats = 3
@@ -723,6 +728,7 @@ for model in modelNames:
                         if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
                             for s in result[exp][probe][state][score][model]:
                                 ax.plot(truncTimes,s,'k')
+#                                print(exp,region,state,s[-1])
                 for side in ('right','top'):
                     ax.spines[side].set_visible(False)
                 ax.tick_params(direction='out',top=False,right=False)
@@ -790,7 +796,7 @@ for model in modelNames:
                 
 # compare scores for full window
 x = np.arange(len(regionLabels))
-for model in ('supportVector',):#modelNames:
+for model in modelNames:
     fig = plt.figure(facecolor='w',figsize=(10,8))
     fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
     ax = plt.subplot(1,1,1)
@@ -816,7 +822,7 @@ for model in ('supportVector',):#modelNames:
             else:
                 clr[2] = 1
             ax.plot(x,m,color=clr,label=score[:score.find('S')]+', '+state)
-            ax.fill_between(x,m+sem,m-sem,color=clr,alpha=0.25)
+            ax.fill_between(x,m+sem,m-sem,color=clr,alpha=0.25)            
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
