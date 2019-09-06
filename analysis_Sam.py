@@ -107,7 +107,7 @@ def getUnitRegions(obj,probes='all'):
     return regions
 
 
-def findResponsiveUnits(sdfs,baseWin,respWin,thresh=10):
+def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5):
     unitMeanSDFs = np.array([s.mean(axis=0) for s in sdfs]) if len(sdfs.shape)>2 else sdfs.copy()
     hasSpikes = unitMeanSDFs.mean(axis=1)>0.1
     unitMeanSDFs -= unitMeanSDFs[:,baseWin].mean(axis=1)[:,None]
@@ -129,7 +129,7 @@ def findLatency(data,baseWin=None,respWin=None,method='rel',thresh=3,minPtsAbove
         else:
             ptsAbove = np.where(np.correlate(d[respWin]>d[baseWin].std()*thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
         if len(ptsAbove)>0:
-            latency.append(ptsAbove[0])
+            latency.append(ptsAbove[0]+respWin.start)
         else:
             latency.append(np.nan)
     return np.array(latency)
@@ -139,13 +139,22 @@ def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin):
     pre = preChangeSDFs[:,respWin].mean(axis=1)
     change = changeSDFs[:,respWin].mean(axis=1)
     changeMod = np.clip((change-pre)/(change+pre),-1,1)
-    meanMod = np.mean(changeMod)
-    semMod = changeMod.std()/(changeMod.size**0.5)
-    changeLat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin)
-    return meanMod, semMod, changeLat
+#    m = np.mean(changeMod)
+#    s = changeMod.std()/(changeMod.size**0.5)
+    m = np.median(changeMod)
+    s = np.percentile([np.median(np.random.choice(changeMod,changeMod.size,replace=True)) for _ in range(5000)],(2.5,97.5))
+    lat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin)
+    return m,s,lat
+    
+
+def calcDprime(hits,misses,falseAlarms,correctRejects):
+    hitRate = calcHitRate(hits,misses,adjusted=True)
+    falseAlarmRate = calcHitRate(falseAlarms,correctRejects,adjusted=True)
+    z = [scipy.stats.norm.ppf(r) for r in (hitRate,falseAlarmRate)]
+    return z[0]-z[1]
 
 
-def calculateHitRate(hits,misses,adjusted=False):
+def calcHitRate(hits,misses,adjusted=False):
     n = hits+misses
     if n==0:
         return np.nan
@@ -156,13 +165,6 @@ def calculateHitRate(hits,misses,adjusted=False):
         elif hitRate==1:
             hitRate = 1-0.5/n
     return hitRate
-
-
-def calculateDprime(hits,misses,falseAlarms,correctRejects):
-    hitRate = calculateHitRate(hits,misses,adjusted=True)
-    falseAlarmRate = calculateHitRate(falseAlarms,correctRejects,adjusted=True)
-    z = [scipy.stats.norm.ppf(r) for r in (hitRate,falseAlarmRate)]
-    return z[0]-z[1]
 
 
 
@@ -181,6 +183,7 @@ mouseInfo = (
              ('423745',('06122019',),('ABCDEF',),'A',(True,)),
              ('429084',('07112019','07122019'),('ABCDEF','ABCDE'),'AB',(True,True)),
              ('423744',('08082019','08092019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
+             ('423750',('08132019','08142019'),('AF','AF'),'AA',(True,True)),
             )
 
 
@@ -193,12 +196,12 @@ exps = Aexps+Bexps
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('423744',))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423744',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423750',))
 
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
 
-# append new experiment hdf5s to existing popData.hdf5
+# append existing hdf5s to existing popData.hdf5
 getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('423744',))
 
 
@@ -206,7 +209,7 @@ getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('423744',))
 data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
 
 baseWin = slice(0,250)
-respWin = slice(250,500)
+respWin = slice(280,530)
 
 
 
@@ -219,7 +222,7 @@ for exp in exps:
     hit,miss,fa,cr = [np.sum(response==r) for r in ('hit','miss','falseAlarm','correctReject')]
     hitRate.append(hit/(hit+miss))
     falseAlarmRate.append(fa/(cr+fa))
-    dprime.append(calculateDprime(hit,miss,fa,cr))
+    dprime.append(calcDprime(hit,miss,fa,cr))
 
 mouseID = [exp[-6:] for exp in exps]
 nMice = len(set(mouseID))
@@ -310,10 +313,10 @@ expNames = np.concatenate([[exp]*len(data[exp]['sdfs'][probe]['active']['change'
 expDates = np.array([exp[:8] for exp in expNames])
 expMouseIDs = np.array([exp[-6:] for exp in expNames])
 
-(hasSpikesActive,hasRespActive),(hasSpikesPassive,hasRespPassive) = [findResponsiveUnits(sdfs,baseWin,respWin) for sdfs in allChange]
+(hasSpikesActive,hasRespActive),(hasSpikesPassive,hasRespPassive) = [findResponsiveUnits(sdfs,baseWin,respWin,thresh=5) for sdfs in allChange]
 baseRate = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
 activePre,passivePre,activeChange,passiveChange = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
-hasResp = hasSpikesActive & hasSpikesPassive & hasRespActive
+hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
 
 regions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['regions']])    
 #regionNames = sorted(list(set(regions)))
@@ -340,10 +343,14 @@ hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in z
 nUnits = []
 nExps = []
 nMice = []
-changeModActive = []
-changeModPassive = []
-behModChange = []
-behModPre = []
+cmiActive = []
+cmiActiveCI = []
+cmiPassive = []
+cmiPassiveCI = []
+bmiChange = []
+bmiChangeCI = []
+bmiPre = []
+bmiPreCI = []
 figs = [plt.figure(figsize=(12,9)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionLabels) in enumerate(regionNames):
@@ -364,28 +371,32 @@ for ind,(region,regionLabels) in enumerate(regionNames):
             ax.plot([ind,ind],[m-s,m+s],color=mec)
     
     # plot mean change mod and latencies
-    (activeChangeMean,activeChangeSem,activeChangeLat),(passiveChangeMean,passiveChangeSem,passiveChangeLat),(behChangeMean,behChangeSem,behChangeLat),(behPreMean,behPreSem,behPreLat) = \
+    (activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChange,behModChangeCI,behModChangeLat),(behModPre,behModPreCI,behModPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
-    changeModActive.append(activeChangeMean)
-    changeModPassive.append(passiveChangeMean)
-    behModChange.append(behChangeMean)
-    behModPre.append(behPreMean)
+    cmiActive.append(activeChangeMod)
+    cmiActiveCI.append(activeChangeModCI)
+    cmiPassive.append(passiveChangeMod)
+    cmiPassiveCI.append(passiveChangeModCI)
+    bmiChange.append(behModChange)
+    bmiChangeCI.append(behModChangeCI)
+    bmiPre.append(behModPre)
+    bmiPreCI.append(behModPreCI)
     
     activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,respWin) for sdfs in (activeChange,passiveChange)]
     
-    for m,s,mec,mfc,lbl in zip((activeChangeMean,passiveChangeMean),(activeChangeSem,passiveChangeSem),'rb','rb',('Active','Passive')):
+    for m,s,mec,mfc,lbl in zip((activeChangeMod,passiveChangeMod),(activeChangeModCI,passiveChangeModCI),'rb','rb',('Active','Passive')):
         lbl = None if ind>0 else lbl
         axes[-3].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
-        axes[-3].plot([ind,ind],[m-s,m+s],mec)
+        axes[-3].plot([ind,ind],s,mec)
         
-    for m,s,mec,mfc,lbl in zip((behChangeMean,behPreMean),(behChangeSem,behPreSem),'kk',('k','none'),('Change','Pre-change')):
+    for m,s,mec,mfc,lbl in zip((behModChange,behModPre),(behModChangeCI,behModPreCI),'kk',('k','none'),('Change','Pre-change')):
         lbl = None if ind>0 else lbl
         axes[-2].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
-        axes[-2].plot([ind,ind],[m-s,m+s],mec)
+        axes[-2].plot([ind,ind],s,mec)
             
-    for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeLat,passiveChangeLat,behChangeLat),'rbrbk',('none','none','r','b','k')):
-        m = np.nanmean(lat)
+    for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeModLat,passiveChangeModLat,behModChangeLat),'rbrbk',('none','none','r','b','k')):
+        m = np.nanmedian(lat)
         s = np.nanstd(lat)/(lat.size**0.5)
         axes[-1].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12)
         axes[-1].plot([ind,ind],[m-s,m+s],mec)
@@ -423,7 +434,8 @@ for ind,(region,regionLabels) in enumerate(regionNames):
             m = np.mean(d[inRegion],axis=0)
             s = np.std(d[inRegion],axis=0)/(inRegion.sum()**0.5)
             ax.plot(m,color=c)
-            ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25) 
+            ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25)
+            ax.plot(np.arange(respWin.start,respWin.stop),np.zeros(respWin.stop-respWin.start)+np.mean(m[respWin]),'--',color=c)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
         ax.tick_params(direction='out',top=False,right=False)
@@ -444,58 +456,35 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     ax.set_xlim([-0.5,len(regionNames)-0.5])
     ax.set_xticks(np.arange(len(regionNames)))
     ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionNames,nUnits,nExps,nMice)],fontsize=16)
+    if 'spikes' in ylbl:
+        ax.set_ylim([0,plt.get(ax,'ylim')[1]])
     ax.set_ylabel(ylbl,fontsize=16)
     ax.legend()
 
 
-fig = plt.figure(facecolor='w',figsize=(18,7))
-gs = matplotlib.gridspec.GridSpec(2,4)
-for j,(param,ylab) in enumerate(zip((changeModActive,changeModPassive,behModChange,behModPre),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre'))):
-    for i,(hier,xlab) in enumerate(zip((hierScore_8regions,hierScore_allRegions),('8 Region Hierarchy','All Region Hierarchy'))):
-        ax = plt.subplot(gs[i,j])
-        ax.plot(hier,param,'ko',ms=6)
+for j,(m,ci,ylab) in enumerate(zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPassiveCI,bmiChangeCI,bmiPreCI),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre'))):
+    for i,(hier,xlab) in enumerate(zip((hierScore_8regions,hierScore_allRegions),('8 Region Hierarchy Score','All Region Hierarchy Score'))):
+        fig = plt.figure(facecolor='w')
+        ax = plt.subplot(1,1,1)
+        ax.plot(hier,m,'ko',ms=6)
+        for h,c in zip(hier,ci):
+            ax.plot([h,h],c,'k')
+        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+        x = np.array([min(hier),max(hier)])
+        ax.plot(x,slope*x+yint,'0.5')
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
         ax.tick_params(direction='out',top=False,right=False,labelsize=8)
         ax.set_xticks(hier)
-        ax.set_xticklabels([r[0] for r in regionNames])
+        ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
         ax.set_xlabel(xlab,fontsize=10)
         ax.set_ylabel(ylab,fontsize=10)
-        r,p = scipy.stats.pearsonr(hier,param)
+        r,p = scipy.stats.pearsonr(hier,m)
         title = 'Pearson: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
-        r,p = scipy.stats.spearmanr(hier,param)
+        r,p = scipy.stats.spearmanr(hier,m)
         title += '\nSpearman: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
         ax.set_title(title,fontsize=8)
-line = matplotlib.lines.Line2D((0,1),(0.5,0.5),color='k',transform=fig.transFigure)
-fig.lines = [line]
-plt.tight_layout()
-
-#fig = plt.figure(facecolor='w',figsize=(18,7))
-#gs = matplotlib.gridspec.GridSpec(2,4)
-#regionColors = plt.cm.jet(np.linspace(0,1,len(regionNames)))[:,:3]
-#for j,(param,ylab) in enumerate(zip((changeModActive,changeModPassive,behModChange,behModPre),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre'))):
-#    for i,(hier,xlab) in enumerate(zip((hierScore_8regions,hierScore_allRegions),('8 Region Hierarchy','All Region Hierarchy'))):
-#        hierRepeated = [a+np.zeros(len(b)) for a,b in zip(hier,param)]
-#        h = np.concatenate(hierRepeated)
-#        d = np.concatenate(param)
-#        ax = plt.subplot(gs[i,j])
-#        for x,y,clr in zip(hierRepeated,param,regionColors):
-#            ax.plot(x+(np.random.rand(x.size)-0.5)/20,y,'o',ms=2,mec=clr,mfc='none')
-#        for side in ('right','top'):
-#            ax.spines[side].set_visible(False)
-#        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-#        ax.set_xticks(hier)
-#        ax.set_xticklabels([r[0] for r in regionNames])
-#        ax.set_xlabel(xlab,fontsize=10)
-#        ax.set_ylabel(ylab,fontsize=10)
-#        r,p = scipy.stats.pearsonr(h,d)
-#        title = 'Pearson: r^2 = '+str(round(r**2,3))+', p = '+str(round(p,6))
-#        r,p = scipy.stats.spearmanr(h,d)
-#        title += '\nSpearman: r^2 = '+str(round(r**2,3))+', p = '+str(round(p,6))
-#        ax.set_title(title,fontsize=8)
-#line = matplotlib.lines.Line2D((0,1),(0.5,0.5),color='k',transform=fig.transFigure)
-#fig.lines = [line]
-#plt.tight_layout()
+        plt.tight_layout()
 
 
 
