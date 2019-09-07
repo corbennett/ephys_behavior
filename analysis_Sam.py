@@ -129,7 +129,7 @@ def findLatency(data,baseWin=None,respWin=None,method='rel',thresh=3,minPtsAbove
         else:
             ptsAbove = np.where(np.correlate(d[respWin]>d[baseWin].std()*thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
         if len(ptsAbove)>0:
-            latency.append(ptsAbove[0]+respWin.start)
+            latency.append(ptsAbove[0])
         else:
             latency.append(np.nan)
     return np.array(latency)
@@ -396,8 +396,10 @@ for ind,(region,regionLabels) in enumerate(regionNames):
         axes[-2].plot([ind,ind],s,mec)
             
     for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeModLat,passiveChangeModLat,behModChangeLat),'rbrbk',('none','none','r','b','k')):
-        m = np.nanmedian(lat)
-        s = np.nanstd(lat)/(lat.size**0.5)
+        lat = lat[~np.isnan(lat)]+30
+        m = np.median(lat)
+        s = np.std(lat)
+#        s = scipy.stats.median_absolute_deviation(lat)
         axes[-1].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12)
         axes[-1].plot([ind,ind],[m-s,m+s],mec)
     
@@ -475,8 +477,8 @@ for j,(m,ci,ylab) in enumerate(zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiA
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
         ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-        ax.set_xticks(hier)
-        ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
+#        ax.set_xticks(hier)
+#        ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
         ax.set_xlabel(xlab,fontsize=10)
         ax.set_ylabel(ylab,fontsize=10)
         r,p = scipy.stats.pearsonr(hier,m)
