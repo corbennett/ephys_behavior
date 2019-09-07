@@ -46,7 +46,7 @@ def findInsertionStartStop(df):
         
         #now see if there are any retractions between start and end (since we may have repositioned)
         diff = df.loc[start:end, 'z']
-        diff = diff.where(diff.diff()<0).dropna()
+        diff = diff.where(diff.diff()<-50).dropna()
         if len(diff)>0:
             start = diff.index[-1]
     except:
@@ -55,7 +55,8 @@ def findInsertionStartStop(df):
     return start, end
 
 #Path to New Scale log file
-logFile = r"Z:\newscale_log_07132019.txt"
+logFile = r"Z:\newscale_log_08142019.txt"
+logFile = r"Z:\log.txt"
 
 #Make data frame from log file and index it by the time stamp
 fulldf = pd.read_csv(logFile, header=None, names=['time', 'probeID', 'x', 'y', 'z', 'relx', 'rely', 'relz'])
@@ -67,7 +68,7 @@ serialToProbeDict = {' SN31212': 'A', ' SN34029': 'B', ' SN31058':'C', ' SN24272
 
 #Which date you want to extract in format 'YYYY-MM-DD'
 plt.close('all')
-dateOfInterest = '2019-04-25'
+dateOfInterest = '2019-08-29'
 pdf = fulldf.loc[dateOfInterest]
 
 #Get probeCCF excel file for this date as dataframe
@@ -118,14 +119,12 @@ with pd.ExcelWriter(excelPath.split('.')[0]+'_withNewScaleCoords.xlsx') as write
 
 
 
-
-
-
 ###Find correspondence between new scale coords and LFP based entry channels
 
 datesOfInterest = [f for f in glob.glob(os.path.join('Z:', ('[0-9]'*8)+'_*'))]
 zdiffs_all = []
 entryChans_all = []
+ccfDist_all = []
 ids_all = []
 for doi in datesOfInterest:
     
@@ -137,9 +136,14 @@ for doi in datesOfInterest:
         
         entryChannels = exdf.loc['entryChannel', [p+' entry' for p in 'ABCDEF']]
         zdiffs = exdf.loc['diff z', [p + ' tip' for p in 'ABCDEF']]
+
         ids = [p+'_'+doi[2:] for p in 'ABCDEF']
-        
         zdiffs_all.append(zdiffs)
+        
+        ccfCoordDiffs = [exdf[p + ' entry'].iloc[:3] - exdf[p + ' tip'].iloc[:3] for p in 'ABCDEF']
+        ccfDist = [np.sum([c**2 for c in ccd])**0.5 for ccd in ccfCoordDiffs]
+        ccfDist_all.append(ccfDist)
+        
         entryChans_all.append(entryChannels)
         ids_all.append(ids)
     
@@ -147,18 +151,33 @@ for doi in datesOfInterest:
 ec = [e.values for e in entryChans_all]
 dz = [d.values for d in zdiffs_all]  
 
+
 disp = [d-e*10 for d,e in zip(dz, ec)]
 disp_array = np.array(disp)
 
 badMismatch = np.where(np.abs(disp_array)>400)
 bad_ids = [ids_all[day][probe] for day,probe in zip(*badMismatch)]
 
+ec_concat = []
+[ec_concat.extend(10*e.values) for e in entryChans_all]
 
+dz_concat = []
+[dz_concat.extend(d.values) for d in zdiffs_all]
 
+ccfd_concat = []
+[ccfd_concat.extend(c) for c in ccfDist_all]
 
+plt.figure()
+plt.plot(ec_concat, dz_concat, 'ko')
+plt.title('motor vs lfp')
 
+plt.figure()
+plt.plot(ec_concat, ccfd_concat, 'ko')
+plt.title('ccf vs lfp')
 
-
+plt.figure()
+plt.plot(dz_concat, ccfd_concat, 'ko')
+plt.title('ccf vs motor')
 
 
 

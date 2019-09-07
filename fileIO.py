@@ -95,7 +95,7 @@ def hdf5ToObj(obj,filePath=None,grp=None,loadDict=None):
         newFile = None
     for key,val in grp.items():
         if isinstance(val,h5py._hl.dataset.Dataset):
-            v = val.value
+            v = val[()]
             if isinstance(v,np.ndarray) and v.dtype==np.object:
                 v = v.astype('U')
             if loadDict is None:

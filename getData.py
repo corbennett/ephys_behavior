@@ -230,6 +230,9 @@ class behaviorEphys():
         self.preGrayDur = np.stack(self.trials['blank_duration_range']) # where is actual gray dur
         self.lastBehaviorTime = self.frameAppearTimes[self.trials['endframe'].values[-1]]    
         
+        #get lick times
+        self.lickTimes = probeSync.get_sync_line_data(self.syncDataset, 'lick_sensor')[0]
+        
     
     def getEyeTrackingData(self):
         # get eye tracking data
