@@ -189,20 +189,24 @@ class behaviorEphys():
         
         self.behaviorVsyncCount = self.core_data['time'].size # same as self.trials['endframe'].values[-1] + 1
         
+        self.changeFrames = np.array(self.trials['change_frame']).astype(int)+1 #add one to correct for change frame indexing problem
+        self.flashFrames = np.array(self.core_data['visual_stimuli']['frame'])
+        
         self.images = self.core_data['image_set']['images']
         newSize = tuple(int(s/10) for s in self.images[0].shape[::-1])
         self.imagesDownsampled = [cv2.resize(img,newSize,interpolation=cv2.INTER_AREA) for img in self.images]
         self.imageNames = [i['image_name'] for i in self.core_data['image_set']['image_attributes']]
         
-        # get running data
-        self.behaviorRunTime = self.vsyncTimes[self.core_data['running'].frame]
-        self.behaviorRunSpeed = self.core_data['running'].speed
+        candidateOmittedFlashFrames = behaviordata['items']['behavior']['stimuli']['images']['flashes_omitted']
+        drawlog = behaviordata['items']['behavior']['stimuli']['images']['draw_log']
+        self.omittedFlashFrames = np.array([c for c in candidateOmittedFlashFrames if not drawlog[c]])
+        imageFrameIndexBeforeOmitted = np.searchsorted(self.core_data['visual_stimuli']['frame'], self.omittedFlashFrames)-1
+        self.omittedFlashImage = np.array(self.core_data['visual_stimuli']['image_name'])[imageFrameIndexBeforeOmitted]
         
-        # get run start times
-        self.behaviorRunStartTimes = find_run_transitions(self.behaviorRunSpeed, self.behaviorRunTime)
+        self.behaviorStimDur = np.array(self.core_data['visual_stimuli']['duration'])
+        self.preGrayDur = np.stack(self.trials['blank_duration_range']) # where is actual gray dur
+        self.lastBehaviorTime = self.frameAppearTimes[self.trials['endframe'].values[-1]]
         
-        #make_daily_figure(trials)
-    
         # align trials to sync
         self.trial_start_frames = np.array(self.trials['startframe'])
         self.trial_end_frames = np.array(self.trials['endframe'])
@@ -219,16 +223,14 @@ class behaviorEphys():
         self.correctReject = np.array(self.trials['response_type']=='CR')
         self.initialImage = np.array(self.trials['initial_image_name'])
         self.changeImage = np.array(self.trials['change_image_name'])
-        candidateOmittedFlashFrames = behaviordata['items']['behavior']['stimuli']['images']['flashes_omitted']
-        drawlog = behaviordata['items']['behavior']['stimuli']['images']['draw_log']
-        self.omittedFlashFrames = np.array([c for c in candidateOmittedFlashFrames if not drawlog[c]])
-        imageFrameIndexBeforeOmitted = np.searchsorted(self.core_data['visual_stimuli']['frame'], self.omittedFlashFrames)-1
-        self.omittedFlashImage = np.array(self.core_data['visual_stimuli']['image_name'])[imageFrameIndexBeforeOmitted]
         
-        self.behaviorStimDur = np.array(self.core_data['visual_stimuli']['duration'])
-        self.preGrayDur = np.stack(self.trials['blank_duration_range']) # where is actual gray dur
-        self.lastBehaviorTime = self.frameAppearTimes[self.trials['endframe'].values[-1]]    
+        # get running data
+        self.behaviorRunTime = self.vsyncTimes[self.core_data['running'].frame]
+        self.behaviorRunSpeed = self.core_data['running'].speed
         
+        # get run start times
+        self.behaviorRunStartTimes = find_run_transitions(self.behaviorRunSpeed, self.behaviorRunTime)
+    
         #get lick times
         self.lickTimes = probeSync.get_sync_line_data(self.syncDataset, 'lick_sensor')[0]
         
@@ -253,9 +255,12 @@ class behaviorEphys():
             
     
     def getRFandFlashStimInfo(self):
-        self.rf_pickle_file = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
-        if len(self.rf_pickle_file)>0:
-            self.rfFlashStimDict = pd.read_pickle(self.rf_pickle_file[0])
+        rf_pickle = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
+        if len(rf_pickle)==0:
+            self.rf_pickel_file = None
+        else:
+            self.rf_pickle_file = rf_pickle[0]
+            self.rfFlashStimDict = pd.read_pickle(self.rf_pickle_file)
             self.monSizePix = self.rfFlashStimDict['monitor']['sizepix']
             self.monHeightCm = self.monSizePix[1]/self.monSizePix[0]*self.rfFlashStimDict['monitor']['widthcm']
             self.monDistCm = self.rfFlashStimDict['monitor']['distancecm']
@@ -274,7 +279,9 @@ class behaviorEphys():
         
     def getPassiveStimInfo(self):
         passivePklFiles = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
-        if len(passivePklFiles)>0:
+        if len(passivePklFiles)==0:
+            self.passive_pickle_file = None
+        else:
             if len(passivePklFiles)>1:
                 vsynccount = [pd.read_pickle(f)['vsynccount'] for f in passivePklFiles]
                 goodPklInd = np.argmax(vsynccount)

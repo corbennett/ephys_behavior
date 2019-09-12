@@ -55,9 +55,10 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
                 data[expName]['regions'] = getUnitRegions(obj,probes=probes)
                 data[expName]['isi'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
+                data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
+                data[expName]['changeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
                 data[expName]['response'] = resp[trials]
-                # add preChange image identity, time between changes, receptive field info
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
@@ -75,8 +76,8 @@ def getSDFs(obj,probes='all',behaviorStates=('active','passive'),epochs=('change
     for probe in probes:
         units = probeSync.getOrderedUnits(obj.units[probe])
         for state in sdfs[probe]:
-            if state=='active' or len(obj.passive_pickle_file)>0:  
-                frameTimes =obj.frameAppearTimes if state=='active' else obj.passiveFrameAppearTimes
+            if state=='active' or obj.passive_pickle_file is not None:  
+                frameTimes = obj.frameAppearTimes if state=='active' else obj.passiveFrameAppearTimes
                 changeTimes = frameTimes[changeFrames[trials]]
                 if 'preChange' in epochs:
                     flashTimes = frameTimes[flashFrames]
@@ -492,7 +493,7 @@ for j,(m,ci,ylab) in enumerate(zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiA
 
 ###### decoding analysis
     
-regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
+regionLabels = ('LGd','VISp','VISl','VISal','VISrl','VISpm','VISam','LP')
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 
 #for exp in data:
