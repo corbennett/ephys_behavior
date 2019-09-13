@@ -7,11 +7,8 @@ Created on Thu Aug 23 11:29:39 2018
 
 from __future__ import division
 import os
+from collections import OrderedDict
 import h5py
-import fileIO
-import getData
-import probeSync
-import analysis_utils
 import numpy as np
 import scipy
 import pandas as pd
@@ -22,6 +19,10 @@ import sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import cross_val_score, cross_val_predict
+import fileIO
+import getData
+import probeSync
+import analysis_utils
 
 
 def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams={}):
@@ -52,13 +53,26 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 resp[obj.correctReject] = 'correctReject'
                 
                 data = {expName:{}}
+                data[expName]['spikeTimes'] = {}
+                for probe in probes:
+                    data[expName]['spikeTimes'][probe] = OrderedDict()
+                    for u in probeSync.getOrderedUnits(obj.units[probe]):
+                        data[expName]['spikeTimes'][probe][u] = obj.units[probe][u]['times']
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
                 data[expName]['regions'] = getUnitRegions(obj,probes=probes)
                 data[expName]['isi'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
                 data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
-                data[expName]['changeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
                 data[expName]['response'] = resp[trials]
+                data[expName]['behaviorFlashTimes'] = obj.frameAppearTimes[obj.flashFrames[trials]]
+                data[expName]['behaviorChangeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
+                data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames[trials]]
+                data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
+                data[expName]['behaviorRunTime'] = obj.behaviorRunTime
+                data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
+                data[expName]['passiveRunTime'] = obj.passiveRunTime
+                data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
+                data[expName]['lickTimes'] = obj.lickTimes
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
@@ -254,7 +268,7 @@ ax.set_xticklabels(['Change','False Alarm'])
 ax.set_xlim([-0.25,1.25])
 ax.set_ylim([0,1])
 ax.set_ylabel('Response Probability',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
 
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
@@ -269,7 +283,7 @@ ax.tick_params(direction='out',top=False,right=False,labelsize=16)
 ax.set_xticks([])
 ax.set_ylim([0,3])
 ax.set_ylabel('d prime',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
 
 # compare active and passive running
 activeRunSpeed = []
@@ -500,7 +514,7 @@ regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 #    print(exp)
 #    response = data[exp]['response'][:]
 #    trials = (response=='hit') | (response=='miss')
-#    for thresh in (5,10,15):
+#    for thresh in (5,):
 #        print(thresh)
 #        for probe in data[exp]['regions']:
 #            n = []
@@ -514,25 +528,25 @@ regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 #                    n.append(0)
 #            print(probe,n)
 
-nUnits = [19]
+nUnits = [10,20,30,40]
 nRepeats = 3
 nCrossVal = 3
 
-truncInterval = 5
+truncInterval = 200
 lastTrunc = 200
 truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
-preTruncTimes = np.arange(-750,0,50)
+preTruncTimes = np.arange(-750,0,750)
 
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
-models = (RandomForestClassifier(n_estimators=100), LinearSVC(C=1.0,max_iter=1e5)) # SVC(kernel='linear',C=1.0,probability=True)
-modelNames = ('randomForest', 'supportVector')
+models = (RandomForestClassifier(n_estimators=100),)# LinearSVC(C=1.0,max_iter=1e6)) # SVC(kernel='linear',C=1.0,probability=True)
+modelNames = ('randomForest',)# 'supportVector')
 behavStates = ('active','passive')
-result = {exp: {probe: {state: {'changeScore':{model:[] for model in modelNames},
+result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
                                 'changePredict':{model:[] for model in modelNames},
                                 'imageScore':{model:[] for model in modelNames},
                                 'preImageScore':{model:[] for model in modelNames},
-                                'respLatency':[]} for state in behavStates} for probe in data[exp]['sdfs']} for exp in data}
+                                'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in data}
 for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
     if 'passive' in behavStates:
@@ -545,9 +559,7 @@ for expInd,exp in enumerate(exps):
     imageNames = np.unique(changeImage)
     for probeInd,probe in enumerate(data[exp]['sdfs']):
         print('probe '+str(probeInd+1)+' of '+str(len(data[exp]['sdfs'])))
-        region = data[exp]['isi'][probe].value
-        result[exp][probe]['region'] = region
-        if region in regionLabels:
+        for region in regionLabels:
             inRegion = data[exp]['regions'][probe][:]==region
             if any(inRegion):
                 hasSpikesActive,hasRespActive = findResponsiveUnits(data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials],baseWin,respWin)
