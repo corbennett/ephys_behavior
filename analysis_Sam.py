@@ -64,15 +64,16 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
                 data[expName]['response'] = resp[trials]
-                data[expName]['behaviorFlashTimes'] = obj.frameAppearTimes[obj.flashFrames[trials]]
+                data[expName]['behaviorFlashTimes'] = obj.frameAppearTimes[obj.flashFrames]
                 data[expName]['behaviorChangeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
-                data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames[trials]]
-                data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
                 data[expName]['behaviorRunTime'] = obj.behaviorRunTime
                 data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
-                data[expName]['passiveRunTime'] = obj.passiveRunTime
-                data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
                 data[expName]['lickTimes'] = obj.lickTimes
+                if obj.passive_pickle_file is not None:
+                    data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames]
+                    data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
+                    data[expName]['passiveRunTime'] = obj.passiveRunTime
+                    data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
