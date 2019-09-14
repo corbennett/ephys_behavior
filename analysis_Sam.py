@@ -533,7 +533,7 @@ nUnits = [20]
 nRepeats = 3
 nCrossVal = 3
 
-truncInterval = 200
+truncInterval = 5
 lastTrunc = 200
 truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
