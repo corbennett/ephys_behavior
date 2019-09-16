@@ -296,13 +296,15 @@ def plot_psth_all_flashes(obj, spikes, axes=None, preTime = 0.05, postTime = 0.5
     latencies = []
     for i,img in enumerate(obj.imageNames):
         this_image_times = image_flash_times[image_id==img]
-        sdf, t = analysis_utils.getSDF(spikes,this_image_times-preTime,preTime+postTime, sigma=sdfSigma)
+#        sdf, t = analysis_utils.getSDF(spikes,this_image_times-preTime,preTime+postTime, sigma=sdfSigma)
+        sdf, t = analysis_utils.makePSTH_numba(spikes,this_image_times-preTime,preTime+postTime, convolution_kernel=sdfSigma*2)
         latency = analysis_utils.find_latency(sdf[:int(1000*(preTime+0.25+0.05))], int(preTime*1000), 5)
         latencies.append(latency)
         sdfs.append(sdf)
     
     #plot mean response to all flashes at end
-    allsdf, t = analysis_utils.getSDF(spikes,image_flash_times-preTime,preTime+postTime, sigma=sdfSigma)
+#    allsdf, t = analysis_utils.getSDF(spikes,image_flash_times-preTime,preTime+postTime, sigma=sdfSigma)
+    allsdf, t = analysis_utils.makePSTH_numba(spikes,image_flash_times-preTime,preTime+postTime, convolution_kernel=sdfSigma*2)
     latency = analysis_utils.find_latency(allsdf[:int(1000*(preTime+0.25+0.05))], int(preTime*1000), 5)
     latencies.append(latency)
     sdfs.append(allsdf)
@@ -339,13 +341,15 @@ def plot_psth_omitted_flashes(obj, spikes, axes=None, preTime = 0.05, postTime =
     latencies = []
     for i,img in enumerate(obj.imageNames):
         this_image_times = image_flash_times[image_id==img]
-        sdf, t = analysis_utils.getSDF(spikes,this_image_times-preTime,preTime+postTime, sigma=sdfSigma)
+#        sdf, t = analysis_utils.getSDF(spikes,this_image_times-preTime,preTime+postTime, sigma=sdfSigma)
+        sdf, t = analysis_utils.makePSTH_numba(spikes, this_image_times-preTime, preTime+postTime, convolution_kernel=sdfSigma*2)
         latency = analysis_utils.find_latency(sdf[:int(1000*(preTime+0.25+0.05))], int(preTime*1000), 5)
         latencies.append(latency)
         sdfs.append(sdf)
     
     #plot mean response to all flashes at end
-    allsdf, t = analysis_utils.getSDF(spikes,image_flash_times-preTime,preTime+postTime, sigma=sdfSigma)
+#    allsdf, t = analysis_utils.getSDF(spikes,image_flash_times-preTime,preTime+postTime, sigma=sdfSigma)
+    allsdf, t = analysis_utils.makePSTH_numba(spikes,image_flash_times-preTime,preTime+postTime, convolution_kernel=sdfSigma*2)
     latency = analysis_utils.find_latency(allsdf[:int(1000*(preTime+0.25+0.05))], int(preTime*1000), 5)
     latencies.append(latency)
     sdfs.append(allsdf)
@@ -380,13 +384,15 @@ def plot_psth_hits_vs_misses(obj, spikes, axes=None, preTime=1.55, postTime=4.5,
         for img in obj.imageNames:
             selectedTrials = resp & (obj.changeImage==img) & (~obj.ignore)
             changeTimes = obj.frameAppearTimes[np.array(obj.trials['change_frame'][selectedTrials]).astype(int)]
-            sdf,t = analysis_utils.getSDF(spikes,changeTimes-preTime,preTime+postTime,sigma=sdfSigma)
+#            sdf,t = analysis_utils.getSDF(spikes,changeTimes-preTime,preTime+postTime,sigma=sdfSigma)
+            sdf,t = analysis_utils.makePSTH_numba(spikes,changeTimes-preTime,preTime+postTime,convolution_kernel=sdfSigma*2)
             s.append(sdf)
         
         #plot mean across images at end
         selectedTrials = resp & (~obj.ignore)
         changeTimes = obj.frameAppearTimes[np.array(obj.trials['change_frame'][selectedTrials]).astype(int)]
-        sdf,t = analysis_utils.getSDF(spikes,changeTimes-preTime,preTime+postTime,sigma=sdfSigma) 
+#        sdf,t = analysis_utils.getSDF(spikes,changeTimes-preTime,preTime+postTime,sigma=sdfSigma) 
+        sdf,t = analysis_utils.makePSTH_numba(spikes,changeTimes-preTime,preTime+postTime,convolution_kernel=sdfSigma*2)
         s.append(sdf)
     
     ymax = round(max([max(h.max(),m.max()) for h,m in zip(hitSDFs,missSDFs)])+0.5)
@@ -532,8 +538,10 @@ def plot_lick_triggered_fr(obj, spikes, axis=None, min_inter_lick_time = 0.5, pr
     hit_lick_times = first_lick_times[np.where(hit[first_lick_trials])[0]]
     bad_lick_times = first_lick_times[np.where(falseAlarm[first_lick_trials] | earlyResponse[first_lick_trials])[0]]
    
-    hit_psth, t = analysis_utils.getSDF(spikes,hit_lick_times-preTime,preTime+postTime, sigma=sdfSigma)
-    bad_psth, t  = analysis_utils.getSDF(spikes,bad_lick_times-preTime,preTime+postTime, sigma=sdfSigma)
+#    hit_psth, t = analysis_utils.getSDF(spikes,hit_lick_times-preTime,preTime+postTime, sigma=sdfSigma)
+#    bad_psth, t  = analysis_utils.getSDF(spikes,bad_lick_times-preTime,preTime+postTime, sigma=sdfSigma)
+    hit_psth, t = analysis_utils.makePSTH_numba(spikes,hit_lick_times-preTime,preTime+postTime, convolution_kernel=sdfSigma*2)
+    bad_psth, t  = analysis_utils.makePSTH_numba(spikes,bad_lick_times-preTime,preTime+postTime, convolution_kernel=sdfSigma*2)
     
     if plot:
         hit, = axis.plot(t-1,hit_psth, 'k')
@@ -551,7 +559,8 @@ def plot_run_triggered_fr(obj, spikes, axis=None, preTime=1, postTime=2):
         fig, axis = plt.subplots()
         
     if len(obj.behaviorRunStartTimes)>0:
-        run_psth, t = analysis_utils.getSDF(spikes,obj.behaviorRunStartTimes-preTime,preTime+postTime)
+#        run_psth, t = analysis_utils.getSDF(spikes,obj.behaviorRunStartTimes-preTime,preTime+postTime)
+        run_psth, t = analysis_utils.makePSTH_numba(spikes,obj.behaviorRunStartTimes-preTime,preTime+postTime)
         axis.plot(t-1,run_psth, 'k')
         axis.plot([0,0], axis.get_ylim(), 'k--')
         formatFigure(plt.gcf(), axis, xLabel='Time to run (s)', yLabel='Run-Trig. FR (Hz)')
@@ -570,7 +579,8 @@ def plot_saccade_triggered_fr(obj, spikes, axis=None, preTime=2, postTime=2, sdf
     plotlines = []
     for j,(saccades,clr) in enumerate(zip((obj.negSaccades,obj.posSaccades),'rb')):
         saccadeTimes = obj.eyeFrameTimes[saccades]
-        sdf,t = analysis_utils.getSDF(spikes,saccadeTimes-preTime,preTime+postTime,sigma=sdfSigma)
+#        sdf,t = analysis_utils.getSDF(spikes,saccadeTimes-preTime,preTime+postTime,sigma=sdfSigma)
+        sdf,t = analysis_utils.makePSTH_numba(spikes,saccadeTimes-preTime,preTime+postTime,convolution_kernel=sdfSigma*2)
         plotline, = axis.plot(t-preTime,sdf,clr)
         plotlines.append(plotline)
         ymax = max(ymax,sdf.max())
