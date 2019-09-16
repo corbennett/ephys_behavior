@@ -131,7 +131,7 @@ def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5):
     return hasSpikes,hasResp
 
     
-def findLatency(data,baseWin=None,respWin=None,method='rel',thresh=3,minPtsAbove=30):
+def findLatency(data,baseWin=None,respWin=None,respWinOffset=0,method='rel',thresh=3,minPtsAbove=30):
     latency = []
     if len(data.shape)<2:
         data = data[None,:]
@@ -148,10 +148,10 @@ def findLatency(data,baseWin=None,respWin=None,method='rel',thresh=3,minPtsAbove
             latency.append(ptsAbove[0])
         else:
             latency.append(np.nan)
-    return np.array(latency)
+    return np.array(latency)+respWinOffset
 
 
-def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin):
+def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin,respWinOffset):
     pre = preChangeSDFs[:,respWin].mean(axis=1)
     change = changeSDFs[:,respWin].mean(axis=1)
     changeMod = np.clip((change-pre)/(change+pre),-1,1)
@@ -159,7 +159,7 @@ def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin):
 #    s = changeMod.std()/(changeMod.size**0.5)
     m = np.median(changeMod)
     s = np.percentile([np.median(np.random.choice(changeMod,changeMod.size,replace=True)) for _ in range(5000)],(2.5,97.5))
-    lat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin)
+    lat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin,respWinOffset)
     return m,s,lat
     
 
@@ -225,7 +225,8 @@ getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('423744',))
 data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
 
 baseWin = slice(0,250)
-respWin = slice(280,530)
+respWinOffset = 30
+respWin = slice(250+respWinOffset,500+respWinOffseet)
 
 
 
@@ -388,7 +389,7 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     
     # plot mean change mod and latencies
     (activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChange,behModChangeCI,behModChangeLat),(behModPre,behModPreCI,behModPreLat) = \
-    [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
+    [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin,respWinOffset) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
     cmiActive.append(activeChangeMod)
     cmiActiveCI.append(activeChangeModCI)
@@ -399,7 +400,7 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     bmiPre.append(behModPre)
     bmiPreCI.append(behModPreCI)
     
-    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,respWin) for sdfs in (activeChange,passiveChange)]
+    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,respWin,respWinOffset) for sdfs in (activeChange,passiveChange)]
     
     for m,s,mec,mfc,lbl in zip((activeChangeMod,passiveChangeMod),(activeChangeModCI,passiveChangeModCI),'rb','rb',('Active','Passive')):
         lbl = None if ind>0 else lbl
@@ -412,7 +413,7 @@ for ind,(region,regionLabels) in enumerate(regionNames):
         axes[-2].plot([ind,ind],s,mec)
             
     for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeModLat,passiveChangeModLat,behModChangeLat),'rbrbk',('none','none','r','b','k')):
-        lat = lat[~np.isnan(lat)]+30
+        lat = lat[~np.isnan(lat)]
         m = np.median(lat)
         s = np.std(lat)
 #        s = scipy.stats.median_absolute_deviation(lat)
@@ -578,7 +579,7 @@ for expInd,exp in enumerate(exps):
                         for i,unitSamp in enumerate(unitSamples):
                             for j,trunc in enumerate(truncTimes):
                                 # decode image change
-                                truncSlice = slice(respWin.start,respWin.start+trunc)
+                                truncSlice = slice(respWin.start-respWinOffset,respWin.start-respWinOffset+trunc)
                                 X = np.concatenate([s[:,unitSamp,truncSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
                                 y = np.zeros(X.shape[0])
                                 y[:int(X.shape[0]/2)] = 1
@@ -603,7 +604,7 @@ for expInd,exp in enumerate(exps):
                                 for model,name in zip(models,modelNames):
                                     preImageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                             # calculate population response latency for unit sample
-                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,respWin)[0])
+                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,respWin,respWinOffset)[0])
                         for model in modelNames:
                             result[exp][region][state]['changeScore'][model].append(changeScore[model].mean(axis=0))
                             result[exp][region][state]['changePredict'][model].append(np.mean(changePredict[model],axis=0))
@@ -679,11 +680,9 @@ for i,region in enumerate(regionLabels):
         for model,clr in zip(modelNames,'kg'):
             regionScore = []
             for exp in result:
-                for probe in result[exp]:
-                    if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                        s = result[exp][probe]['active'][score][model]
-                        if len(s)>0:
-                            regionScore.append(s[0])
+                s = result[exp][region]['active'][score][model]
+                if len(s)>0:
+                    regionScore.append(s[0])
             n = len(regionScore)
             if n>0:
                 m = np.mean(regionScore,axis=0)
@@ -714,7 +713,7 @@ for i,region in enumerate(regionLabels):
 ax.set_xlabel('Time (ms)')
 
 
-# plot scores for each probe
+# plot scores for each experiment
 for model in modelNames:
     for score,ymin in zip(('changeScore','imageScore'),[0.45,0]):
         fig = plt.figure(facecolor='w',figsize=(10,10))
@@ -724,11 +723,9 @@ for model in modelNames:
             for j,state in enumerate(('active','passive')):
                 ax = plt.subplot(gs[i,j])
                 for exp in result:
-                    for probe in result[exp]:
-                        if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                            for s in result[exp][probe][state][score][model]:
-                                ax.plot(truncTimes,s,'k')
-#                                print(exp,region,state,s[-1])
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        ax.plot(truncTimes,s[0],'k')
                 for side in ('right','top'):
                     ax.spines[side].set_visible(False)
                 ax.tick_params(direction='out',top=False,right=False)
@@ -763,11 +760,9 @@ for model in modelNames:
             for region,clr in zip(regionLabels,regionColors):
                 regionScore = []
                 for exp in result:
-                    for probe in result[exp]:
-                        if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                            s = result[exp][probe][state][score][model]
-                            if len(s)>0:
-                                regionScore.append(s[0])
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
                 n = len(regionScore)
                 if n>0:
                     m = np.mean(regionScore,axis=0)
@@ -807,11 +802,9 @@ for model in modelNames:
             for i,region in enumerate(regionLabels):
                 regionScore = []
                 for exp in result:
-                    for probe in result[exp]:
-                        if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                            s = result[exp][probe][state][score][model]
-                            if len(s)>0:
-                                regionScore.append(s[0][-1])
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0][-1])
                 n = len(regionScore)
                 if n>0:
                     m[i] = np.mean(regionScore)
@@ -844,11 +837,9 @@ for model in modelNames:
             for score,clr in zip(('changeScore','imageScore'),('k','0.5')):
                 regionScore = []
                 for exp in result:
-                    for probe in result[exp]:
-                        if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                            s = result[exp][probe][state][score][model]
-                            if len(s)>0:
-                                regionScore.append(s[0])
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
                 n = len(regionScore)
                 if n>0:
                     m = np.mean(regionScore,axis=0)
@@ -891,11 +882,9 @@ for model in modelNames:
             for state,clr in zip(('active','passive'),'rb'):
                 regionScore = []
                 for exp in result:
-                    for probe in result[exp]:
-                        if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                            s = result[exp][probe][state][score][model]
-                            if len(s)>0:
-                                regionScore.append(s[0])
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
                 n = len(regionScore)
                 if n>0:
                     m = np.mean(regionScore,axis=0)
@@ -934,10 +923,9 @@ for model in modelNames:
         for j,state in enumerate(('active','passive')):
             ax = plt.subplot(gs[i,j])
             for exp in result:
-                for probe in result[exp]:
-                    if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                        for s in result[exp][probe][state]['preImageScore'][model]:
-                            ax.plot(preTruncTimes,s,'k')
+                s = result[exp][region][state]['preImageScore'][model]
+                if len(s)>0:
+                    ax.plot(preTruncTimes,s[0],'k')
             for side in ('right','top'):
                 ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
@@ -967,18 +955,16 @@ latencyLabels = {'resp':'Visual Response Latency','change':'Change Decoding Late
 for model in modelNames:
     latency = {exp: {region: {state: {} for state in ('active','passive')} for region in regionLabels} for exp in result}
     for exp in result:
-        for probe in result[exp]:
-            for region in regionLabels:
-                if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                    for state in ('active','passive'):
-                        s = result[exp][probe][state]['respLatency']
-                        if len(s)>0:
-                            latency[exp][region][state]['resp'] = s[0]
-                        for score,decodeThresh in zip(('changeScore','imageScore'),(0.625,0.25)):
-                            s = result[exp][probe][state][score][model]
-                            if len(s)>0:
-                                intpScore = np.interp(np.arange(truncTimes[0],truncTimes[-1]+1),truncTimes,s[0])
-                                latency[exp][region][state][score[:score.find('S')]] = findLatency(intpScore,method='abs',thresh=decodeThresh)[0]
+        for region in regionLabels:
+            for state in ('active','passive'):
+                s = result[exp][region][state]['respLatency']
+                if len(s)>0:
+                    latency[exp][region][state]['resp'] = s[0]
+                for score,decodeThresh in zip(('changeScore','imageScore'),(0.625,0.25)):
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        intpScore = np.interp(np.arange(truncTimes[0],truncTimes[-1]+1),truncTimes,s[0])
+                        latency[exp][region][state][score[:score.find('S')]] = findLatency(intpScore,method='abs',thresh=decodeThresh)[0]
     
     fig = plt.figure(facecolor='w',figsize=(10,10))
     fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
