@@ -7,11 +7,8 @@ Created on Thu Aug 23 11:29:39 2018
 
 from __future__ import division
 import os
+from collections import OrderedDict
 import h5py
-import fileIO
-import getData
-import probeSync
-import analysis_utils
 import numpy as np
 import scipy
 import pandas as pd
@@ -22,6 +19,10 @@ import sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
 from sklearn.model_selection import cross_val_score, cross_val_predict
+import fileIO
+import getData
+import probeSync
+import analysis_utils
 
 
 def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams={}):
@@ -52,12 +53,27 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 resp[obj.correctReject] = 'correctReject'
                 
                 data = {expName:{}}
+                data[expName]['spikeTimes'] = {}
+                for probe in probes:
+                    data[expName]['spikeTimes'][probe] = OrderedDict()
+                    for ind,u in enumerate(probeSync.getOrderedUnits(obj.units[probe])):
+                        data[expName]['spikeTimes'][probe][ind] = obj.units[probe][u]['times']
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
                 data[expName]['regions'] = getUnitRegions(obj,probes=probes)
                 data[expName]['isi'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
+                data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
                 data[expName]['response'] = resp[trials]
-                # add preChange image identity, time between changes, receptive field info
+                data[expName]['behaviorFlashTimes'] = obj.frameAppearTimes[obj.flashFrames]
+                data[expName]['behaviorChangeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
+                data[expName]['behaviorRunTime'] = obj.behaviorRunTime
+                data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
+                data[expName]['lickTimes'] = obj.lickTimes
+                if obj.passive_pickle_file is not None:
+                    data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames]
+                    data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
+                    data[expName]['passiveRunTime'] = obj.passiveRunTime
+                    data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
@@ -75,8 +91,8 @@ def getSDFs(obj,probes='all',behaviorStates=('active','passive'),epochs=('change
     for probe in probes:
         units = probeSync.getOrderedUnits(obj.units[probe])
         for state in sdfs[probe]:
-            if state=='active' or len(obj.passive_pickle_file)>0:  
-                frameTimes =obj.frameAppearTimes if state=='active' else obj.passiveFrameAppearTimes
+            if state=='active' or obj.passive_pickle_file is not None:  
+                frameTimes = obj.frameAppearTimes if state=='active' else obj.passiveFrameAppearTimes
                 changeTimes = frameTimes[changeFrames[trials]]
                 if 'preChange' in epochs:
                     flashTimes = frameTimes[flashFrames]
@@ -253,7 +269,7 @@ ax.set_xticklabels(['Change','False Alarm'])
 ax.set_xlim([-0.25,1.25])
 ax.set_ylim([0,1])
 ax.set_ylabel('Response Probability',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
 
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
@@ -268,7 +284,7 @@ ax.tick_params(direction='out',top=False,right=False,labelsize=16)
 ax.set_xticks([])
 ax.set_ylim([0,3])
 ax.set_ylabel('d prime',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
 
 # compare active and passive running
 activeRunSpeed = []
@@ -318,7 +334,7 @@ baseRate = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
 activePre,passivePre,activeChange,passiveChange = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
 hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
 
-regions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['regions']])    
+regions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['sdfs']])    
 #regionNames = sorted(list(set(regions)))
 regionNames = (
                ('LGN',('LGd',)),
@@ -335,9 +351,9 @@ regionNames = (
                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'))
               )
 regionNames = regionNames[:8]
+regionLabels = [r[1] for r in regionNames]
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-regionLabels = [r[1] for r in regionNames]
 hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a in r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
 
 nUnits = []
@@ -492,28 +508,28 @@ for j,(m,ci,ylab) in enumerate(zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiA
 
 ###### decoding analysis
     
-regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
+regionLabels = ('LGd','VISp','VISl','VISal','VISrl','VISpm','VISam','LP')
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 
-#for exp in data:
-#    print(exp)
-#    response = data[exp]['response'][:]
-#    trials = (response=='hit') | (response=='miss')
-#    for thresh in (5,10,15):
-#        print(thresh)
-#        for probe in data[exp]['regions']:
-#            n = []
-#            for region in regionLabels:
-#                inRegion = data[exp]['regions'][probe][:]==region
-#                if any(inRegion):
-#                    sdfs = data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials]
-#                    hasSpikes,hasResp = findResponsiveUnits(sdfs,baseWin,respWin,thresh)
-#                    n.append(np.sum(hasSpikes & hasResp))
-#                else:
-#                    n.append(0)
-#            print(probe,n)
+for exp in data:
+    print(exp)
+    response = data[exp]['response'][:]
+    trials = (response=='hit') | (response=='miss')
+    for thresh in (5,):
+        print(thresh)
+        for probe in data[exp]['sdfs']:
+            n = []
+            for region in regionLabels:
+                inRegion = data[exp]['regions'][probe][:]==region
+                if any(inRegion):
+                    sdfs = data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials]
+                    hasSpikes,hasResp = findResponsiveUnits(sdfs,baseWin,respWin,thresh)
+                    n.append(np.sum(hasSpikes & hasResp))
+                else:
+                    n.append(0)
+            print(probe,n)
 
-nUnits = [19]
+nUnits = [20]
 nRepeats = 3
 nCrossVal = 3
 
@@ -524,83 +540,76 @@ truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 preTruncTimes = np.arange(-750,0,50)
 
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
-models = (RandomForestClassifier(n_estimators=100), LinearSVC(C=1.0,max_iter=1e5)) # SVC(kernel='linear',C=1.0,probability=True)
-modelNames = ('randomForest', 'supportVector')
+models = (RandomForestClassifier(n_estimators=100),)# LinearSVC(C=1.0,max_iter=1e6)) # SVC(kernel='linear',C=1.0,probability=True)
+modelNames = ('randomForest',)# 'supportVector')
 behavStates = ('active','passive')
-result = {exp: {probe: {state: {'changeScore':{model:[] for model in modelNames},
+result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
                                 'changePredict':{model:[] for model in modelNames},
                                 'imageScore':{model:[] for model in modelNames},
                                 'preImageScore':{model:[] for model in modelNames},
-                                'respLatency':[]} for state in behavStates} for probe in data[exp]['sdfs']} for exp in data}
+                                'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in data}
 for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
-    if 'passive' in behavStates:
-        hasPassive = len(data[exp]['sdfs'][data[exp]['sdfs'].keys()[0]]['passive']['change'])>0
-        if not hasPassive:
-            continue
+    (activePreSDFs,activeChangeSDFs),(passivePreSDFs,passiveChangeSDFs) = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:] for probe in data[exp]['sdfs']])  for epoch in ('preChange','change')] for state in ('active','passive')]
+    unitRegions = np.concatenate([data[exp]['regions'][probe][:] for probe in data[exp]['sdfs']])
     response = data[exp]['response'][:]
     trials = (response=='hit') | (response=='miss')
+    initialImage = data[exp]['initialImage'][trials]
     changeImage = data[exp]['changeImage'][trials]
     imageNames = np.unique(changeImage)
-    for probeInd,probe in enumerate(data[exp]['sdfs']):
-        print('probe '+str(probeInd+1)+' of '+str(len(data[exp]['sdfs'])))
-        region = data[exp]['isi'][probe].value
-        result[exp][probe]['region'] = region
-        if region in regionLabels:
-            inRegion = data[exp]['regions'][probe][:]==region
-            if any(inRegion):
-                hasSpikesActive,hasRespActive = findResponsiveUnits(data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials],baseWin,respWin)
-                useUnits = hasSpikesActive & hasRespActive
-                if 'passive' in behavStates:
-                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(data[exp]['sdfs'][probe]['passive']['change'][inRegion,:,:respWin.stop][:,trials],baseWin,respWin)
-                    useUnits = useUnits & hasSpikesPassive
-                units = np.where(useUnits)[0]
-                for n in nUnits:
-                    if len(units)>=n:
-                        unitSamples = [np.random.choice(units,size=n,replace=False) for _ in range(nRepeats)]
-                        for state in behavStates:
-                            if state=='active' or hasPassive:
-                                changeScore = {model: np.zeros((nRepeats,len(truncTimes))) for model in modelNames}
-                                changePredict = {model: [] for model in modelNames}
-                                imageScore = {model: np.zeros((nRepeats,len(truncTimes))) for model in modelNames}
-                                preImageScore = {model: np.zeros((nRepeats,len(preTruncTimes))) for model in modelNames}
-                                respLatency = []
-                                changeSDFs,preChangeSDFs = [data[exp]['sdfs'][probe][state][epoch][inRegion,:].transpose((1,0,2))[trials] for epoch in ('change','preChange')]
-                                for i,unitSamp in enumerate(unitSamples):
-                                    for j,trunc in enumerate(truncTimes):
-                                        # decode image change
-                                        truncSlice = slice(respWin.start,respWin.start+trunc)
-                                        X = np.concatenate([s[:,unitSamp,truncSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
-                                        y = np.zeros(X.shape[0])
-                                        y[:int(X.shape[0]/2)] = 1
-                                        for model,name in zip(models,modelNames):
-                                            changeScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
-                                        if trunc==lastTrunc:
-                                            # get model prediction probability for full length sdfs
-                                            for model,name in zip(models,modelNames):
-                                                if not isinstance(model,sklearn.svm.classes.LinearSVC):
-                                                    changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
-                                        # decode image identity
-                                        imgSDFs = [changeSDFs[:,unitSamp,truncSlice][changeImage==img] for img in imageNames]
-                                        X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-                                        y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-                                        for model,name in zip(models,modelNames):
-                                            imageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
-                                    # decode pre-change image identity
-                                    for j,trunc in enumerate(preTruncTimes):
-                                        preImgSDFs = [preChangeSDFs[:,unitSamp,trunc:][np.concatenate(([''],changeImage[:-1]))==img] for img in imageNames]
-                                        X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
-                                        y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
-                                        for model,name in zip(models,modelNames):
-                                            preImageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
-                                    # calculate population response latency for unit sample
-                                    respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,respWin)[0])
-                                for model in modelNames:
-                                    result[exp][probe][state]['changeScore'][model].append(changeScore[model].mean(axis=0))
-                                    result[exp][probe][state]['changePredict'][model].append(np.mean(changePredict[model],axis=0))
-                                    result[exp][probe][state]['imageScore'][model].append(imageScore[model].mean(axis=0))
-                                    result[exp][probe][state]['preImageScore'][model].append(preImageScore[model].mean(axis=0))
-                                result[exp][probe][state]['respLatency'].append(np.nanmean(respLatency))
+    for region in regionLabels:
+        inRegion = unitRegions==region
+        if any(inRegion):
+            hasSpikesActive,hasRespActive = findResponsiveUnits(activeChangeSDFs,baseWin,respWin)
+            hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChangeSDFs,baseWin,respWin)
+            useUnits = inRegion & hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
+            units = np.where(useUnits)[0]
+            for n in nUnits:
+                if len(units)>=n:
+                    unitSamples = [np.random.choice(units,size=n,replace=False) for _ in range(nRepeats)]
+                    for state in behavStates:
+                        changeScore = {model: np.zeros((nRepeats,len(truncTimes))) for model in modelNames}
+                        changePredict = {model: [] for model in modelNames}
+                        imageScore = {model: np.zeros((nRepeats,len(truncTimes))) for model in modelNames}
+                        preImageScore = {model: np.zeros((nRepeats,len(preTruncTimes))) for model in modelNames}
+                        respLatency = []
+                        sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
+                        preChangeSDFs,changeSDFs = [s.transpose((1,0,2))[trials] for s in sdfs]
+                        for i,unitSamp in enumerate(unitSamples):
+                            for j,trunc in enumerate(truncTimes):
+                                # decode image change
+                                truncSlice = slice(respWin.start,respWin.start+trunc)
+                                X = np.concatenate([s[:,unitSamp,truncSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
+                                y = np.zeros(X.shape[0])
+                                y[:int(X.shape[0]/2)] = 1
+                                for model,name in zip(models,modelNames):
+                                    changeScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                if trunc==lastTrunc:
+                                    # get model prediction probability for full length sdfs
+                                    for model,name in zip(models,modelNames):
+                                        if not isinstance(model,sklearn.svm.classes.LinearSVC):
+                                            changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
+                                # decode image identity
+                                imgSDFs = [changeSDFs[:,unitSamp,truncSlice][changeImage==img] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    imageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                            # decode pre-change image identity
+                            for j,trunc in enumerate(preTruncTimes):
+                                preImgSDFs = [preChangeSDFs[:,unitSamp,trunc:][initialImage==img] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    preImageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                            # calculate population response latency for unit sample
+                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,respWin)[0])
+                        for model in modelNames:
+                            result[exp][region][state]['changeScore'][model].append(changeScore[model].mean(axis=0))
+                            result[exp][region][state]['changePredict'][model].append(np.mean(changePredict[model],axis=0))
+                            result[exp][region][state]['imageScore'][model].append(imageScore[model].mean(axis=0))
+                            result[exp][region][state]['preImageScore'][model].append(preImageScore[model].mean(axis=0))
+                        result[exp][region][state]['respLatency'].append(np.nanmean(respLatency))
                             
 
 # plot scores vs number of units
@@ -614,14 +623,14 @@ for model in modelNames:
             ax = plt.subplot(gs[i,j])
             expScores = []
             for exp in result:
-                for probe in result[exp]:
-                    if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
-                        scr = [s[0] for s in result[exp][probe]['active'][score][model]]
-                        scr += [np.nan]*(len(nUnits)-len(scr))
-                        expScores.append(scr)
-                        allScores[score].append(scr)
-                        ax.plot(nUnits,scr,'k')
-            ax.plot(nUnits,np.nanmean(expScores,axis=0),'r',linewidth=2)
+                scr = result[exp][region]['active'][score][model]
+                if len(scr)>0:
+                    scr = [s[0] for s in scr]
+                    scr += [np.nan]*(len(nUnits)-len(scr))
+                    expScores.append(scr)
+                    allScores[score].append(scr)
+                    ax.plot(nUnits,scr,'k')
+#            ax.plot(nUnits,np.nanmean(expScores,axis=0),'r',linewidth=2)
             for side in ('right','top'):
                     ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
