@@ -12,12 +12,13 @@ import scipy
 from numba import njit
 
 
-
+#@njit
 def getSDF(spikes,startTimes,windowDur,sampInt=0.001,filt='gaussian',sigma=0.02,avg=True):
         t = np.arange(0,windowDur+sampInt,sampInt)
         counts = np.zeros((startTimes.size,t.size-1))
         for i,start in enumerate(startTimes):
             counts[i] = np.histogram(spikes[(spikes>=start) & (spikes<=start+windowDur)]-start,t)[0]
+            
         if filt in ('exp','exponential'):
             filtPts = int(5*sigma/sampInt)
             expFilt = np.zeros(filtPts*2)
@@ -31,17 +32,36 @@ def getSDF(spikes,startTimes,windowDur,sampInt=0.001,filt='gaussian',sigma=0.02,
         sdf /= sampInt
         return sdf,t[:-1]
 
-       
-def makePSTH(spikes,startTimes,windowDur,binSize=0.1, avg=True):
+@njit     
+def makePSTH_numba(spikes, startTimes, windowDur, binSize=0.001, convolution_kernel=0.05, avg=True):
+    startTimes = startTimes - convolution_kernel/2
+    windowDur = windowDur + convolution_kernel
+    bins = np.arange(0,windowDur+binSize,binSize)
+    convkernel = np.ones(int(convolution_kernel/binSize))
+    counts = np.zeros(bins.size-1)
+    for i,start in enumerate(startTimes):
+        startInd = np.searchsorted(spikes, start)
+        endInd = np.searchsorted(spikes, start+windowDur)
+        counts = counts + np.histogram(spikes[startInd:endInd]-start, bins)[0]
+    
+    counts = counts/startTimes.size
+    counts = np.convolve(counts, convkernel)/(binSize*convkernel.size)
+    return counts[convkernel.size-1:-convkernel.size], bins[:-convkernel.size-1]
+
+
+def makePSTH(spikes,startTimes,windowDur,binSize=0.01, avg=True):
     bins = np.arange(0,windowDur+binSize,binSize)
     counts = np.zeros((len(startTimes),bins.size-1))    
     for i,start in enumerate(startTimes):
         counts[i] = np.histogram(spikes[(spikes>=start) & (spikes<=start+windowDur)]-start,bins)[0]
-    
+
     if avg:
         return counts.mean(axis=0)/binSize
+
     else:
         return np.array(counts)/binSize
+
+    
 
 
 @njit
