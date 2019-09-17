@@ -23,6 +23,21 @@ import fileIO
 import getData
 import probeSync
 import analysis_utils
+import summaryPlots
+
+
+
+def makeSummaryPlots(miceToAnalyze='all'):
+    for mouseID,ephysDates,probeIDs,imageSet,passiveSession in mouseInfo:
+        if miceToAnalyze!='all' and mouseID not in miceToAnalyze:
+            continue
+        for date,probes in zip(ephysDates,probeIDs):
+            expName = date+'_'+mouseID
+            print(expName)
+            dataDir = os.path.join(baseDir,expName)
+            obj = getData.behaviorEphys(dataDir,probes)
+            obj.loadFromRawData()
+            summaryPlots.all_unit_summary(obj,probes)
 
 
 def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams={}):
@@ -200,6 +215,7 @@ mouseInfo = (
              ('429084',('07112019','07122019'),('ABCDEF','ABCDE'),'AB',(True,True)),
              ('423744',('08082019','08092019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('423750',('08132019','08142019'),('AF','AF'),'AA',(True,True)),
+             ('459521',('09052019','09062019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
             )
 
 
@@ -212,7 +228,7 @@ exps = Aexps+Bexps
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('423744',))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('423750',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('459521',))
 
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
@@ -226,7 +242,7 @@ data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
 
 baseWin = slice(0,250)
 respWinOffset = 30
-respWin = slice(250+respWinOffset,500+respWinOffseet)
+respWin = slice(250+respWinOffset,500+respWinOffset)
 
 
 
