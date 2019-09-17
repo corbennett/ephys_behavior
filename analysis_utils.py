@@ -34,6 +34,7 @@ def getSDF(spikes,startTimes,windowDur,sampInt=0.001,filt='gaussian',sigma=0.02,
 
 @njit     
 def makePSTH_numba(spikes, startTimes, windowDur, binSize=0.001, convolution_kernel=0.05, avg=True):
+    spikes = spikes.flatten()
     startTimes = startTimes - convolution_kernel/2
     windowDur = windowDur + convolution_kernel
     bins = np.arange(0,windowDur+binSize,binSize)

@@ -233,6 +233,8 @@ class behaviorEphys():
     
         #get lick times
         self.lickTimes = probeSync.get_sync_line_data(self.syncDataset, 'lick_sensor')[0]
+        if len(self.lickTimes)==0:
+            self.lickTimes = self.vsyncTimes[np.concatenate([lf for lf in self.trials['lick_frames']]).astype(int)]
         
     
     def getEyeTrackingData(self):

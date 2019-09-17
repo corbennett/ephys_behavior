@@ -524,8 +524,7 @@ def plot_lick_triggered_fr(obj, spikes, axis=None, min_inter_lick_time = 0.5, pr
     trial_start_times = frameTimes[trial_start_frames]
     trial_end_times = frameTimes[trial_end_frames]
     
-    lick_times = probeSync.get_sync_line_data(obj.syncDataset, 'lick_sensor')[0]
-    first_lick_times = lick_times[np.insert(np.diff(lick_times)>=min_inter_lick_time, 0, True)]
+    first_lick_times = obj.lickTimes[np.insert(np.diff(obj.lickTimes)>=min_inter_lick_time, 0, True)]
     first_lick_trials = analysis_utils.get_trial_by_time(first_lick_times, trial_start_times, trial_end_times)
     
 #    hit = np.array(obj.trials['response_type']=='HIT')

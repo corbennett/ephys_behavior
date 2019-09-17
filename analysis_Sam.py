@@ -154,6 +154,8 @@ def findLatency(data,baseWin=None,respWin=None,respWinOffset=0,method='rel',thre
         data = data-data[:,baseWin].mean(axis=1)[:,None]
     if respWin is None:
         respWin = slice(0,data.shape[1])
+    else:
+        respWin = slice(respWin.start-respWinOffset,respWin.stop)
     for d in data:
         if method=='abs':
             ptsAbove = np.where(np.correlate(d[respWin]>thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
@@ -163,7 +165,7 @@ def findLatency(data,baseWin=None,respWin=None,respWinOffset=0,method='rel',thre
             latency.append(ptsAbove[0])
         else:
             latency.append(np.nan)
-    return np.array(latency)+respWinOffset
+    return np.array(latency)
 
 
 def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin,respWinOffset):
@@ -387,7 +389,7 @@ bmiPreCI = []
 figs = [plt.figure(figsize=(12,9)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionLabels) in enumerate(regionNames):
-    inRegion = np.in1d(regions,regionLabels) & hasResp
+    inRegion = np.in1d(regions,regionLabels) & hasResp #& np.in1d(expDates,('09052019','09062019'))
     nUnits.append(inRegion.sum())
     nExps.append(len(set(expDates[inRegion])))
     nMice.append(len(set(expMouseIDs[inRegion])))
