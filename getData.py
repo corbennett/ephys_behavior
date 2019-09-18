@@ -117,6 +117,7 @@ class behaviorEphys():
                     self.units[pid][u]['ccfRegion'] = None
                     inCortex = False
                     if self.units[pid][u]['ccf'][1] >= 0:
+                        graphOrder = None
                         for ind,structID in enumerate(annotationStructures.getElementsByTagName('id')):
                             if int(structID.childNodes[0].nodeValue)==self.units[pid][u]['ccfID']:
                                 structure = annotationStructures.getElementsByTagName('structure')[ind]
@@ -124,11 +125,12 @@ class behaviorEphys():
                                 graphOrder = int(structure.childNodes[13].childNodes[0].nodeValue)
                                 self.units[pid][u]['ccfRegion'] = acronym
                                 break
-                        while graphOrder > 5:
-                            structure = structure.parentNode.parentNode
-                            graphOrder = int(structure.childNodes[13].childNodes[0].nodeValue)
-                        if 'Isocortex' in structure.childNodes[7].childNodes[0].nodeValue[1:-1]:
-                            inCortex = True
+                        if graphOrder is not None:
+                            while graphOrder > 5:
+                                structure = structure.parentNode.parentNode
+                                graphOrder = int(structure.childNodes[13].childNodes[0].nodeValue)
+                            if 'Isocortex' in structure.childNodes[7].childNodes[0].nodeValue[1:-1]:
+                                inCortex = True
                     self.units[pid][u]['inCortex'] = inCortex
                     #self.units[pid][u]['ISIRegion'] = self.probeCCF[pid]['ISIRegion'] if inCortex else 'None'
         except:

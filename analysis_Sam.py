@@ -146,21 +146,19 @@ def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5):
     return hasSpikes,hasResp
 
     
-def findLatency(data,baseWin=None,respWin=None,respWinOffset=0,method='rel',thresh=3,minPtsAbove=30):
+def findLatency(data,baseWin=None,stimWin=None,method='rel',thresh=3,minPtsAbove=30):
     latency = []
     if len(data.shape)<2:
         data = data[None,:]
     if baseWin is not None:
         data = data-data[:,baseWin].mean(axis=1)[:,None]
-    if respWin is None:
-        respWin = slice(0,data.shape[1])
-    else:
-        respWin = slice(respWin.start-respWinOffset,respWin.stop)
+    if stimWin is None:
+        stimWin = slice(0,data.shape[1])
     for d in data:
         if method=='abs':
-            ptsAbove = np.where(np.correlate(d[respWin]>thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
+            ptsAbove = np.where(np.correlate(d[stimWin]>thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
         else:
-            ptsAbove = np.where(np.correlate(d[respWin]>d[baseWin].std()*thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
+            ptsAbove = np.where(np.correlate(d[stimWin]>d[baseWin].std()*thresh,np.ones(minPtsAbove),mode='valid')==minPtsAbove)[0]
         if len(ptsAbove)>0:
             latency.append(ptsAbove[0])
         else:
@@ -168,7 +166,7 @@ def findLatency(data,baseWin=None,respWin=None,respWinOffset=0,method='rel',thre
     return np.array(latency)
 
 
-def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin,respWinOffset):
+def calcChangeMod(preChangeSDFs,changeSDFs,respWin,baseWin,stimWin):
     pre = preChangeSDFs[:,respWin].mean(axis=1)
     change = changeSDFs[:,respWin].mean(axis=1)
     changeMod = np.clip((change-pre)/(change+pre),-1,1)
@@ -176,7 +174,7 @@ def calcChangeMod(preChangeSDFs,changeSDFs,baseWin,respWin,respWinOffset):
 #    s = changeMod.std()/(changeMod.size**0.5)
     m = np.median(changeMod)
     s = np.percentile([np.median(np.random.choice(changeMod,changeMod.size,replace=True)) for _ in range(5000)],(2.5,97.5))
-    lat = findLatency(changeSDFs-preChangeSDFs,baseWin,respWin,respWinOffset)
+    lat = findLatency(changeSDFs-preChangeSDFs,baseWin,stimWin)
     return m,s,lat
     
 
@@ -226,6 +224,10 @@ Aexps,Bexps = [[mouseID+'_'+exp[0] for exp in mouseInfo for mouseID,probes,imgSe
 exps = Aexps+Bexps
 
 
+#
+makeSummaryPlots(miceToAnalyze=('423744','423750','459521'))
+
+
 # make new experiment hdf5s without updating popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('423744',))
 
@@ -243,8 +245,9 @@ getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('423744',))
 data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
 
 baseWin = slice(0,250)
+stimWin = slice(250,500)
 respWinOffset = 30
-respWin = slice(250+respWinOffset,500+respWinOffset)
+respWin = slice(stimWin.start+respWinOffset,stimWin.stop+respWinOffset)
 
 
 
@@ -407,7 +410,7 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     
     # plot mean change mod and latencies
     (activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChange,behModChangeCI,behModChangeLat),(behModPre,behModPreCI,behModPreLat) = \
-    [calcChangeMod(pre[inRegion],change[inRegion],baseWin,respWin,respWinOffset) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
+    [calcChangeMod(pre[inRegion],change[inRegion],respWin,baseWin,stimWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
     cmiActive.append(activeChangeMod)
     cmiActiveCI.append(activeChangeModCI)
@@ -418,7 +421,7 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     bmiPre.append(behModPre)
     bmiPreCI.append(behModPreCI)
     
-    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,respWin,respWinOffset) for sdfs in (activeChange,passiveChange)]
+    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,stimWin) for sdfs in (activeChange,passiveChange)]
     
     for m,s,mec,mfc,lbl in zip((activeChangeMod,passiveChangeMod),(activeChangeModCI,passiveChangeModCI),'rb','rb',('Active','Passive')):
         lbl = None if ind>0 else lbl
@@ -597,7 +600,7 @@ for expInd,exp in enumerate(exps):
                         for i,unitSamp in enumerate(unitSamples):
                             for j,trunc in enumerate(truncTimes):
                                 # decode image change
-                                truncSlice = slice(respWin.start-respWinOffset,respWin.start-respWinOffset+trunc)
+                                truncSlice = slice(stimWin.start,stimWin.start+trunc)
                                 X = np.concatenate([s[:,unitSamp,truncSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
                                 y = np.zeros(X.shape[0])
                                 y[:int(X.shape[0]/2)] = 1
@@ -622,7 +625,7 @@ for expInd,exp in enumerate(exps):
                                 for model,name in zip(models,modelNames):
                                     preImageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                             # calculate population response latency for unit sample
-                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,respWin,respWinOffset)[0])
+                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,stimWin)[0])
                         for model in modelNames:
                             result[exp][region][state]['changeScore'][model].append(changeScore[model].mean(axis=0))
                             result[exp][region][state]['changePredict'][model].append(np.mean(changePredict[model],axis=0))
