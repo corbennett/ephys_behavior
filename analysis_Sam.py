@@ -356,8 +356,9 @@ baseRate = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
 activePre,passivePre,activeChange,passiveChange = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
 hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
 
-regions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['sdfs']])    
-#regionNames = sorted(list(set(regions)))
+unitRegions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['sdfs']])  
+  
+#regionNames = sorted(list(set(unitRegions)))
 regionNames = (
                ('LGN',('LGd',)),
                ('V1',('VISp',)),
@@ -375,9 +376,6 @@ regionNames = (
 regionNames = regionNames[:8]
 regionLabels = [r[1] for r in regionNames]
 
-anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a in r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
-
 nUnits = []
 nExps = []
 nMice = []
@@ -389,10 +387,12 @@ bmiChange = []
 bmiChangeCI = []
 bmiPre = []
 bmiPreCI = []
+respLat = []
+changeModLat = []
 figs = [plt.figure(figsize=(12,9)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
-for ind,(region,regionLabels) in enumerate(regionNames):
-    inRegion = np.in1d(regions,regionLabels) & hasResp #& np.in1d(expDates,('09052019','09062019'))
+for ind,(region,regionCCFLabels) in enumerate(regionNames):
+    inRegion = np.in1d(unitRegions,regionCCFLabels) & hasResp #& np.in1d(expDates,('09052019','09062019'))
     nUnits.append(inRegion.sum())
     nExps.append(len(set(expDates[inRegion])))
     nMice.append(len(set(expMouseIDs[inRegion])))
@@ -412,6 +412,8 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     (activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChange,behModChangeCI,behModChangeLat),(behModPre,behModPreCI,behModPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],respWin,baseWin,stimWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
+    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,stimWin) for sdfs in (activeChange,passiveChange)]
+    
     cmiActive.append(activeChangeMod)
     cmiActiveCI.append(activeChangeModCI)
     cmiPassive.append(passiveChangeMod)
@@ -420,8 +422,8 @@ for ind,(region,regionLabels) in enumerate(regionNames):
     bmiChangeCI.append(behModChangeCI)
     bmiPre.append(behModPre)
     bmiPreCI.append(behModPreCI)
-    
-    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,stimWin) for sdfs in (activeChange,passiveChange)]
+    respLat.append(activeLat)
+    changeModLat.append(activeChangeModLat)
     
     for m,s,mec,mfc,lbl in zip((activeChangeMod,passiveChangeMod),(activeChangeModCI,passiveChangeModCI),'rb','rb',('Active','Passive')):
         lbl = None if ind>0 else lbl
@@ -435,9 +437,8 @@ for ind,(region,regionLabels) in enumerate(regionNames):
             
     for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeModLat,passiveChangeModLat,behModChangeLat),'rbrbk',('none','none','r','b','k')):
         lat = lat[~np.isnan(lat)]
-        m = np.median(lat)
-        s = np.std(lat)
-#        s = scipy.stats.median_absolute_deviation(lat)
+        m = lat.mean()
+        s = lat.std()/(lat.size**0.5)
         axes[-1].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12)
         axes[-1].plot([ind,ind],[m-s,m+s],mec)
     
@@ -502,29 +503,55 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     ax.legend()
 
 
-for j,(m,ci,ylab) in enumerate(zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPassiveCI,bmiChangeCI,bmiPreCI),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre'))):
-    for i,(hier,xlab) in enumerate(zip((hierScore_8regions,hierScore_allRegions),('8 Region Hierarchy Score','All Region Hierarchy Score'))):
-        fig = plt.figure(facecolor='w')
-        ax = plt.subplot(1,1,1)
-        ax.plot(hier,m,'ko',ms=6)
-        for h,c in zip(hier,ci):
-            ax.plot([h,h],c,'k')
-        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
-        x = np.array([min(hier),max(hier)])
-        ax.plot(x,slope*x+yint,'0.5')
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
+hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a in r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
+    
+hier = hierScore_8regions
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+for latency,mec,mfc in zip((respLat,changeModLat),'kk',('k','none')):
+    m = []
+    ci = []
+    for lat in latency:
+        lat = lat[~np.isnan(lat)]
+        m.append(np.median(lat))
+        ci.append(np.percentile([np.median(np.random.choice(lat,lat.size,replace=True)) for _ in range(5000)],(2.5,97.5)))
+    ax.plot(hier,m,'o',mec=mec,mfc=mfc,ms=12)
+    for h,c in zip(hier,ci):
+        ax.plot([h,h],c,mec)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+ax.set_ylim([35,65])
+ax.set_xticks(hier)
+ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
+ax.set_xlabel('Hierarchy Score',fontsize=10)
+ax.set_ylabel('Latency (ms)',fontsize=10)
+
+
+for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPassiveCI,bmiChangeCI,bmiPreCI),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre')):
+    fig = plt.figure(facecolor='w')
+    ax = plt.subplot(1,1,1)
+    ax.plot(hier,m,'ko',ms=6)
+    for h,c in zip(hier,ci):
+        ax.plot([h,h],c,'k')
+    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+    x = np.array([min(hier),max(hier)])
+    ax.plot(x,slope*x+yint,'0.5')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
 #        ax.set_xticks(hier)
 #        ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
-        ax.set_xlabel(xlab,fontsize=10)
-        ax.set_ylabel(ylab,fontsize=10)
-        r,p = scipy.stats.pearsonr(hier,m)
-        title = 'Pearson: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
-        r,p = scipy.stats.spearmanr(hier,m)
-        title += '\nSpearman: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
-        ax.set_title(title,fontsize=8)
-        plt.tight_layout()
+    ax.set_xlabel('Hierarchy Score',fontsize=10)
+    ax.set_ylabel(ylab,fontsize=10)
+    r,p = scipy.stats.pearsonr(hier,m)
+    title = 'Pearson: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
+    r,p = scipy.stats.spearmanr(hier,m)
+    title += '\nSpearman: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
+    ax.set_title(title,fontsize=8)
+    plt.tight_layout()
 
 
 
