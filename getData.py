@@ -132,7 +132,6 @@ class behaviorEphys():
                             if 'Isocortex' in structure.childNodes[7].childNodes[0].nodeValue[1:-1]:
                                 inCortex = True
                     self.units[pid][u]['inCortex'] = inCortex
-                    #self.units[pid][u]['ISIRegion'] = self.probeCCF[pid]['ISIRegion'] if inCortex else 'None'
         except:
             for pid in self.probes_to_analyze:
                 for u in self.units[pid]:

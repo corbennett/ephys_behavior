@@ -72,7 +72,7 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 for probe in probes:
                     data[expName]['spikeTimes'][probe] = OrderedDict()
                     for ind,u in enumerate(probeSync.getOrderedUnits(obj.units[probe])):
-                        data[expName]['spikeTimes'][probe][ind] = obj.units[probe][u]['times']
+                        data[expName]['spikeTimes'][probe][str(ind)] = obj.units[probe][u]['times']
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
                 data[expName]['regions'] = getUnitRegions(obj,probes=probes)
                 data[expName]['isi'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
@@ -127,14 +127,14 @@ def getSDFs(obj,probes='all',behaviorStates=('active','passive'),epochs=('change
 def getUnitRegions(obj,probes='all'):    
     if probes=='all':
         probes = obj.probes_to_analyze
-    regions = {}
+    regions = {probe: {method:[] for method in ('ccf','isi')} for probe in probes}
     for probe in probes:
-        regions[probe] = []
         units = probeSync.getOrderedUnits(obj.units[probe])
         for u in units:
+            regions[probe]['ccf'].append(obj.units[probe][u]['ccfRegion'])
             isiRegion = obj.probeCCF[probe]['ISIRegion']
-            r = isiRegion if str(isiRegion)!='nan' and obj.units[probe][u]['inCortex'] else obj.units[probe][u]['ccfRegion']
-            regions[probe].append(r)
+            r = isiRegion if str(isiRegion)!='nan' and obj.units[probe][u]['inCortex'] else ''
+            regions[probe]['isi'].append(r)
     return regions
 
 
@@ -309,23 +309,7 @@ ax.set_ylabel('d prime',fontsize=16)
 ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
 
 # compare active and passive running
-activeRunSpeed = []
-passiveRunSpeed = []
-errorExps = []
-for mouseID,ephysDates,probeIDs,imageSet,passiveSession in mouseInfo:
-    for date,probes in zip(ephysDates,probeIDs):
-        expName = date+'_'+mouseID
-        if expName in exps:
-            print(expName)
-            hdf5Path = os.path.join(localDir,expName+'.hdf5')
-            dataDir = os.path.join(baseDir,expName)
-            obj = getData.behaviorEphys(dataDir,probes)
-            obj.getFrameTimes()
-            obj.getBehaviorData()
-            obj.getRFandFlashStimInfo()
-            obj.getPassiveStimInfo()
-            activeRunSpeed.append(np.median(obj.behaviorRunSpeed))
-            passiveRunSpeed.append(np.median(obj.passiveRunSpeed))
+activeRunSpeed,passiveRunSpeed = [[np.median(data[exp][speed]) for exp in exps] for speed in ('behaviorRunSpeed','passiveRunSpeed')]
             
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
@@ -389,6 +373,8 @@ bmiPre = []
 bmiPreCI = []
 respLat = []
 changeModLat = []
+popRespLat = []
+popChangeModLat = []
 figs = [plt.figure(figsize=(12,9)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionCCFLabels) in enumerate(regionNames):
@@ -397,18 +383,6 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
     nExps.append(len(set(expDates[inRegion])))
     nMice.append(len(set(expMouseIDs[inRegion])))
     
-    # plot baseline and response spike rates
-    for sdfs,base,mec,mfc,lbl in zip((activePre,passivePre,activeChange,passiveChange),baseRate,('rbrb'),('none','none','r','b'),('Active Pre','Passive Pre','Active Change','Passive Change')):
-        meanResp = sdfs[inRegion,respWin].mean(axis=1)
-        peakResp = sdfs[inRegion,respWin].max(axis=1)
-        for r,ax in zip((base[inRegion],meanResp,peakResp),axes[:3]):
-            m = r.mean()
-            s = r.std()/(r.size**0.5)
-            lbl = None if ind>0 else lbl
-            ax.plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
-            ax.plot([ind,ind],[m-s,m+s],color=mec)
-    
-    # plot mean change mod and latencies
     (activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChange,behModChangeCI,behModChangeLat),(behModPre,behModPreCI,behModPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],respWin,baseWin,stimWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
@@ -424,7 +398,21 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
     bmiPreCI.append(behModPreCI)
     respLat.append(activeLat)
     changeModLat.append(activeChangeModLat)
+    popRespLat.append(findLatency(activeChange[inRegion].mean(axis=0),baseWin,stimWin,method='abs',thresh=1)[0])
+    popChangeModLat.append(findLatency(np.mean(activeChange[inRegion]-activePre[inRegion],axis=0),baseWin,stimWin,method='abs',thresh=1)[0])
     
+    # plot baseline and response spike rates
+    for sdfs,base,mec,mfc,lbl in zip((activePre,passivePre,activeChange,passiveChange),baseRate,('rbrb'),('none','none','r','b'),('Active Pre','Passive Pre','Active Change','Passive Change')):
+        meanResp = sdfs[inRegion,respWin].mean(axis=1)
+        peakResp = sdfs[inRegion,respWin].max(axis=1)
+        for r,ax in zip((base[inRegion],meanResp,peakResp),axes[:3]):
+            m = np.mean(r)
+            s = r.std()/(r.size**0.5)
+            lbl = None if ind>0 else lbl
+            ax.plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
+            ax.plot([ind,ind],[m-s,m+s],color=mec)
+    
+    # plot mean change mod and latencies
     for m,s,mec,mfc,lbl in zip((activeChangeMod,passiveChangeMod),(activeChangeModCI,passiveChangeModCI),'rb','rb',('Active','Passive')):
         lbl = None if ind>0 else lbl
         axes[-3].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
@@ -501,6 +489,19 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
         ax.set_ylim([0,plt.get(ax,'ylim')[1]])
     ax.set_ylabel(ylbl,fontsize=16)
     ax.legend()
+    
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+for lat,mec,mfc in zip((popRespLat,popChangeModLat),'kk',('k','none')):
+    ax.plot(lat,'o',mec=mec,mfc=mfc,ms=10)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+ax.set_xlim([-0.5,len(regionLabels)-0.5])
+ax.set_ylim([25,50])
+ax.set_xticks(np.arange(len(regionLabels)))
+ax.set_xticklabels(regionLabels)
+ax.set_ylabel('Latency (ms)',fontsize=10)
 
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
@@ -523,7 +524,7 @@ for latency,mec,mfc in zip((respLat,changeModLat),'kk',('k','none')):
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_ylim([35,65])
+ax.set_ylim([35,75])
 ax.set_xticks(hier)
 ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
 ax.set_xlabel('Hierarchy Score',fontsize=10)
@@ -553,6 +554,63 @@ for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPas
     ax.set_title(title,fontsize=8)
     plt.tight_layout()
 
+
+
+###### adaptation
+
+regionLabels = ('LGd','VISp','VISl','VISal','VISrl','VISpm','VISam','LP')
+regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
+
+sdfs = {region:[] for region in regionLabels}
+for exp in exps:
+    changeTimes = data[exp]['behaviorChangeTimes'][:]
+    for region in regionLabels:
+        for probe in data[exp]['regions']:
+            inRegion = data[exp]['regions'][probe][:]==region
+            if any(inRegion):
+                hasSpikes,hasResp = findResponsiveUnits(data[exp]['sdfs'][probe]['active']['change'][inRegion].mean(axis=1),baseWin,respWin,thresh=5)
+                uindex = np.where(inRegion)[0][hasSpikes & hasResp]
+                for u in uindex:
+                    sdfs[region].append(analysis_utils.getSDF(data[exp]['spikeTimes'][probe][u][:],changeTimes-0.25,0.25+6*0.75,sampInt=0.001,filt='exp',sigma=0.005,avg=True)[0])
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(2,1)
+adaptMean = []
+adaptSem = []
+for region,clr in zip(regionLabels,regionColors):
+    regSdfs = np.concatenate(sdfs[region])
+    regSdfs -= regSdfs[:,:250].mean(axis=1)
+    m = regSdfs.mean(axis=0)
+    s = regSdfs.std()/(len(regSdfs)**0.5)
+    s /= m.max()
+    m /= m.max()
+    ax[0].plot(m,clr)
+    ax[0].fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25)
+    
+    regResp = []
+    regRespSem = []
+    for i in np.arange(250,6*750,750):
+        r = regSdfs[:,i:i+250].max(axis=1)
+        regResp.append(r.mean())
+        regRespSem.append(r.std()/(len(r)**0.5))
+    regResp,regRespSem = [np.array(r)/regResp[0] for r in (regResp,regRespSem)]
+    ax[1].plot(regResp,clr,m='o')
+    for x,(m,s) in enumerate(zip(regResp,regRespSem)):
+        ax[1].plot([x,x],[m-s,m+s],clr)
+        
+    adaptMean.append(regResp[-1])
+    adaptSem.append(regRespSem[-1])
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)
+ax.plot(adaptMean,'ko',ms=10)
+for x,(m,s) in enumerate(zip(adaptMean,adaptSem)):
+    ax[1].plot([x,x],[m-s,m+s],'ko')
+ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+ax.set_xlim([-0.5,len(regionLabels)-0.5])
+ax.set_xticks(np.arange(len(regionLabels)))
+ax.set_xticklabels(regionLabels)
+ax.set_ylabel('Adaptation (fraction of change reseponse)',fontsize=10)
 
 
 ###### decoding analysis
