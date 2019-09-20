@@ -69,13 +69,18 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 
                 data = {expName:{}}
                 data[expName]['spikeTimes'] = {}
+                data[expName]['regions'] = {}
+                data[expName]['inCortex'] = {}
                 for probe in probes:
                     data[expName]['spikeTimes'][probe] = OrderedDict()
+                    data[expName]['ccfRegion'][probe] = []
+                    data[expName]['inCortex'][probe] = []
                     for ind,u in enumerate(probeSync.getOrderedUnits(obj.units[probe])):
                         data[expName]['spikeTimes'][probe][str(ind)] = obj.units[probe][u]['times']
+                        data[expName]['ccfRegion'].append(obj.units[probe][u]['ccfRegion'])
+                        data[expName]['inCortex'].append(obj.units[probe][u]['inCortex'])
+                data[expName]['isiRegion'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
-                data[expName]['regions'] = getUnitRegions(obj,probes=probes)
-                data[expName]['isi'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
                 data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
                 data[expName]['response'] = resp[trials]
@@ -122,20 +127,6 @@ def getSDFs(obj,probes='all',behaviorStates=('active','passive'),epochs=('change
                             s = analysis_utils.getSDF(spikes,t-preTime,preTime+postTime,sampInt=sampInt,filt=sdfFilt,sigma=sdfSigma,avg=avg)[0]
                         sdfs[probe][state][epoch].append(s)                    
     return sdfs
-
-
-def getUnitRegions(obj,probes='all'):    
-    if probes=='all':
-        probes = obj.probes_to_analyze
-    regions = {probe: {method:[] for method in ('ccf','isi')} for probe in probes}
-    for probe in probes:
-        units = probeSync.getOrderedUnits(obj.units[probe])
-        for u in units:
-            regions[probe]['ccf'].append(obj.units[probe][u]['ccfRegion'])
-            isiRegion = obj.probeCCF[probe]['ISIRegion']
-            r = isiRegion if str(isiRegion)!='nan' and obj.units[probe][u]['inCortex'] else ''
-            regions[probe]['isi'].append(r)
-    return regions
 
 
 def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5):
@@ -561,17 +552,20 @@ for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPas
 regionLabels = ('LGd','VISp','VISl','VISal','VISrl','VISpm','VISam','LP')
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 
+nFlashes = 10
+
 sdfs = {region:[] for region in regionLabels}
 for exp in exps:
+    print(exp)
     changeTimes = data[exp]['behaviorChangeTimes'][:]
     for region in regionLabels:
         for probe in data[exp]['regions']:
             inRegion = data[exp]['regions'][probe][:]==region
             if any(inRegion):
-                hasSpikes,hasResp = findResponsiveUnits(data[exp]['sdfs'][probe]['active']['change'][inRegion].mean(axis=1),baseWin,respWin,thresh=5)
+                hasSpikes,hasResp = findResponsiveUnits(data[exp]['sdfs'][probe]['active']['change'][:][inRegion].mean(axis=1),baseWin,respWin,thresh=5)
                 uindex = np.where(inRegion)[0][hasSpikes & hasResp]
                 for u in uindex:
-                    sdfs[region].append(analysis_utils.getSDF(data[exp]['spikeTimes'][probe][u][:],changeTimes-0.25,0.25+6*0.75,sampInt=0.001,filt='exp',sigma=0.005,avg=True)[0])
+                    sdfs[region].append(analysis_utils.getSDF(data[exp]['spikeTimes'][probe][str(u)][:],changeTimes-0.25,0.25+nFlashes*0.75,sampInt=0.001,filt='exp',sigma=0.005,avg=True)[0])
 
 fig = plt.figure(facecolor='w')
 ax = fig.subplots(2,1)
@@ -587,19 +581,20 @@ for region,clr in zip(regionLabels,regionColors):
     ax[0].plot(m,clr)
     ax[0].fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25)
     
-    regResp = []
-    regRespSem = []
-    for i in np.arange(250,6*750,750):
+    flashResp = []
+    flashRespSem = []
+    for i in np.arange(250,nFlashes*750,750):
         r = regSdfs[:,i:i+250].max(axis=1)
-        regResp.append(r.mean())
-        regRespSem.append(r.std()/(len(r)**0.5))
-    regResp,regRespSem = [np.array(r)/regResp[0] for r in (regResp,regRespSem)]
-    ax[1].plot(regResp,clr,m='o')
-    for x,(m,s) in enumerate(zip(regResp,regRespSem)):
+        r -= regSdfs[:,i]
+        flashResp.append(r.mean())
+        flashRespSem.append(r.std()/(len(r)**0.5))
+    flashResp,flashRespSem = [np.array(r)/flashResp[0] for r in (flashResp,flashRespSem)]
+    ax[1].plot(flashResp,clr,m='o')
+    for x,(m,s) in enumerate(zip(flashResp,flashRespSem)):
         ax[1].plot([x,x],[m-s,m+s],clr)
         
-    adaptMean.append(regResp[-1])
-    adaptSem.append(regRespSem[-1])
+    adaptMean.append(flashResp[-1])
+    adaptSem.append(flashRespSem[-1])
 
 fig = plt.figure(facecolor='w')
 ax = fig.subplots(1)

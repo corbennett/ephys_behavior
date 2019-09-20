@@ -108,7 +108,7 @@ class behaviorEphys():
                 self.probeCCF[pid]['shift'] = shift
                 self.probeCCF[pid]['stretch'] = stretch
                 self.probeCCF[pid]['entryChannel'] = entryChannel
-                self.probeCCF[pid]['ISIRegion'] = entry[6]
+                self.probeCCF[pid]['ISIRegion'] = None if np.isnan(entry[6]) else entry[6]
                 for u in self.units[pid]:
                     distFromTip = tipLength+self.units[pid][u]['position'][1]
                     distFromEntry = probeLength-distFromTip
