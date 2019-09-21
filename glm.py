@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Sat Sep 21 13:33:41 2019
+
+@author: svc_ccg
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Thu Aug 22 14:18:26 2019
 
 @author: svc_ccg
@@ -32,11 +39,14 @@ def getPSTH(binned_spikes, binned_times, binwidth, preTime, postTime):
     postTime_bin = int(postTime/binwidth)
     eventTimes = npo.where(binned_times)[0]
     psth = npo.zeros(preTime_bin+postTime_bin)
+    traces_included = 0
     for i, t in enumerate(eventTimes):
         trace = binned_spikes[t-preTime_bin:t+postTime_bin]
-        psth = psth + trace
+        if len(trace)==len(psth):
+            psth = psth + trace
+            traces_included += 1
     
-    return psth/len(eventTimes)
+    return psth/traces_included
 
 def find_initial_guess(psth, ffilter):
     def compute_error(latent, inputs):
@@ -53,38 +63,60 @@ def find_initial_guess(psth, ffilter):
     
     return res['x']
 
+def getChangeBins(binned_changeTimes, binwidth, preChangeTime = 2, postChangeTime=2):
+    preBins = int(preChangeTime/binwidth)
+    postBins = int(postChangeTime/binwidth)
+    changeBins = npo.convolve(binned_changeTimes, npo.ones(preBins+postBins), 'same').astype(npo.bool)
+    return changeBins
+    
 
 binwidth = 0.02
-spikes = b.units['C']['270']['times']
-binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)
+offset = 0.2
+restrictToChange=True
 
-model = licking_model.Model(dt=binwidth, licks=binned_spikes)
-
+image_id = np.array(b.core_data['visual_stimuli']['image_name'])
 selectedTrials = (b.hit | b.miss)&(~b.ignore)   #Omit "ignore" trials (aborted trials when the mouse licked too early or catch trials when the image didn't actually change)
 active_changeTimes = b.frameAppearTimes[np.array(b.trials['change_frame'][selectedTrials]).astype(int)+1] #add one here to correct for a one frame shift in frame times from camstim
 binned_activeChangeTimes = binVariable(active_changeTimes, binwidth)
-changeFilter = licking_model.GaussianBasisFilter(num_params=10, data=binned_activeChangeTimes, dt=model.dt, duration=0.6, sigma=0.05)
-model.add_filter('change', changeFilter)
+if restrictToChange:
+    changeBins = getChangeBins(binned_activeChangeTimes, binwidth)
+else:
+    changeBins = npo.ones(binned_activeChangeTimes.size).astype(npo.bool)
 
-lick_offset = 0.25
-lick_times = probeSync.get_sync_line_data(b.syncDataset, 'lick_sensor')[0] - lick_offset
-binned_licks = binVariable(lick_times, binwidth)
-lickFilter = licking_model.GaussianBasisFilter(num_params=5, data=binned_licks, dt=model.dt, duration=0.6, sigma=0.1)
-model.add_filter('lick', lickFilter)
 
-binned_running = binRunning(b.behaviorRunSpeed.values, b.behaviorRunTime, binwidth)
-runFilter = licking_model.GaussianBasisFilter(num_params=5, data=binned_licks, dt=model.dt, duration=1, sigma=0.2)
-model.add_filter('run', runFilter)
+#lick_times = probeSync.get_sync_line_data(b.syncDataset, 'lick_sensor')[0] - offset
+lick_times = b.lickTimes
+first_lick_times = lick_times[np.insert(np.diff(lick_times)>=0.5, 0, True)]
 
 flash_times = b.frameAppearTimes[np.array(b.core_data['visual_stimuli']['frame'])]
-image_id = np.array(b.core_data['visual_stimuli']['image_name'])
-binned_flashTimes = []
-for i,img in enumerate(np.unique(image_id)):
-    this_image_times = flash_times[image_id==img]
-    bf = binVariable(this_image_times, binwidth)
-    binned_flashTimes.append(bf)
-    flash_filter = licking_model.GaussianBasisFilter(num_params=10, data=bf, dt=model.dt, duration=0.6, sigma=0.05)
-    model.add_filter('flash_' + img, flash_filter)
+    
+eventsToInclude = [('change', [active_changeTimes, 8, 0.8, 0.1, -0.2]),
+                   ('licks', [lick_times, 5, 0.6, 0.1, -0.3]),
+                   ('first_licks', [first_lick_times, 10, 2, 0.1, -1]),
+                   ('running', [[b.behaviorRunSpeed.values, b.behaviorRunTime], 5, 2, 0.4, 0])]
+
+for img in np.unique(image_id):
+    eventsToInclude.append((img, [flash_times[image_id==img], 8, 0.8, 0.1, -0.2]))
+
+
+featureDict = {}
+for filtname, [times, nparams, duration, sigma, offset] in eventsToInclude:
+    if filtname == 'running':
+        binned = binRunning(times[0], times[1], binwidth)[changeBins]
+    else:
+        binned = binVariable(times+offset, binwidth)[changeBins]
+    
+    ffilter = licking_model.GaussianBasisFilter(num_params=nparams, data=binned, dt=binwidth, duration=duration, sigma=sigma)
+    featureDict[filtname] = ffilter
+
+
+spikes = b.units['A']['14']['times']
+binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)[changeBins]
+model = licking_model.Model(dt=binwidth, licks=binned_spikes)
+
+for fname, ffilter in featureDict.items():
+    model.add_filter(fname, ffilter)
+
 
 #set initial guesses
 for filter_name, ffilter in model.filters.items():
@@ -94,11 +126,12 @@ for filter_name, ffilter in model.filters.items():
     thispsth = getPSTH(binned_spikes, binned_times, binwidth, 0, ffilter.duration)[1:]/np.mean(binned_spikes) + np.finfo(float).eps
     init_guess = find_initial_guess(thispsth, ffilter)
     ffilter.set_params(init_guess)
-    
+
+
 #fit model    
 model.mean_rate_param = np.log(np.mean(binned_spikes)/binwidth)
 model.verbose=True
-model.l2=10
+model.l2=1
 model.fit()
 plt.figure()
 model.plot_filters()
@@ -129,3 +162,24 @@ lims = [np.min([ax.get_xlim(), ax.get_ylim()]),np.max([ax.get_xlim(), ax.get_yli
 ax.plot(lims, lims, 'k--')
 ax.set_ylabel('final fit params')
 ax.set_xlabel('initial guess params')
+
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
