@@ -566,7 +566,7 @@ def plot_run_triggered_fr(obj, spikes, axis=None, preTime=1, postTime=2):
     
 
 def plot_saccade_triggered_fr(obj, spikes, axis=None, preTime=2, postTime=2, sdfSigma=0.02, latThresh=5, minPtsAboveThresh=50):
-    if obj.eyeData is None:
+    if obj.eyeData is None or obj.eyeData=='':
         return    
     if axis is None:
         fig, axis = plt.subplots()
