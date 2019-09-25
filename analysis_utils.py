@@ -8,7 +8,8 @@ Created on Wed Oct 17 13:40:38 2018
 from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy
+import scipy.signal
+import scipy.ndimage
 from numba import njit
 
 

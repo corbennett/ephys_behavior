@@ -68,17 +68,18 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 resp[obj.correctReject] = 'correctReject'
                 
                 data = {expName:{}}
-                data[expName]['spikeTimes'] = {}
+                data[expName]['units'] = {}
                 data[expName]['ccfRegion'] = {}
                 data[expName]['inCortex'] = {}
+                data[expName]['spikeTimes'] = {}
                 for probe in probes:
+                    units = probeSync.getOrderedUnits(obj.units[probe])
+                    data[expName]['units'][probe] = units
+                    data[expName]['ccfRegion'][probe] = [obj.units[probe][u]['ccfRegion'] for u in units]
+                    data[expName]['inCortex'][probe] = [obj.units[probe][u]['inCortex'] for u in units]
                     data[expName]['spikeTimes'][probe] = OrderedDict()
-                    data[expName]['ccfRegion'][probe] = []
-                    data[expName]['inCortex'][probe] = []
-                    for ind,u in enumerate(probeSync.getOrderedUnits(obj.units[probe])):
-                        data[expName]['spikeTimes'][probe][str(ind)] = obj.units[probe][u]['times']
-                        data[expName]['ccfRegion'][probe].append(obj.units[probe][u]['ccfRegion'])
-                        data[expName]['inCortex'][probe].append(obj.units[probe][u]['inCortex'])
+                    for u in units:
+                        data[expName]['spikeTimes'][probe][str(u)] = obj.units[probe][u]['times']
                 data[expName]['isiRegion'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
                 data[expName]['initialImage'] = obj.initialImage[trials]
@@ -336,7 +337,6 @@ for exp in exps:
     for probe in data[exp]['sdfs']:
         ccf = data[exp]['ccfRegion'][probe][:]
         isi = data[exp]['isiRegion'][probe].value
-        print(isi)
         if isi:
             ccf[data[exp]['inCortex'][probe][:]] = isi
         unitRegions.append(ccf)
@@ -509,6 +509,10 @@ hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in z
     
 hier = hierScore_8regions
 
+naiveMiceData = np.load(os.path.join(localDir,'naiveMiceChangeMod.npz'))
+cmiNaive = naiveMiceData['cmiNaive']
+cmiNaiveCI = naiveMiceData['cmiNaiveCI']
+
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
 for latency,mec,mfc in zip((respLat,changeModLat),'kk',('k','none')):
@@ -552,6 +556,23 @@ for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPas
     r,p = scipy.stats.spearmanr(hier,m)
     title += '\nSpearman: r^2 = '+str(round(r**2,2))+', p = '+str(round(p,3))
     ax.set_title(title,fontsize=8)
+    plt.tight_layout()
+
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)  
+for m,ci,clr,lbl in zip((cmiActive,cmiPassive,cmiNaive),(cmiActiveCI,cmiPassiveCI,cmiNaiveCI),('r','b','0.5'),('Active','Passive','Naive')):
+    ax.plot(hier,m,'o',mec=clr,mfc=clr,ms=6,label=lbl)
+    for h,c in zip(hier,ci):
+        ax.plot([h,h],c,color=clr)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xticks(hier)
+    ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
+    ax.set_xlabel('Hierarchy Score',fontsize=10)
+    ax.set_ylabel('Change Modulation Index',fontsize=10)
+    ax.legend()
     plt.tight_layout()
 
 
