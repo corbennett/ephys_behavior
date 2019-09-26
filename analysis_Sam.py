@@ -82,16 +82,20 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                         data[expName]['spikeTimes'][probe][str(u)] = obj.units[probe][u]['times']
                 data[expName]['isiRegion'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
+                data[expName]['flashImage'] = obj.flashImage
+                data[expName]['omitFlashImage'] = obj.omittedFlashImage
                 data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
                 data[expName]['response'] = resp[trials]
                 data[expName]['behaviorFlashTimes'] = obj.frameAppearTimes[obj.flashFrames]
+                data[expName]['behaviorOmitFlashTimes'] = obj.frameAppearTimes[obj.omittedFlashFrames]
                 data[expName]['behaviorChangeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
                 data[expName]['behaviorRunTime'] = obj.behaviorRunTime
                 data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
                 data[expName]['lickTimes'] = obj.lickTimes
                 if obj.passive_pickle_file is not None:
                     data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames]
+                    data[expName]['passiveOmitFlashTimes'] = obj.passiveFrameAppearTimes[obj.omittedFlashFrames]
                     data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
                     data[expName]['passiveRunTime'] = obj.passiveRunTime
                     data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed

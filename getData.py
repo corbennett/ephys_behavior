@@ -190,8 +190,11 @@ class behaviorEphys():
         
         self.behaviorVsyncCount = self.core_data['time'].size # same as self.trials['endframe'].values[-1] + 1
         
-        self.changeFrames = np.array(self.trials['change_frame']).astype(int)+1 #add one to correct for change frame indexing problem
         self.flashFrames = np.array(self.core_data['visual_stimuli']['frame'])
+        self.flashImage = self.core_data['visual_stimuli']['image_name']
+        self.changeFrames = np.array(self.trials['change_frame']).astype(int)+1 #add one to correct for change frame indexing problem
+        self.initialImage = np.array(self.trials['initial_image_name'])
+        self.changeImage = np.array(self.trials['change_image_name'])
         
         self.images = self.core_data['image_set']['images']
         newSize = tuple(int(s/10) for s in self.images[0].shape[::-1])
@@ -222,8 +225,6 @@ class behaviorEphys():
         self.hit = np.array(self.trials['response_type']=='HIT')
         self.falseAlarm = np.array(self.trials['response_type']=='FA')
         self.correctReject = np.array(self.trials['response_type']=='CR')
-        self.initialImage = np.array(self.trials['initial_image_name'])
-        self.changeImage = np.array(self.trials['change_image_name'])
         
         # get running data
         self.behaviorRunTime = self.vsyncTimes[self.core_data['running'].frame]
