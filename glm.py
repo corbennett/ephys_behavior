@@ -126,19 +126,20 @@ for pID in 'ABCDEF':
             binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)[changeBins]
             model = licking_model.Model(dt=binwidth, licks=binned_spikes)
             
+            filterList = []
+            for filtname, [times, nparams, duration, sigma, offset] in eventsToInclude:
+                if filtname == 'running':
+                    binned = binRunning(times[0], times[1], binwidth)[changeBins]
+                else:
+                    binned = binVariable(times+offset, binwidth)[changeBins]
+                
+                ffilter = licking_model.GaussianBasisFilter(num_params=nparams, data=binned, dt=binwidth, duration=duration, sigma=sigma)
+                filterList.append((filtname, ffilter))
+            
+            
             for fname, ffilter in filterList:
                 model.add_filter(fname, ffilter)
             
-            
-#            #set initial guesses
-#            for filter_name, ffilter in model.filters.items():
-#                if filter_name=='run':
-#                    continue
-#                binned_times = ffilter.data
-#                thispsth = getPSTH(binned_spikes, binned_times, binwidth, 0, ffilter.duration)[1:]/np.mean(binned_spikes) + np.finfo(float).eps
-#                init_guess = find_initial_guess(thispsth, ffilter)
-#                ffilter.set_params(init_guess)
-#            
             
             #fit model    
             model.mean_rate_param = np.log(np.mean(binned_spikes)/binwidth)
@@ -146,19 +147,22 @@ for pID in 'ABCDEF':
             model.l2=1
             model.fit()
             
-            goodParams = model.param_fit_history[np.argmin(model.val_nle_history)]
-            model.set_filter_params(goodParams)
-            
-            testlicks, testlatent = model.get_licks_and_latent(model.test_split)
-            test_corr.append(scipy.stats.pearsonr(testlicks, testlatent))
-            modelParams.append(goodParams)
-            
-            if b.units[pID][u]['inCortex']:
-                ccfRegions.append(b.probeCCF[pID]['ISIRegion'])
+            if len(model.val_nle_history)>0:
+                goodParams = model.param_fit_history[np.argmin(model.val_nle_history)]
+                model.set_filter_params(goodParams)
+                
+                testlicks, testlatent = model.get_licks_and_latent(model.test_split)
+                test_corr.append(scipy.stats.pearsonr(testlicks, testlatent))
+                modelParams.append(goodParams)
+                
+                if b.units[pID][u]['inCortex']:
+                    ccfRegions.append(b.probeCCF[pID]['ISIRegion'])
+                else:
+                    ccfRegions.append(b.units[pID][u]['ccfRegion'])
+    
+                uid.append(pID+'_'+u)
             else:
-                ccfRegions.append(b.units[pID][u]['ccfRegion'])
-
-            uid.append(pID+'_'+u)
+                print('fit failed for ' + pID + ' ' + u)
 #        except:
 #            continue
 
