@@ -68,29 +68,34 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 resp[obj.correctReject] = 'correctReject'
                 
                 data = {expName:{}}
-                data[expName]['spikeTimes'] = {}
-                data[expName]['regions'] = {}
+                data[expName]['units'] = {}
+                data[expName]['ccfRegion'] = {}
                 data[expName]['inCortex'] = {}
+                data[expName]['spikeTimes'] = {}
                 for probe in probes:
+                    units = probeSync.getOrderedUnits(obj.units[probe])
+                    data[expName]['units'][probe] = units
+                    data[expName]['ccfRegion'][probe] = [obj.units[probe][u]['ccfRegion'] for u in units]
+                    data[expName]['inCortex'][probe] = [obj.units[probe][u]['inCortex'] for u in units]
                     data[expName]['spikeTimes'][probe] = OrderedDict()
-                    data[expName]['ccfRegion'][probe] = []
-                    data[expName]['inCortex'][probe] = []
-                    for ind,u in enumerate(probeSync.getOrderedUnits(obj.units[probe])):
-                        data[expName]['spikeTimes'][probe][str(ind)] = obj.units[probe][u]['times']
-                        data[expName]['ccfRegion'].append(obj.units[probe][u]['ccfRegion'])
-                        data[expName]['inCortex'].append(obj.units[probe][u]['inCortex'])
+                    for u in units:
+                        data[expName]['spikeTimes'][probe][str(u)] = obj.units[probe][u]['times']
                 data[expName]['isiRegion'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
                 data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
+                data[expName]['flashImage'] = obj.flashImage
+                data[expName]['omitFlashImage'] = obj.omittedFlashImage
                 data[expName]['initialImage'] = obj.initialImage[trials]
                 data[expName]['changeImage'] = obj.changeImage[trials]
                 data[expName]['response'] = resp[trials]
                 data[expName]['behaviorFlashTimes'] = obj.frameAppearTimes[obj.flashFrames]
+                data[expName]['behaviorOmitFlashTimes'] = obj.frameAppearTimes[obj.omittedFlashFrames]
                 data[expName]['behaviorChangeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
                 data[expName]['behaviorRunTime'] = obj.behaviorRunTime
                 data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
                 data[expName]['lickTimes'] = obj.lickTimes
                 if obj.passive_pickle_file is not None:
                     data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames]
+                    data[expName]['passiveOmitFlashTimes'] = obj.passiveFrameAppearTimes[obj.omittedFlashFrames]
                     data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
                     data[expName]['passiveRunTime'] = obj.passiveRunTime
                     data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
@@ -331,7 +336,15 @@ baseRate = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
 activePre,passivePre,activeChange,passiveChange = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
 hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
 
-unitRegions = np.concatenate([data[exp]['regions'][probe][:] for exp in exps for probe in data[exp]['sdfs']])  
+unitRegions = []
+for exp in exps:
+    for probe in data[exp]['sdfs']:
+        ccf = data[exp]['ccfRegion'][probe][:]
+        isi = data[exp]['isiRegion'][probe].value
+        if isi:
+            ccf[data[exp]['inCortex'][probe][:]] = isi
+        unitRegions.append(ccf)
+unitRegions = np.concatenate(unitRegions)
   
 #regionNames = sorted(list(set(unitRegions)))
 regionNames = (
@@ -500,6 +513,10 @@ hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in z
     
 hier = hierScore_8regions
 
+naiveMiceData = np.load(os.path.join(localDir,'naiveMiceChangeMod.npz'))
+cmiNaive = naiveMiceData['cmiNaive']
+cmiNaiveCI = naiveMiceData['cmiNaiveCI']
+
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
 for latency,mec,mfc in zip((respLat,changeModLat),'kk',('k','none')):
@@ -546,6 +563,23 @@ for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPas
     plt.tight_layout()
 
 
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)  
+for m,ci,clr,lbl in zip((cmiActive,cmiPassive,cmiNaive),(cmiActiveCI,cmiPassiveCI,cmiNaiveCI),('r','b','0.5'),('Active','Passive','Naive')):
+    ax.plot(hier,m,'o',mec=clr,mfc=clr,ms=6,label=lbl)
+    for h,c in zip(hier,ci):
+        ax.plot([h,h],c,color=clr)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xticks(hier)
+    ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
+    ax.set_xlabel('Hierarchy Score',fontsize=10)
+    ax.set_ylabel('Change Modulation Index',fontsize=10)
+    ax.legend()
+    plt.tight_layout()
+
+
 
 ###### adaptation
 
@@ -554,58 +588,80 @@ regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 
 nFlashes = 10
 
-sdfs = {region:[] for region in regionLabels}
+betweenChangeSdfs = {region: {state:[] for state in ('active','passive')} for region in regionLabels}
 for exp in exps:
     print(exp)
-    changeTimes = data[exp]['behaviorChangeTimes'][:]
+    behaviorChangeTimes = data[exp]['behaviorChangeTimes'][:]
+    passiveChangeTimes = data[exp]['passiveChangeTimes'][:]
     for region in regionLabels:
         for probe in data[exp]['regions']:
             inRegion = data[exp]['regions'][probe][:]==region
             if any(inRegion):
-                hasSpikes,hasResp = findResponsiveUnits(data[exp]['sdfs'][probe]['active']['change'][:][inRegion].mean(axis=1),baseWin,respWin,thresh=5)
-                uindex = np.where(inRegion)[0][hasSpikes & hasResp]
+                (hasSpikesActive,hasRespActive),(hasSpikesPassive,hasRespPassive) = [findResponsiveUnits(data[exp]['sdfs'][probe][state]['change'][:][inRegion].mean(axis=1),baseWin,respWin,thresh=5) for state in ('active','passive')]
+                uindex = np.where(inRegion)[0][hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)]
                 for u in uindex:
-                    sdfs[region].append(analysis_utils.getSDF(data[exp]['spikeTimes'][probe][str(u)][:],changeTimes-0.25,0.25+nFlashes*0.75,sampInt=0.001,filt='exp',sigma=0.005,avg=True)[0])
+                    spikeTimes = data[exp]['spikeTimes'][probe][str(u)][:]
+                    for state,changeTimes in zip(('active','passive'),(behaviorChangeTimes,passiveChangeTimes)):
+                        betweenChangeSdfs[region][state].append(analysis_utils.getSDF(spikeTimes,changeTimes-0.25,0.25+nFlashes*0.75,sampInt=0.001,filt='exp',sigma=0.005,avg=True)[0])
 
-fig = plt.figure(facecolor='w')
-ax = fig.subplots(2,1)
-adaptMean = []
-adaptSem = []
-for region,clr in zip(regionLabels,regionColors):
-    regSdfs = np.concatenate(sdfs[region])
-    regSdfs -= regSdfs[:,:250].mean(axis=1)
-    m = regSdfs.mean(axis=0)
-    s = regSdfs.std()/(len(regSdfs)**0.5)
-    s /= m.max()
-    m /= m.max()
-    ax[0].plot(m,clr)
-    ax[0].fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25)
-    
-    flashResp = []
-    flashRespSem = []
-    for i in np.arange(250,nFlashes*750,750):
-        r = regSdfs[:,i:i+250].max(axis=1)
-        r -= regSdfs[:,i]
-        flashResp.append(r.mean())
-        flashRespSem.append(r.std()/(len(r)**0.5))
-    flashResp,flashRespSem = [np.array(r)/flashResp[0] for r in (flashResp,flashRespSem)]
-    ax[1].plot(flashResp,clr,m='o')
-    for x,(m,s) in enumerate(zip(flashResp,flashRespSem)):
-        ax[1].plot([x,x],[m-s,m+s],clr)
+adaptMean = {state:[] for state in ('active','passive')}
+adaptSem = {state:[] for state in ('active','passive')}
+t = np.arange(-0.25,nFlashes*0.75,0.001)
+for state in ('active','passive'):
+    fig = plt.figure(facecolor='w',figsize=(8,6))
+    fig.suptitle(state)
+    ax = fig.subplots(2,1)
+    for region,clr in zip(regionLabels,regionColors):
+        sdfs = np.stack(betweenChangeSdfs[region][state])
+        sdfs -= sdfs[:,:250].mean(axis=1)[:,None]
+        m = sdfs.mean(axis=0)
+        s = sdfs.std()/(len(sdfs)**0.5)
+        s /= m.max()
+        m /= m.max()
+        ax[0].plot(t,m,color=clr,label=region)
+        ax[0].fill_between(t,m+s,m-s,color=clr,alpha=0.25)
         
-    adaptMean.append(flashResp[-1])
-    adaptSem.append(flashRespSem[-1])
+        flashResp = []
+        flashRespSem = []
+        for i in np.arange(250,nFlashes*750,750):
+            r = sdfs[:,i:i+250].max(axis=1)
+            r -= sdfs[:,i-250:i].mean(axis=1)
+            flashResp.append(r.mean())
+            flashRespSem.append(r.std()/(len(r)**0.5))
+        flashResp,flashRespSem = [np.array(r)/flashResp[0] for r in (flashResp,flashRespSem)]
+        ax[1].plot(flashResp,color=clr,marker='o')
+        for x,(m,s) in enumerate(zip(flashResp,flashRespSem)):
+            ax[1].plot([x,x],[m-s,m+s],color=clr)
+            
+        adaptMean[state].append(flashResp[-1])
+        adaptSem[state].append(flashRespSem[-1])
+    
+    for a in ax:
+        for side in ('right','top'):
+            a.spines[side].set_visible(False)
+        a.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax[0].set_xlabel('Time after change (s)')
+    ax[0].set_ylabel('Normalized spike rate')
+    ax[0].legend(loc='upper right')
+    ax[1].set_xlabel('Flash after change')
+    ax[1].set_ylabel('Normalized peak response')
+    ax[1].set_ylim([0.41,1.09])
 
 fig = plt.figure(facecolor='w')
 ax = fig.subplots(1)
-ax.plot(adaptMean,'ko',ms=10)
-for x,(m,s) in enumerate(zip(adaptMean,adaptSem)):
-    ax[1].plot([x,x],[m-s,m+s],'ko')
-ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xlim([-0.5,len(regionLabels)-0.5])
-ax.set_xticks(np.arange(len(regionLabels)))
-ax.set_xticklabels(regionLabels)
-ax.set_ylabel('Adaptation (fraction of change reseponse)',fontsize=10)
+for state,clr in zip(('active','passive'),'rb'):
+    ax.plot(adaptMean[state],'o',mec=clr,mfc='none',ms=10,label=state)
+    for x,(m,s) in enumerate(zip(adaptMean[state],adaptSem[state])):
+        ax.plot([x,x],[m-s,m+s],color=clr)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xlim([-0.5,len(regionLabels)-0.5])
+    ax.set_xticks(np.arange(len(regionLabels)))
+    ax.set_xticklabels(regionLabels)
+    ax.set_ylabel('Adaptation (fraction of change reseponse)',fontsize=10)
+ax.legend()
+
 
 
 ###### decoding analysis
