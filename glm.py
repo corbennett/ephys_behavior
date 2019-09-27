@@ -24,6 +24,7 @@ import numpy as npo
 from numba import njit
 import scipy.stats
 import time
+import os
 
 #using our class for parsing the data (https://github.com/corbennett/ephys_behavior)
 b = getData.behaviorEphys('Z:\\05162019_423749')
@@ -120,48 +121,49 @@ uid = []
 for pID in 'ABCDEF':
     for u in probeSync.getOrderedUnits(b.units[pID]):
         spikes = b.units[pID][u]['times']
-        try:
-            if np.sum(spikes<b.lastBehaviorTime)>spikeRateThresh*b.lastBehaviorTime:
-                binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)[changeBins]
-                model = licking_model.Model(dt=binwidth, licks=binned_spikes)
-                
-                for fname, ffilter in filterList:
-                    model.add_filter(fname, ffilter)
-                
-                
-    #            #set initial guesses
-    #            for filter_name, ffilter in model.filters.items():
-    #                if filter_name=='run':
-    #                    continue
-    #                binned_times = ffilter.data
-    #                thispsth = getPSTH(binned_spikes, binned_times, binwidth, 0, ffilter.duration)[1:]/np.mean(binned_spikes) + np.finfo(float).eps
-    #                init_guess = find_initial_guess(thispsth, ffilter)
-    #                ffilter.set_params(init_guess)
-    #            
-                
-                #fit model    
-                model.mean_rate_param = np.log(np.mean(binned_spikes)/binwidth)
-                model.verbose=False
-                model.l2=1
-                model.fit()
-                
-                goodParams = model.param_fit_history[np.argmin(model.val_nle_history)]
-                model.set_filter_params(goodParams)
-                
-                testlicks, testlatent = model.get_licks_and_latent(model.test_split)
-                test_corr.append(scipy.stats.pearsonr(testlicks, testlatent))
-                modelParams.append(goodParams)
-                
-                if b.units[pID][u]['inCortex']:
-                    ccfRegions.append(b.probeCCF[pID]['ISIRegion'])
-                else:
-                    ccfRegions.append(b.units[pID][u]['ccfRegion'])
-    
-                uid.append(pID+'_'+u)
-        except:
-            continue
+#        try:
+        if np.sum(spikes<b.lastBehaviorTime)>spikeRateThresh*b.lastBehaviorTime:
+            binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)[changeBins]
+            model = licking_model.Model(dt=binwidth, licks=binned_spikes)
+            
+            for fname, ffilter in filterList:
+                model.add_filter(fname, ffilter)
+            
+            
+#            #set initial guesses
+#            for filter_name, ffilter in model.filters.items():
+#                if filter_name=='run':
+#                    continue
+#                binned_times = ffilter.data
+#                thispsth = getPSTH(binned_spikes, binned_times, binwidth, 0, ffilter.duration)[1:]/np.mean(binned_spikes) + np.finfo(float).eps
+#                init_guess = find_initial_guess(thispsth, ffilter)
+#                ffilter.set_params(init_guess)
+#            
+            
+            #fit model    
+            model.mean_rate_param = np.log(np.mean(binned_spikes)/binwidth)
+            model.verbose=False
+            model.l2=1
+            model.fit()
+            
+            goodParams = model.param_fit_history[np.argmin(model.val_nle_history)]
+            model.set_filter_params(goodParams)
+            
+            testlicks, testlatent = model.get_licks_and_latent(model.test_split)
+            test_corr.append(scipy.stats.pearsonr(testlicks, testlatent))
+            modelParams.append(goodParams)
+            
+            if b.units[pID][u]['inCortex']:
+                ccfRegions.append(b.probeCCF[pID]['ISIRegion'])
+            else:
+                ccfRegions.append(b.units[pID][u]['ccfRegion'])
 
+            uid.append(pID+'_'+u)
+#        except:
+#            continue
 
+saveDir = r"C:\Users\svc_ccg\Desktop\Data\analysis"
+np.savez(os.path.join(saveDir, '05162019_glmfits.npz'), modelParams=modelParams, ccfRegions=ccfRegions, fittest=test_corr, uid=uid)
 elapsedTime=time.time()-startTime
 print('\nelapsed time: ' + str(elapsedTime))
 
