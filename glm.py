@@ -22,6 +22,8 @@ from scipy.optimize import minimize
 import copy
 import numpy as npo
 from numba import njit
+import scipy.stats
+import time
 
 #using our class for parsing the data (https://github.com/corbennett/ephys_behavior)
 b = getData.behaviorEphys('Z:\\05162019_423749')
@@ -70,9 +72,9 @@ def getChangeBins(binned_changeTimes, binwidth, preChangeTime = 2, postChangeTim
     return changeBins
     
 
-binwidth = 0.02
+binwidth = 0.05
 offset = 0.2
-restrictToChange=True
+restrictToChange=False
 
 image_id = np.array(b.core_data['visual_stimuli']['image_name'])
 selectedTrials = (b.hit | b.miss)&(~b.ignore)   #Omit "ignore" trials (aborted trials when the mouse licked too early or catch trials when the image didn't actually change)
@@ -84,7 +86,6 @@ else:
     changeBins = npo.ones(binned_activeChangeTimes.size).astype(npo.bool)
 
 
-#lick_times = probeSync.get_sync_line_data(b.syncDataset, 'lick_sensor')[0] - offset
 lick_times = b.lickTimes
 first_lick_times = lick_times[np.insert(np.diff(lick_times)>=0.5, 0, True)]
 
@@ -92,14 +93,14 @@ flash_times = b.frameAppearTimes[np.array(b.core_data['visual_stimuli']['frame']
     
 eventsToInclude = [('change', [active_changeTimes, 8, 0.8, 0.1, -0.2]),
                    ('licks', [lick_times, 5, 0.6, 0.1, -0.3]),
-                   ('first_licks', [first_lick_times, 10, 2, 0.1, -1]),
+                   ('first_licks', [first_lick_times, 10, 2, 0.2, -1]),
                    ('running', [[b.behaviorRunSpeed.values, b.behaviorRunTime], 5, 2, 0.4, 0])]
 
 for img in np.unique(image_id):
     eventsToInclude.append((img, [flash_times[image_id==img], 8, 0.8, 0.1, -0.2]))
 
 
-featureDict = {}
+filterList = []
 for filtname, [times, nparams, duration, sigma, offset] in eventsToInclude:
     if filtname == 'running':
         binned = binRunning(times[0], times[1], binwidth)[changeBins]
@@ -107,14 +108,76 @@ for filtname, [times, nparams, duration, sigma, offset] in eventsToInclude:
         binned = binVariable(times+offset, binwidth)[changeBins]
     
     ffilter = licking_model.GaussianBasisFilter(num_params=nparams, data=binned, dt=binwidth, duration=duration, sigma=sigma)
-    featureDict[filtname] = ffilter
+    filterList.append((filtname, ffilter))
+
+###RUN for entire experiment###
+startTime = time.time()
+spikeRateThresh=0.5
+ccfRegions = []
+modelParams = []
+test_corr = []
+uid = []
+for pID in 'ABCDEF':
+    for u in probeSync.getOrderedUnits(b.units[pID]):
+        spikes = b.units[pID][u]['times']
+        try:
+            if np.sum(spikes<b.lastBehaviorTime)>spikeRateThresh*b.lastBehaviorTime:
+                binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)[changeBins]
+                model = licking_model.Model(dt=binwidth, licks=binned_spikes)
+                
+                for fname, ffilter in filterList:
+                    model.add_filter(fname, ffilter)
+                
+                
+    #            #set initial guesses
+    #            for filter_name, ffilter in model.filters.items():
+    #                if filter_name=='run':
+    #                    continue
+    #                binned_times = ffilter.data
+    #                thispsth = getPSTH(binned_spikes, binned_times, binwidth, 0, ffilter.duration)[1:]/np.mean(binned_spikes) + np.finfo(float).eps
+    #                init_guess = find_initial_guess(thispsth, ffilter)
+    #                ffilter.set_params(init_guess)
+    #            
+                
+                #fit model    
+                model.mean_rate_param = np.log(np.mean(binned_spikes)/binwidth)
+                model.verbose=False
+                model.l2=1
+                model.fit()
+                
+                goodParams = model.param_fit_history[np.argmin(model.val_nle_history)]
+                model.set_filter_params(goodParams)
+                
+                testlicks, testlatent = model.get_licks_and_latent(model.test_split)
+                test_corr.append(scipy.stats.pearsonr(testlicks, testlatent))
+                modelParams.append(goodParams)
+                
+                if b.units[pID][u]['inCortex']:
+                    ccfRegions.append(b.probeCCF[pID]['ISIRegion'])
+                else:
+                    ccfRegions.append(b.units[pID][u]['ccfRegion'])
+    
+                uid.append(pID+'_'+u)
+        except:
+            continue
 
 
-spikes = b.units['A']['14']['times']
+elapsedTime=time.time()-startTime
+print('\nelapsed time: ' + str(elapsedTime))
+
+
+
+
+
+
+
+
+
+spikes = b.units['A']['292']['times']
 binned_spikes = binVariable(spikes[spikes<b.lastBehaviorTime], binwidth)[changeBins]
 model = licking_model.Model(dt=binwidth, licks=binned_spikes)
 
-for fname, ffilter in featureDict.items():
+for fname, ffilter in filterList:
     model.add_filter(fname, ffilter)
 
 
@@ -130,7 +193,7 @@ for filter_name, ffilter in model.filters.items():
 
 #fit model    
 model.mean_rate_param = np.log(np.mean(binned_spikes)/binwidth)
-model.verbose=True
+model.verbose=False
 model.l2=1
 model.fit()
 plt.figure()
@@ -162,24 +225,3 @@ lims = [np.min([ax.get_xlim(), ax.get_ylim()]),np.max([ax.get_xlim(), ax.get_yli
 ax.plot(lims, lims, 'k--')
 ax.set_ylabel('final fit params')
 ax.set_xlabel('initial guess params')
-
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
