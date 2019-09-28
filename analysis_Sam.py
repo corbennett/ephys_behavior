@@ -11,6 +11,8 @@ from collections import OrderedDict
 import h5py
 import numpy as np
 import scipy
+from scipy.stats import ks_2samp, ranksums
+from statsmodels.stats.multitest import multipletests
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
@@ -171,7 +173,7 @@ def calcChangeMod(preChangeSDFs,changeSDFs,respWin,baseWin,stimWin):
     m = np.median(changeMod)
     s = np.percentile([np.median(np.random.choice(changeMod,changeMod.size,replace=True)) for _ in range(5000)],(2.5,97.5))
     lat = findLatency(changeSDFs-preChangeSDFs,baseWin,stimWin)
-    return m,s,lat
+    return changeMod,m,s,lat
     
 
 def calcDprime(hits,misses,falseAlarms,correctRejects):
@@ -212,6 +214,7 @@ mouseInfo = (
              ('423744',('08082019','08092019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('423750',('08132019','08142019'),('AF','AF'),'AA',(True,True)),
              ('459521',('09052019','09062019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
+             ('461027',('09122019','09132019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
             )
 
 
@@ -221,20 +224,20 @@ exps = Aexps+Bexps
 
 
 #
-makeSummaryPlots(miceToAnalyze=('423744','423750','459521'))
+makeSummaryPlots(miceToAnalyze=('461027',))
 
 
 # make new experiment hdf5s without updating popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('423744',))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('459521',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('461027',))
 
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
 
 # append existing hdf5s to existing popData.hdf5
-getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('423744',))
+getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('461027',))
 
 
 
@@ -340,7 +343,7 @@ unitRegions = []
 for exp in exps:
     for probe in data[exp]['sdfs']:
         ccf = data[exp]['ccfRegion'][probe][:]
-        isi = data[exp]['isiRegion'][probe].value
+        isi = data[exp]['isiRegion'][probe][()]
         if isi:
             ccf[data[exp]['inCortex'][probe][:]] = isi
         unitRegions.append(ccf)
@@ -348,29 +351,39 @@ unitRegions = np.concatenate(unitRegions)
   
 #regionNames = sorted(list(set(unitRegions)))
 regionNames = (
-               ('LGN',('LGd',)),
+               ('LGd',('LGd',)),
                ('V1',('VISp',)),
                ('LM',('VISl',)),
-               ('AL',('VISal',)),
                ('RL',('VISrl',)),
+               ('LP',('LP',)),
+               ('AL',('VISal',)),
                ('PM',('VISpm',)),
                ('AM',('VISam',)),
-               ('LP',('LP',)),
-               ('SCd',('SCig','SCig-b')),
+               ('LD',('LD',)),
+               ('LGv',('LGv',)),
+               ('RT',('RT',)),
+               ('SCd',('SCig','SCig-a','SCig-b')),
                ('APN',('APN',)),
+               ('NOT',('NOT',)),
+               ('POL',('POL',)),
                ('MRN',('MRN',)),
+               ('MB',('MB',)),
+               ('st',('st','CP')),
+               ('SUB',('SUB','PRE','POST')),
                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'))
               )
 regionNames = regionNames[:8]
-regionLabels = [r[1] for r in regionNames]
+regionLabels = [r[1][0] for r in regionNames]
 
 nUnits = []
 nExps = []
 nMice = []
+cmiActiveAll = []
 cmiActive = []
 cmiActiveCI = []
 cmiPassive = []
 cmiPassiveCI = []
+bmiChangeAll = []
 bmiChange = []
 bmiChangeCI = []
 bmiPre = []
@@ -387,15 +400,17 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
     nExps.append(len(set(expDates[inRegion])))
     nMice.append(len(set(expMouseIDs[inRegion])))
     
-    (activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChange,behModChangeCI,behModChangeLat),(behModPre,behModPreCI,behModPreLat) = \
+    (activeChangeModAll,activeChangeMod,activeChangeModCI,activeChangeModLat),(passiveChangeModAll,passiveChangeMod,passiveChangeModCI,passiveChangeModLat),(behModChangeAll,behModChange,behModChangeCI,behModChangeLat),(behModPreAll,behModPre,behModPreCI,behModPreLat) = \
     [calcChangeMod(pre[inRegion],change[inRegion],respWin,baseWin,stimWin) for pre,change in zip((activePre,passivePre,passiveChange,passivePre),(activeChange,passiveChange,activeChange,activePre))]
     
     activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,stimWin) for sdfs in (activeChange,passiveChange)]
     
+    cmiActiveAll.append(activeChangeModAll)
     cmiActive.append(activeChangeMod)
     cmiActiveCI.append(activeChangeModCI)
     cmiPassive.append(passiveChangeMod)
     cmiPassiveCI.append(passiveChangeModCI)
+    bmiChangeAll.append(behModChangeAll)
     bmiChange.append(behModChange)
     bmiChangeCI.append(behModChangeCI)
     bmiPre.append(behModPre)
@@ -496,20 +511,21 @@ for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp
     
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
-for lat,mec,mfc in zip((popRespLat,popChangeModLat),'kk',('k','none')):
-    ax.plot(lat,'o',mec=mec,mfc=mfc,ms=10)
+for lat,mec,mfc,lbl in zip((popRespLat,popChangeModLat),'kk',('k','none'),('visual response','change mod')):
+    ax.plot(lat,'o',mec=mec,mfc=mfc,ms=10,label=lbl)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False,labelsize=8)
 ax.set_xlim([-0.5,len(regionLabels)-0.5])
-ax.set_ylim([25,50])
+ax.set_ylim([20,60])
 ax.set_xticks(np.arange(len(regionLabels)))
 ax.set_xticklabels(regionLabels)
 ax.set_ylabel('Latency (ms)',fontsize=10)
+ax.legend()
 
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a in r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
+hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
     
 hier = hierScore_8regions
 
@@ -551,8 +567,8 @@ for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPas
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-#        ax.set_xticks(hier)
-#        ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
+    ax.set_xticks(hier)
+    ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
     ax.set_xlabel('Hierarchy Score',fontsize=10)
     ax.set_ylabel(ylab,fontsize=10)
     r,p = scipy.stats.pearsonr(hier,m)
@@ -578,6 +594,49 @@ for m,ci,clr,lbl in zip((cmiActive,cmiPassive,cmiNaive),(cmiActiveCI,cmiPassiveC
     ax.set_ylabel('Change Modulation Index',fontsize=10)
     ax.legend()
     plt.tight_layout()
+    
+
+
+alpha = 0.05
+for ind,metric in enumerate((cmiActiveAll,bmiChangeAll)):
+    
+    comparison_matrix = np.zeros((len(regionLabels),)*2) 
+    
+    for i,region in enumerate(regionLabels):
+        
+        for j,region in enumerate(regionLabels):
+            
+            if j > i:
+                
+                v1 = metric[i]
+                v2 = metric[j]
+                
+                z, comparison_matrix[i,j] = ranksums(v1[np.invert(np.isnan(v1))],
+                                                     v2[np.invert(np.isnan(v2))])
+                
+                
+    p_values = comparison_matrix.flatten()
+    ok_inds = np.where(p_values > 0)[0]
+    
+    reject, p_values_corrected, alphaSidak, alphacBonf = multipletests(p_values[ok_inds], alpha=alpha, method='holm-sidak')
+            
+    p_values_corrected2 = np.zeros((len(p_values),))
+    p_values_corrected2[ok_inds] = p_values_corrected
+    comparison_corrected = np.reshape(p_values_corrected2, comparison_matrix.shape)
+    
+    sig_thresh = np.log10(alpha)
+    plot_range = 10
+    
+    ax = plt.subplot(1,3,ind+1)
+    im = ax.imshow(np.log10(comparison_matrix),cmap='seismic',vmin=sig_thresh-plot_range,vmax=sig_thresh+plot_range)
+    cb = plt.colorbar(im,ax=ax,fraction=0.026,pad=0.04)
+    
+    ax.set_xticks(np.arange(len(regionLabels)))
+    ax.set_xticklabels(regionLabels)
+    ax.set_yticks(np.arange(len(regionLabels)))
+    ax.set_yticklabels(regionLabels)
+    ax.set_ylim([-0.5,len(regionLabels)-0.5])
+    ax.set_xlim([-0.5,len(regionLabels)-0.5])  
 
 
 
@@ -709,7 +768,14 @@ result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames
 for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
     (activePreSDFs,activeChangeSDFs),(passivePreSDFs,passiveChangeSDFs) = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:] for probe in data[exp]['sdfs']])  for epoch in ('preChange','change')] for state in ('active','passive')]
-    unitRegions = np.concatenate([data[exp]['regions'][probe][:] for probe in data[exp]['sdfs']])
+    unitRegions = []
+    for probe in data[exp]['sdfs']:
+        ccf = data[exp]['ccfRegion'][probe][:]
+        isi = data[exp]['isiRegion'][probe][()]
+        if isi:
+            ccf[data[exp]['inCortex'][probe][:]] = isi
+        unitRegions.append(ccf)
+    unitRegions = np.concatenate(unitRegions)
     response = data[exp]['response'][:]
     trials = (response=='hit') | (response=='miss')
     initialImage = data[exp]['initialImage'][trials]
