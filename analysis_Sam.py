@@ -751,7 +751,7 @@ nRepeats = 3
 nCrossVal = 3
 
 truncInterval = 5
-lastTrunc = 200
+lastTrunc = 150
 truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
 preTruncTimes = np.arange(-750,0,50)
@@ -1262,9 +1262,8 @@ for model in ('randomForest',):
         behavior[response[trials]=='miss'] = -1
         for probe in result[exp]:
             for region in regionLabels:
-                if 'region' in result[exp][probe] and result[exp][probe]['region']==region:
                     for state in ('active','passive'):
-                        p = result[exp][probe][state]['changePredict'][model]
+                        p = result[exp][region][state]['changePredict'][model]
                         if len(p)>0:
                             predictProb = p[0]
                             predict = (predictProb>0.5).astype(int)
