@@ -255,7 +255,7 @@ hitRate = []
 falseAlarmRate = []
 dprime = []
 for exp,trials in zip(exps,engagedTrials):
-    response = data[exp]['response'][trials]
+    response = data[exp]['response'][:]
     hit,miss,fa,cr = [np.sum(response==r) for r in ('hit','miss','falseAlarm','correctReject')]
     hitRate.append(hit/(hit+miss))
     falseAlarmRate.append(fa/(cr+fa))
@@ -348,6 +348,9 @@ expMouseIDs = np.array([exp[-6:] for exp in expNames])
 (hasSpikesActive,hasRespActive),(hasSpikesPassive,hasRespPassive) = [findResponsiveUnits(sdfs,baseWin,respWin,thresh=5) for sdfs in allChange]
 baseRate = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
 activePre,passivePre,activeChange,passiveChange = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
+
+hasResp = hasSpikesActive & hasRespActive
+
 hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
 
 unitRegions = []
@@ -567,7 +570,7 @@ ax.set_ylabel('Latency (ms)',fontsize=10)
 
 
 for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPassiveCI,bmiChangeCI,bmiPreCI),('Change Mod Active','Change Mod Passive','Behav Mod Change','Behav Mod Pre')):
-    fig = plt.figure(facecolor='w')
+    fig = plt.figure(facecolor='w',figsize=(8,6))
     ax = plt.subplot(1,1,1)
     ax.plot(hier,m,'ko',ms=6)
     for h,c in zip(hier,ci):
@@ -579,7 +582,7 @@ for m,ci,ylab in zip((cmiActive,cmiPassive,bmiChange,bmiPre),(cmiActiveCI,cmiPas
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False,labelsize=8)
     ax.set_xticks(hier)
-    ax.set_xticklabels([str(round(h,2))+'\n'+r[0] for h,r in zip(hier,regionNames)])
+    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
     ax.set_xlabel('Hierarchy Score',fontsize=10)
     ax.set_ylabel(ylab,fontsize=10)
     r,p = scipy.stats.pearsonr(hier,m)
@@ -764,7 +767,7 @@ truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 preTruncTimes = np.arange(-750,0,50)
 
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
-models = (RandomForestClassifier(n_estimators=100),)# LinearSVC(C=1.0,max_iter=1e6)) # SVC(kernel='linear',C=1.0,probability=True)
+models = (LinearSVC(C=1.0,max_iter=1e6),) # (RandomForestClassifier(n_estimators=100),)  LinearSVC(C=1.0,max_iter=1e6))  SVC(kernel='linear',C=1.0,probability=True)
 modelNames = ('supportVector',) # ('randomForest','supportVector')
 behavStates = ('active','passive')
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
