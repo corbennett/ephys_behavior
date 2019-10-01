@@ -27,8 +27,10 @@ import time
 import os
 
 #using our class for parsing the data (https://github.com/corbennett/ephys_behavior)
-b = getData.behaviorEphys('Z:\\05162019_423749')
-b.loadFromHDF5(r"Z:\analysis\05162019_423749.hdf5") 
+expNames = ('05162019_423749','07112019_429084')
+expName = expNames[1]
+b = getData.behaviorEphys(os.path.join('Z:\\',expName))
+b.loadFromHDF5(os.path.join('Z:\\analysis',expName+'.hdf5')) 
 
 def binVariable(var, binwidth=0.001):
     return np.histogram(var, bins=np.arange(0, b.lastBehaviorTime, binwidth))[0]
@@ -167,7 +169,7 @@ for pID in 'ABCDEF':
 #            continue
 
 saveDir = r"C:\Users\svc_ccg\Desktop\Data\analysis"
-np.savez(os.path.join(saveDir, '05162019_glmfits.npz'), modelParams=modelParams, ccfRegions=ccfRegions, fittest=test_corr, uid=uid)
+np.savez(os.path.join(saveDir,expName+'_glmfits.npz'), modelParams=modelParams, ccfRegions=ccfRegions, fittest=test_corr, uid=uid)
 elapsedTime=time.time()-startTime
 print('\nelapsed time: ' + str(elapsedTime))
 
@@ -231,3 +233,63 @@ lims = [np.min([ax.get_xlim(), ax.get_ylim()]),np.max([ax.get_xlim(), ax.get_yli
 ax.plot(lims, lims, 'k--')
 ax.set_ylabel('final fit params')
 ax.set_xlabel('initial guess params')
+
+
+
+
+
+#Analyze fit data
+
+glmFitsFile = r"C:\Users\svc_ccg\Desktop\Data\analysis\05162019_glmfits.npz"
+glmfit = np.load(glmFitsFile)
+
+#make model with same structure as one used to fit data
+temp_model = copy.deepcopy(model)
+
+def getFiltersFromParams(mod):
+    #plt.clf()
+    n_filters = len(mod.filters)
+    filterTraces = {}
+    for ind_filter, (filter_name, filter_obj) in enumerate(mod.filters.items()):
+        linear_filt = filter_obj.build_filter()
+        filterTraces[filter_name]=np.exp(linear_filt)
+        
+    
+    return filterTraces
+
+
+areas = (
+         ('VISp', ('VISp')),
+         ('VISrl', ('VISrl')),
+         ('VISl', ('VISl')),
+         ('VISal', ('VISal')),
+         ('VISam', ('VISam')),
+         ('VISpm', ('VISpm')),
+         ('LGd', ('LGd')),
+         ('LP', ('LP')),
+         ('hipp', ('CA1', 'CA3', 'DG-mo')),
+         ('MB', ('MB', 'MRN'))
+         
+
+
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
