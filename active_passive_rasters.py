@@ -52,31 +52,6 @@ def plotRaster(spikes, alignTimes, ax=None, preTime = 1.5, postTime = 1.5, color
 minTrial = 0
 maxTrial = 200
 
-V1probes, V1units = b.getUnitsByArea('VISp')
-for p,u in zip(V1probes, V1units):
-    spikes = b.units[p][u]['times']
-    if getActiveSpikes(spikes).sum() < 1000 or getPassiveSpikes(spikes).sum < 1000:
-        continue
-    fig, ax = plt.subplots(1,2)
-    fig.set_size_inches(12,5)
-    fig.suptitle(p+u)
-    for it, (times, color) in enumerate(zip([active_changeTimes, passive_changeTimes], 'rb')):
-        plotRaster(spikes, times, ax[it], color=color)
-        ax[it].set_ylim([minTrial, maxTrial])
-
-
-AMprobes, AMunits = b.getUnitsByArea('VISam')
-for p,u in zip(AMprobes, AMunits):
-    spikes = b.units[p][u]['times']
-    if getActiveSpikes(spikes).sum() < 1000 or getPassiveSpikes(spikes).sum < 1000:
-        continue
-    fig, ax = plt.subplots(1,2)
-    fig.set_size_inches(12,5)
-    fig.suptitle(p+u)
-    for it, (times, color) in enumerate(zip([active_changeTimes, passive_changeTimes], 'rb')):
-        plotRaster(spikes, times, ax[it], color=color)
-        ax[it].set_ylim([minTrial, maxTrial])
-
 areasOfInterest = ['LGd']
 for area in areasOfInterest:
     cortexFlag = area in ['VISp', 'VISl', 'VISal', 'VISrl', 'VISam', 'VISpm']
