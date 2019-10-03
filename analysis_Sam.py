@@ -784,7 +784,6 @@ assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncT
 # modelNames = ('randomForest','supportVector','LDA')
 models = (LinearSVC(C=1.0,max_iter=1e3),)
 modelNames = ('supportVector',)
-warnings.filterwarnings("ignore", message="the number of iterations.") 
 
 behavStates = ('active','passive')
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
@@ -794,6 +793,7 @@ result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames
                                 'imageScoreWindows':{model:[] for model in modelNames},
                                 'changeScoreWindows':{model:[] for model in modelNames},
                                 'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in data}
+warnings.filterwarnings('ignore')
 for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
     (activePreSDFs,activeChangeSDFs),(passivePreSDFs,passiveChangeSDFs) = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:] for probe in data[exp]['sdfs']])  for epoch in ('preChange','change')] for state in ('active','passive')]
@@ -916,7 +916,7 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['changeScoreWindows'][model].append(changeScoreWindows[model].mean(axis=(0,2)))
                             result[exp][region][state]['imageScoreWindows'][model].append(imageScoreWindows[model].mean(axis=(0,2)))
                         result[exp][region][state]['respLatency'].append(np.nanmean(respLatency))
-                            
+warnings.filterwarnings('default')              
 
 # plot scores vs number of units
 for model in modelNames:
