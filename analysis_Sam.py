@@ -7,6 +7,7 @@ Created on Thu Aug 23 11:29:39 2018
 
 from __future__ import division
 import os
+import warnings
 from collections import OrderedDict
 import h5py
 import numpy as np
@@ -20,6 +21,7 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 import sklearn
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import cross_val_score, cross_val_predict
 import fileIO
 import getData
@@ -773,14 +775,24 @@ truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
 preTruncTimes = np.arange(-750,0,50)
 
+windowInterval = 10
+decodeWindows = np.arange(0,lastTrunc+1,windowInterval)
+
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
-models = (LinearSVC(C=1.0,max_iter=1e6),) # (RandomForestClassifier(n_estimators=100),)  LinearSVC(C=1.0,max_iter=1e6))  SVC(kernel='linear',C=1.0,probability=True)
-modelNames = ('supportVector',) # ('randomForest','supportVector')
+
+# models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e3),LinearDiscriminantAnalysis(),SVC(kernel='linear',C=1.0,probability=True)))
+# modelNames = ('randomForest','supportVector','LDA')
+models = (LinearSVC(C=1.0,max_iter=1e3),)
+modelNames = ('supportVector',)
+warnings.filterwarnings("ignore", message="the number of iterations.") 
+
 behavStates = ('active','passive')
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
                                 'changePredict':{model:[] for model in modelNames},
                                 'imageScore':{model:[] for model in modelNames},
                                 'preImageScore':{model:[] for model in modelNames},
+                                'imageScoreWindows':{model:[] for model in modelNames},
+                                'changeScoreWindows':{model:[] for model in modelNames},
                                 'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in data}
 for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
@@ -814,12 +826,15 @@ for expInd,exp in enumerate(exps):
                         changePredict = {model: np.full((nUnitSamples,nTrialSamples,trials.sum()),np.nan) for model in modelNames}
                         imageScore = {model: np.zeros((nUnitSamples,len(truncTimes),nTrialSamples)) for model in modelNames}
                         preImageScore = {model: np.zeros((nUnitSamples,len(preTruncTimes),nTrialSamples)) for model in modelNames}
+                        changeScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows)-1,nTrialSamples)) for model in modelNames}
+                        imageScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows)-1,nTrialSamples)) for model in modelNames}
                         respLatency = []
                         sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
                         preChangeSDFs,changeSDFs = [s.transpose((1,0,2))[trials] for s in sdfs]
                         for i,unitSamp in enumerate(unitSamples):
+                            # decode image change and identity for increasing window lengths
                             for j,trunc in enumerate(truncTimes):
-                                # decode image change
+                                # image change
                                 truncSlice = slice(stimWin.start,stimWin.start+trunc)
                                 X = np.concatenate([s[:,unitSamp,truncSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
                                 y = np.zeros(X.shape[0])
@@ -840,7 +855,7 @@ for expInd,exp in enumerate(exps):
 #                                    for model,name in zip(models,modelNames):
 #                                        if not isinstance(model,sklearn.svm.classes.LinearSVC):
 #                                            changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
-                                # decode image identity
+                                # image identity
                                 imgSDFs = [changeSDFs[:,unitSamp,truncSlice][changeImage==img] for img in imageNames]
                                 X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
                                 y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
@@ -852,6 +867,7 @@ for expInd,exp in enumerate(exps):
                                         imageScore[name][i,j,k] = model.score(X[~trainTrials],y[~trainTrials])
 #                                for model,name in zip(models,modelNames):
 #                                    imageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                            
                             # decode pre-change image identity
                             for j,trunc in enumerate(preTruncTimes):
                                 preImgSDFs = [preChangeSDFs[:,unitSamp,trunc:][initialImage==img] for img in imageNames]
@@ -863,15 +879,42 @@ for expInd,exp in enumerate(exps):
                                     for model,name in zip(models,modelNames):
                                         model.fit(X[trainTrials],y[trainTrials])
                                         preImageScore[name][i,j,k] = model.score(X[~trainTrials],y[~trainTrials])
-#                                for model,name in zip(models,modelNames):
-#                                    preImageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                            
+                            # decode image change and identity for sliding windows
+                            for j,(winBegin,winEnd) in enumerate(zip(decodeWindows[:-1],decodeWindows[1:])):
+                                # image change
+                                winSlice = slice(stimWin.start+winBegin,stimWin.start+winEnd)
+                                X = np.concatenate([s[:,unitSamp,winSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
+                                y = np.zeros(X.shape[0])
+                                y[:int(X.shape[0]/2)] = 1
+                                for k in range(nTrialSamples):
+                                    trainTrials = np.zeros(trials.sum(),dtype=bool)
+                                    trainTrials[np.random.choice(np.arange(trials.sum()),size=trials.sum()//2,replace=False)] = True
+                                    tr = np.tile(trainTrials,2)
+                                    for model,name in zip(models,modelNames):
+                                        model.fit(X[tr],y[tr])
+                                        changeScoreWindows[name][i,j,k] = model.score(X[~tr],y[~tr])
+                                # image identity
+                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+                                for k in range(nTrialSamples):
+                                    trainTrials = np.zeros(y.size,dtype=bool)
+                                    trainTrials[np.random.choice(np.arange(y.size),size=y.size//2,replace=False)] = True
+                                    for model,name in zip(models,modelNames):
+                                        model.fit(X[trainTrials],y[trainTrials])
+                                        imageScoreWindows[name][i,j,k] = model.score(X[~trainTrials],y[~trainTrials])
+                            
                             # calculate population response latency for unit sample
-                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,stimWin)[0])
+                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,stimWin,method='abs',thresh=1)[0])
+                        
                         for model in modelNames:
                             result[exp][region][state]['changeScore'][model].append(changeScore[model].mean(axis=(0,2)))
                             result[exp][region][state]['changePredict'][model].append(np.nanmean(changePredict[model],axis=(0,1)))
                             result[exp][region][state]['imageScore'][model].append(imageScore[model].mean(axis=(0,2)))
                             result[exp][region][state]['preImageScore'][model].append(preImageScore[model].mean(axis=(0,2)))
+                            result[exp][region][state]['changeScoreWindows'][model].append(changeScoreWindows[model].mean(axis=(0,2)))
+                            result[exp][region][state]['imageScoreWindows'][model].append(imageScoreWindows[model].mean(axis=(0,2)))
                         result[exp][region][state]['respLatency'].append(np.nanmean(respLatency))
                             
 
@@ -957,7 +1000,7 @@ for i,region in enumerate(regionLabels):
         ax.set_xticks([0,50,100,150,200])
         ax.set_yticks([0,0.25,0.5,0.75,1])
         ax.set_yticklabels([0,'',0.5,'',1])
-        ax.set_xlim([0,200])
+        ax.set_xlim([0,lastTrunc])
         ax.set_ylim([ymin,1])
         if i<len(regionLabels)-1:
             ax.set_xticklabels([])  
@@ -994,7 +1037,7 @@ for model in modelNames:
                 ax.set_xticks([0,50,100,150,200])
                 ax.set_yticks([0,0.25,0.5,0.75,1])
                 ax.set_yticklabels([0,'',0.5,'',1])
-                ax.set_xlim([0,200])
+                ax.set_xlim([0,lastTrunc])
                 ax.set_ylim([ymin,1])
                 if i<len(regionLabels)-1:
                     ax.set_xticklabels([])
