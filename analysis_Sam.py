@@ -139,7 +139,7 @@ def getSDFs(obj,probes='all',behaviorStates=('active','passive'),epochs=('change
 
 
 def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5):
-    unitMeanSDFs = np.array([s.mean(axis=0) for s in sdfs]) if len(sdfs.shape)>2 else sdfs.copy()
+    unitMeanSDFs = sdfs.mean(axis=1) if len(sdfs.shape)>2 else sdfs.copy()
     hasSpikes = unitMeanSDFs.mean(axis=1)>0.1
     unitMeanSDFs -= unitMeanSDFs[:,baseWin].mean(axis=1)[:,None]
     hasResp = unitMeanSDFs[:,respWin].max(axis=1) > thresh*unitMeanSDFs[:,baseWin].std(axis=1)
@@ -216,11 +216,6 @@ mouseInfo = (
             )
 
 
-# A or B days that have passive session
-Aexps,Bexps = [[mouseID+'_'+exp[0] for exp in mouseInfo for mouseID,probes,imgSet,hasPassive in zip(*exp[1:]) if imgSet==im and hasPassive] for im in 'AB']
-exps = Aexps+Bexps
-
-
 #
 makeSummaryPlots(miceToAnalyze=('461027',))
 
@@ -239,7 +234,13 @@ getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('461027',))
 
 
 
-data = h5py.File(os.path.join(localDir,'popData - Copy.hdf5'),'r')
+data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
+
+exps = data.keys()
+
+# A or B days that have passive session
+Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im and hasPassive] for im in 'AB']
+exps = Aexps+Bexps
 
 baseWin = slice(0,250)
 stimWin = slice(250,500)
@@ -252,9 +253,12 @@ respWin = slice(stimWin.start+respWinOffset,stimWin.stop+respWinOffset)
 hitRate = []
 falseAlarmRate = []
 dprime = []
-for exp,trials in zip(exps,engagedTrials):
-    response = data[exp]['response'][trials]
-    hit,miss,fa,cr = [np.sum(response==r) for r in ('hit','miss','falseAlarm','correctReject')]
+for exp in exps:
+    response = data[exp]['response'][:]
+    hit = response=='hit'
+    changeTimes = data[exp]['behaviorChangeTimes'][:] 
+    engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+    hit,miss,fa,cr = [np.sum(response[engaged]==r) for r in ('hit','miss','falseAlarm','correctReject')]
     hitRate.append(hit/(hit+miss))
     falseAlarmRate.append(fa/(cr+fa))
     dprime.append(calcDprime(hit,miss,fa,cr))
@@ -305,6 +309,7 @@ ax.set_ylim([0,3.5])
 ax.set_ylabel('d prime',fontsize=16)
 ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
 
+
 # compare active and passive running
 activeRunSpeed,passiveRunSpeed = [[np.median(data[exp][speed]) for exp in exps] for speed in ('behaviorRunSpeed','passiveRunSpeed')]
             
@@ -326,66 +331,8 @@ ax.set_ylabel('Median Passive Run Speed (cm/s)')
 
 ###### change mod and latency analysis
 
-# find engaged trials
-engagedTrials = []
-changeTrials = []
-for exp in exps:
-    response = data[exp]['response'][:]
-    hit = response=='hit'
-    changeTimes = data[exp]['behaviorChangeTimes'][:] 
-    engagedTrials.append(np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes]))
-    changeTrials.append(hit | (response=='miss'))
-allPreEngaged,allChangeEngaged = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:,et & ct].mean(axis=1) for exp,et,ct in zip(exps,engagedTrials,changeTrials) for probe in data[exp]['sdfs']]) for state in ('active','passive')] for epoch in ('preChange','change')]
-allPre,allChange = allPreEngaged,allChangeEngaged
+behavStates = ('active',)
 
-# or use all trials
-allPreTrials,allChangeTrials = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:,trials].mean(axis=1) for exp,trials in zip(exps,changeTrials) for probe in data[exp]['sdfs']]) for state in ('active','passive')] for epoch in ('preChange','change')]
-allPre,allChange = allPreTrials,allChangeTrials
-
-# subtract baseline rate from sdfs
-activePreBase,passivePreBase,activeChangeBase,passiveChangeBase = [sdfs[:,baseWin].mean(axis=1) for sdfs in allPre+allChange]
-activePreSdfs,passivePreSdfs,activeChangeSdfs,passiveChangeSdfs = [sdfs-sdfs[:,baseWin].mean(axis=1)[:,None] for sdfs in allPre+allChange]
-
-# calculate time to first spike
-activeFirstSpikeLat = []
-passiveFirstSpikeLat = []
-for exp in exps:
-    print(exp)
-    activeChangeTimes = data[exp]['behaviorChangeTimes'][:]
-    passiveChangeTimes = data[exp]['passiveChangeTimes'][:]
-    for probe in data[exp]['sdfs']:
-        for u in data[exp]['units'][probe][:]:
-            spikeTimes = data[exp]['spikeTimes'][probe][str(u)][:,0]
-            activeLat = []
-            passiveLat = []
-            for times,lat in zip((activeChangeTimes,passiveChangeTimes),(activeLat,passiveLat)):
-                for t in times:
-                    firstSpike = np.where((spikeTimes > t+0.03) & (spikeTimes < t+0.15))[0]
-                    if len(firstSpike)>0:
-                        lat.append(spikeTimes[firstSpike[0]]-t)
-                    else:
-                        lat.append(np.nan)
-            activeFirstSpikeLat.append(np.nanmedian(activeLat))
-            passiveFirstSpikeLat.append(np.nanmedian(passiveLat))
-activeFirstSpikeLat = np.array(activeFirstSpikeLat) * 1000
-passiveFirstSpikeLat = np.array(passiveFirstSpikeLat) * 1000                  
-                
-# get experiment and region info
-expNames = np.concatenate([[exp]*len(data[exp]['sdfs'][probe]['active']['change']) for exp in exps for probe in data[exp]['sdfs']])
-expDates = np.array([exp[:8] for exp in expNames])
-expMouseIDs = np.array([exp[-6:] for exp in expNames])
-
-unitRegions = []
-for exp in exps:
-    for probe in data[exp]['sdfs']:
-        ccf = data[exp]['ccfRegion'][probe][:]
-        isi = data[exp]['isiRegion'][probe][()]
-        if isi:
-            ccf[data[exp]['inCortex'][probe][:]] = isi
-        unitRegions.append(ccf)
-unitRegions = np.concatenate(unitRegions)
-  
-#regionNames = sorted(list(set(unitRegions)))
 regionNames = (
                ('LGd',('LGd',)),
                ('V1',('VISp',)),
@@ -411,14 +358,6 @@ regionNames = (
 regionNames = regionNames[:8]
 regionLabels = [r[1][0] for r in regionNames]
 
-# find responsive units
-(hasSpikesActive,hasRespActive),(hasSpikesPassive,hasRespPassive) = [findResponsiveUnits(sdfs,baseWin,respWin,thresh=5) for sdfs in allChange]
-# using active and passive data
-hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
-# or just active
-hasResp = hasSpikesActive & hasRespActive
-
-
 nUnits = []
 nExps = []
 nMice = []
@@ -437,34 +376,95 @@ firstSpikeLatActive = []
 figs = [plt.figure(figsize=(12,9)) for _ in range(6)]
 axes = [fig.add_subplot(1,1,1) for fig in figs]
 for ind,(region,regionCCFLabels) in enumerate(regionNames):
-    inRegion = np.in1d(unitRegions,regionCCFLabels) & hasResp #& np.in1d(expDates,('09052019','09062019'))
-    nUnits.append(inRegion.sum())
-    nExps.append(len(set(expDates[inRegion])))
-    nMice.append(len(set(expMouseIDs[inRegion])))
+    mouseIDs = []
+    activePreSdfs = []
+    activeChangeSdfs = []
+    activeFirstSpikeLat = []
+    passivePreSdfs = []
+    passiveChangeSdfs = []
+    for exp in exps:
+        response = data[exp]['response'][:]
+        hit = response=='hit'
+        changeTimes = data[exp]['behaviorChangeTimes'][:]
+        engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+        trials = engaged & (hit | (response=='miss'))
+        for probe in data[exp]['sdfs']:
+            ccf = data[exp]['ccfRegion'][probe][:]
+            isi = data[exp]['isiRegion'][probe][()]
+            if isi:
+                ccf[data[exp]['inCortex'][probe][:]] = isi
+            inRegion = np.in1d(ccf,regionCCFLabels)
+            if any(inRegion):
+                activePre,activeChange = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trials].mean(axis=1) for epoch in ('preChange','change')]
+                hasSpikesActive,hasRespActive = findResponsiveUnits(activeChange,baseWin,respWin,thresh=5)
+                if 'passive' in behavStates:
+                    passivePre,passiveChange = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trials].mean(axis=1) for epoch in ('preChange','change')]
+                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChange,baseWin,respWin,thresh=5)
+                    hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
+                    passivePreSdfs.append(passivePre[hasResp])
+                    passiveChangeSdfs.append(passiveChange[hasResp])
+                else:
+                    hasResp = hasSpikesActive & hasRespActive
+                activePreSdfs.append(activePre[hasResp])
+                activeChangeSdfs.append(activeChange[hasResp])
+                if hasResp.sum()>0:
+                    mouseIDs.append(exp[-6:])
+                for u in data[exp]['units'][probe][inRegion][hasResp]:
+                    spikeTimes = data[exp]['spikeTimes'][probe][str(u)][:,0]
+                    trialLat = []
+                    for t in changeTimes:
+                        firstSpike = np.where((spikeTimes > t+0.03) & (spikeTimes < t+0.15))[0]
+                        if len(firstSpike)>0:
+                            trialLat.append(spikeTimes[firstSpike[0]]-t)
+                        else:
+                            trialLat.append(np.nan)
+                    activeFirstSpikeLat.append(np.nanmedian(trialLat))
+    nExps.append(len(activeChangeSdfs))
+    nMice.append(len(set(mouseIDs)))
+    activeChangeSdfs = np.concatenate(activeChangeSdfs)
+    activeChangeBase = activeChangeSdfs[:,baseWin].mean(axis=1)
+    activeChangeSdfs -= activeChangeBase[:,None]
+    activePreSdfs = np.concatenate(activePreSdfs)
+    activePreBase = activePreSdfs[:,baseWin].mean(axis=1)
+    activePreSdfs -= activePreBase[:,None]
+    if 'passive' in behavStates:
+        passiveChangeSdfs = np.concatenate(passiveChangeSdfs)
+        passiveChangeBase = passiveChangeSdfs[:,baseWin].mean(axis=1)
+        passiveChangeSdfs -= passiveChangeBase[:,None]
+        passivePreSdfs = np.concatenate(passivePreSdfs)
+        passivePreBase = passivePreSdfs[:,baseWin].mean(axis=1)
+        passivePreSdfs -= passivePreBase[:,None]
+    nUnits.append(len(activeChangeSdfs))
     
-    (activeChangeMod,activeChangeModLat),(passiveChangeMod,passiveChangeModLat),(behModChange,behModChangeLat),(behModPre,behModPreLat) = \
-    [calcChangeMod(pre[inRegion],change[inRegion],respWin,baseWin,stimWin) for pre,change in zip((activePreSdfs,passivePreSdfs,passiveChangeSdfs,passivePreSdfs),(activeChangeSdfs,passiveChangeSdfs,activeChangeSdfs,activePreSdfs))]
-    
-    activeLat,passiveLat = [findLatency(sdfs[inRegion],baseWin,stimWin) for sdfs in (activeChangeSdfs,passiveChangeSdfs)]
-    
-    baseRateActive.append(activeChangeBase[inRegion])
-    preRespActive.append(activePreSdfs[inRegion,respWin].mean(axis=1))
-    changeRespActive.append(activeChangeSdfs[inRegion,respWin].mean(axis=1))
+    activeChangeMod,activeChangeModLat = calcChangeMod(activePreSdfs,activeChangeSdfs,respWin,baseWin,stimWin)
+    activeLat = findLatency(activeChangeSdfs,baseWin,stimWin)
+    baseRateActive.append(activeChangeBase)
+    preRespActive.append(activePreSdfs[:,respWin].mean(axis=1))
+    changeRespActive.append(activeChangeSdfs[:,respWin].mean(axis=1))
     cmiActive.append(activeChangeMod)
-    cmiPassive.append(passiveChangeMod)
-    bmiChange.append(behModChange)
-    bmiPre.append(behModPre)
     respLatActive.append(activeLat)
     changeModLatActive.append(activeChangeModLat)
-    popRespLatActive.append(findLatency(activeChangeSdfs[inRegion].mean(axis=0),baseWin,stimWin,method='abs',thresh=1)[0])
-    popChangeModLatActive.append(findLatency(np.mean(activeChangeSdfs[inRegion]-activePreSdfs[inRegion],axis=0),baseWin,stimWin,method='abs',thresh=1)[0])
-    firstSpikeLatActive.append(activeFirstSpikeLat[inRegion])
+    popRespLatActive.append(findLatency(activeChangeSdfs.mean(axis=0),baseWin,stimWin,method='abs',thresh=1)[0])
+    popChangeModLatActive.append(findLatency(np.mean(activeChangeSdfs-activePreSdfs,axis=0),baseWin,stimWin,method='abs',thresh=1)[0])
+    firstSpikeLatActive.append(np.array(activeFirstSpikeLat))
+    
+    if 'passive' in behavStates:
+        (passiveChangeMod,passiveChangeModLat),(behModChange,behModChangeLat),(behModPre,behModPreLat) = \
+        [calcChangeMod(pre,change,respWin,baseWin,stimWin) for pre,change in zip((passivePreSdfs,passiveChangeSdfs,passivePreSdfs),(passiveChangeSdfs,activeChangeSdfs,activePreSdfs))]
+        passiveLat = findLatency(passiveChangeSdfs,baseWin,stimWin)
+        cmiPassive.append(passiveChangeMod)
+        bmiChange.append(behModChange)
+        bmiPre.append(behModPre)
     
     # plot baseline and response spike rates
-    for sdfs,base,mec,mfc,lbl in zip((activePreSdfs,passivePreSdfs,activeChangeSdfs,passiveChangeSdfs),(activePreBase,passivePreBase,activeChangeBase,passiveChangeBase),('rbrb'),('none','none','r','b'),('Active Pre','Passive Pre','Active Change','Passive Change')):
-        meanResp = sdfs[inRegion,respWin].mean(axis=1)
-        peakResp = sdfs[inRegion,respWin].max(axis=1)
-        for r,ax in zip((base[inRegion],meanResp,peakResp),axes[:3]):
+    if 'passive' in behavStates:
+        varin = ((activePreSdfs,passivePreSdfs,activeChangeSdfs,passiveChangeSdfs),(activePreBase,passivePreBase,activeChangeBase,passiveChangeBase),('rbrb'),('none','none','r','b'),('Active Pre','Passive Pre','Active Change','Passive Change'))
+    else:
+        varin = ((activePreSdfs,activeChangeSdfs),(activePreBase,activeChangeBase),('kk'),('none','k'),('Active Pre','Active Change'))
+    for sdfs,base,mec,mfc,lbl in zip(*varin):
+        meanResp = sdfs[:,respWin].mean(axis=1)
+        peakResp = sdfs[:,respWin].max(axis=1)
+        for r,ax in zip((base,meanResp,peakResp),axes[:3]):
             m = np.mean(r)
             s = r.std()/(r.size**0.5)
             lbl = None if ind>0 else lbl
@@ -472,21 +472,30 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
             ax.plot([ind,ind],[m-s,m+s],color=mec)
     
     # plot mean change mod and latencies
-    for cmi,mec,mfc,lbl in zip((activeChangeMod,passiveChangeMod),'rb','rb',('Active','Passive')):
+    if 'passive' in behavStates:
+        varin = ((activeChangeMod,passiveChangeMod),'rb','rb',('Active','Passive'))
+    else:
+        varin = ((activeChangeMod,),'k','k',('Active',))
+    for cmi,mec,mfc,lbl in zip(*varin):
         lbl = None if ind>0 else lbl
         m = cmi.mean()
         s = cmi.std()/(len(cmi)**0.5)
         axes[-3].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
         axes[-3].plot([ind,ind],[m-s,m+s],mec)
-        
-    for bmi,mec,mfc,lbl in zip((behModChange,behModPre),'kk',('k','none'),('Change','Pre-change')):
-        lbl = None if ind>0 else lbl
-        m = bmi.mean()
-        s = bmi.std()/(len(bmi)**0.5)
-        axes[-2].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
-        axes[-2].plot([ind,ind],[m-s,m+s],mec)
-            
-    for lat,mec,mfc in zip((activeLat,passiveLat,activeChangeModLat,passiveChangeModLat,behModChangeLat),'rbrbk',('none','none','r','b','k')):
+    
+    if 'passive' in behavStates:
+        for bmi,mec,mfc,lbl in zip((behModChange,behModPre),'kk',('k','none'),('Change','Pre-change')):
+            lbl = None if ind>0 else lbl
+            m = bmi.mean()
+            s = bmi.std()/(len(bmi)**0.5)
+            axes[-2].plot(ind,m,'o',mec=mec,mfc=mfc,ms=12,label=lbl)
+            axes[-2].plot([ind,ind],[m-s,m+s],mec)
+    
+    if 'passive' in behavStates:
+        varin = ((activeLat,passiveLat,activeChangeModLat,passiveChangeModLat,behModChangeLat),'rbrbk',('none','none','r','b','k'))
+    else:
+        varin = ((activeLat,activeChangeModLat),'kk',('k','none'))
+    for lat,mec,mfc in zip(*varin):
         lat = lat[~np.isnan(lat)]
         m = lat.mean()
         s = lat.std()/(lat.size**0.5)
@@ -496,13 +505,17 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
     # plot pre and post change responses and their difference
     fig = plt.figure(figsize=(8,8))
     ylim = None
-    for i,(pre,change,clr,lbl) in enumerate(zip((activePreSdfs,passivePreSdfs),(activeChangeSdfs,passiveChangeSdfs),([1,0,0],[0,0,1]),('Active','Passive'))):
-        ax = fig.add_subplot(2,1,i+1)
+    if 'passive' in behavStates:
+        varin = ((activePreSdfs,passivePreSdfs),(activeChangeSdfs,passiveChangeSdfs),([1,0,0],[0,0,1]),('Active','Passive'))
+    else:
+        varin = ((activePreSdfs,),(activeChangeSdfs,),([1,0,0],),('Active',))
+    for i,(pre,change,clr,lbl) in enumerate(zip(*varin)):
+        ax = fig.add_subplot(len(behavStates),1,i+1)
         clrlight = np.array(clr).astype(float)
         clrlight[clrlight==0] = 0.7
         for d,c in zip((pre,change,change-pre),(clrlight,clr,[0.5,0.5,0.5])):
-            m = np.mean(d[inRegion],axis=0)
-            s = np.std(d[inRegion],axis=0)/(inRegion.sum()**0.5)
+            m = d.mean(axis=0)
+            s = d.std(axis=0)/(len(d)**0.5)
             ax.plot(m,color=c)
             ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25) 
         for side in ('right','top'):
@@ -518,28 +531,29 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
         ax.set_ylabel('Spikes/s')
         ax.set_title(region+' '+lbl)
     
-    fig = plt.figure(figsize=(8,8))
-    ylim = None
-    for i,(active,passive,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs),(passiveChangeSdfs,passivePreSdfs),('Change','Pre'))):
-        ax = fig.add_subplot(2,1,i+1)
-        for d,c in zip((active,passive),'rb'):
-            m = np.mean(d[inRegion],axis=0)
-            s = np.std(d[inRegion],axis=0)/(inRegion.sum()**0.5)
-            ax.plot(m,color=c)
-            ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25)
-            ax.plot(np.arange(respWin.start,respWin.stop),np.zeros(respWin.stop-respWin.start)+np.mean(m[respWin]),'--',color=c)
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_xlim([250,600])
-        ax.set_xticks([250,350,450,550])
-        ax.set_xticklabels([0,100,200,300,400])
-        if ylim is None:
-            ylim = plt.get(ax,'ylim')
-        else:
-            ax.set_ylim(ylim)
-        ax.set_ylabel('Spikes/s')
-        ax.set_title(region+' '+lbl)
+    if 'passive' in behavStates:
+        fig = plt.figure(figsize=(8,8))
+        ylim = None
+        for i,(active,passive,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs),(passiveChangeSdfs,passivePreSdfs),('Change','Pre'))):
+            ax = fig.add_subplot(2,1,i+1)
+            for d,c in zip((active,passive),'rb'):
+                m = d.mean(axis=0)
+                s = d.std(axis=0)/(len(d)**0.5)
+                ax.plot(m,color=c)
+                ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25)
+                ax.plot(np.arange(respWin.start,respWin.stop),np.zeros(respWin.stop-respWin.start)+np.mean(m[respWin]),'--',color=c)
+            for side in ('right','top'):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,right=False)
+            ax.set_xlim([250,600])
+            ax.set_xticks([250,350,450,550])
+            ax.set_xticklabels([0,100,200,300,400])
+            if ylim is None:
+                ylim = plt.get(ax,'ylim')
+            else:
+                ax.set_ylim(ylim)
+            ax.set_ylabel('Spikes/s')
+            ax.set_title(region+' '+lbl)
 
 for ax,ylbl in zip(axes,('Baseline (spikes/s)','Mean Resp (spikes/s)','Peak Resp (spikes/s)','Change Modulation Index','Behavior Modulation Index','Latency (ms)')):
     for side in ('right','top'):
@@ -575,8 +589,8 @@ hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in z
     
 hier = hierScore_8regions
 
-paramLabels = ('Change Modulation Index','Behavior Modulation Index','Time to first spike after image change (ms)','Baseline Rate (spikes/s)','Pre-change Response (spikes/s)','Change Response (spikes/s)')
-for param,lbl in zip((cmiActive,bmiChange,firstSpikeLatActive,baseRateActive,preRespActive,changeRespActive),paramLabels):
+paramLabels = ('Change Modulation Index','Time to first spike after image change (ms)','Baseline Rate (spikes/s)','Pre-change Response (spikes/s)','Change Response (spikes/s)')
+for param,lbl in zip((cmiActive,firstSpikeLatActive,baseRateActive,preRespActive,changeRespActive),paramLabels):
     fig = plt.figure(facecolor='w',figsize=(8,6))
     ax = plt.subplot(1,1,1)
     m = [np.nanmean(reg) for reg in param]
@@ -603,7 +617,7 @@ for param,lbl in zip((cmiActive,bmiChange,firstSpikeLatActive,baseRateActive,pre
     
 # distributions of parameter values
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
-for param,lbl in zip((cmiActive,bmiChange,firstSpikeLatActive,baseRateActive,preRespActive,changeRespActive),paramLabels):
+for param,lbl in zip((cmiActive,firstSpikeLatActive,baseRateActive,preRespActive,changeRespActive),paramLabels):
     fig = plt.figure(facecolor='w',figsize=(8,6))
     ax = plt.subplot(1,1,1)
     for d,clr,r in zip(param,regionColors,regionLabels):
@@ -622,7 +636,7 @@ for param,lbl in zip((cmiActive,bmiChange,firstSpikeLatActive,baseRateActive,pre
 
 # p value matrix
 alpha = 0.05
-for metric,lbl in zip((cmiActive,bmiChange),('Change modulation','Behavior modulation')):
+for metric,lbl in zip((cmiActive,),('Change modulation',)):
     comparison_matrix = np.zeros((len(regionLabels),)*2) 
     for i,region in enumerate(regionLabels):
         for j,region in enumerate(regionLabels):
@@ -747,36 +761,18 @@ ax.legend()
 regionLabels = ('LGd','VISp','VISl','VISal','VISrl','VISpm','VISam','LP')
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
 
-for exp in data:
-    print(exp)
-    response = data[exp]['response'][:]
-    trials = (response=='hit') | (response=='miss')
-    for thresh in (5,):
-        print(thresh)
-        for probe in data[exp]['sdfs']:
-            n = []
-            for region in regionLabels:
-                inRegion = data[exp]['regions'][probe][:]==region
-                if any(inRegion):
-                    sdfs = data[exp]['sdfs'][probe]['active']['change'][inRegion,:,:respWin.stop][:,trials]
-                    hasSpikes,hasResp = findResponsiveUnits(sdfs,baseWin,respWin,thresh)
-                    n.append(np.sum(hasSpikes & hasResp))
-                else:
-                    n.append(0)
-            print(probe,n)
-
 nUnits = [20]
 nUnitSamples = 5
 nCrossVal = 3
 
 truncInterval = 5
-lastTrunc = 250
+lastTrunc = 150
 truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
 preTruncTimes = np.arange(-750,0,50)
 
 windowInterval = 10
-decodeWindows = np.arange(0,lastTrunc+1,windowInterval)
+decodeWindows = np.arange(0,301,windowInterval)
 
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
 
@@ -802,8 +798,6 @@ for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
     startTime = time.clock()
     
-    (activePreSDFs,activeChangeSDFs),(passivePreSDFs,passiveChangeSDFs) = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:] for probe in data[exp]['sdfs']])  for epoch in ('preChange','change')] for state in ('active','passive')]
-    
     unitRegions = []
     for probe in data[exp]['sdfs']:
         ccf = data[exp]['ccfRegion'][probe][:]
@@ -824,13 +818,15 @@ for expInd,exp in enumerate(exps):
     changeImage = data[exp]['changeImage'][trials]
     imageNames = np.unique(changeImage)
     
+    (activePreSDFs,activeChangeSDFs),(passivePreSDFs,passiveChangeSDFs) = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:,trials] for probe in data[exp]['sdfs']])  for epoch in ('preChange','change')] for state in ('active','passive')]
+    hasSpikesActive,hasRespActive = findResponsiveUnits(activeChangeSDFs,baseWin,respWin)
+    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChangeSDFs,baseWin,respWin)
+    hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
+    
     for region in regionLabels:
         inRegion = unitRegions==region
         if any(inRegion):
-            hasSpikesActive,hasRespActive = findResponsiveUnits(activeChangeSDFs,baseWin,respWin)
-            hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChangeSDFs,baseWin,respWin)
-            useUnits = inRegion & hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
-            units = np.where(useUnits)[0]
+            units = np.where(inRegion & hasResp)[0]
             for n in nUnits:
                 if len(units)>=n:
                     unitSamples = [np.random.choice(units,size=n,replace=False) for _ in range(nUnitSamples)]
@@ -846,7 +842,7 @@ for expInd,exp in enumerate(exps):
                         imageScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows)-1)) for model in modelNames}
                         respLatency = []
                         sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
-                        preChangeSDFs,changeSDFs = [s.transpose((1,0,2))[trials] for s in sdfs]
+                        preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
                         for i,unitSamp in enumerate(unitSamples):
                             # decode image change and identity for increasing window lengths
                             for j,trunc in enumerate(truncTimes):
@@ -913,7 +909,7 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['imageScoreWindows'][model].append(imageScoreWindows[model].mean(axis=0))
                         result[exp][region][state]['respLatency'].append(np.nanmean(respLatency))
     print(time.clock()-startTime)
-warnings.filterwarnings('default')              
+warnings.filterwarnings('default')
 
 # plot scores vs number of units
 for model in modelNames:
