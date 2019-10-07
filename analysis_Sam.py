@@ -236,7 +236,7 @@ getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('461027',))
 
 data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
 
-exps = data.keys()
+#exps = data.keys()
 
 # A or B days that have passive session
 Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im and hasPassive] for im in 'AB']
@@ -785,13 +785,14 @@ behavStates = ('active','passive')
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
                                 'changePredict':{model:[] for model in modelNames},
                                 'changePredictProb':{model:[] for model in modelNames},
+                                'changePredictProbValid':{model:[] for model in modelNames},
                                 'changeFeatureImportance':{model:[] for model in modelNames},
                                 'imageScore':{model:[] for model in modelNames},
                                 'imageFeatureImportance':{model:[] for model in modelNames},
                                 'preImageScore':{model:[] for model in modelNames},
                                 'imageScoreWindows':{model:[] for model in modelNames},
                                 'changeScoreWindows':{model:[] for model in modelNames},
-                                'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in data}
+                                'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in exps}
 
 warnings.filterwarnings('ignore')
 for expInd,exp in enumerate(exps):
@@ -834,6 +835,7 @@ for expInd,exp in enumerate(exps):
                         changeScore = {model: np.zeros((nUnitSamples,len(truncTimes))) for model in modelNames}
                         changePredict = {model: [] for model in modelNames}
                         changePredictProb = {model: [] for model in modelNames}
+                        changePredictProbValid = {model: [] for model in modelNames}
                         changeFeatureImportance = {model: [] for model in modelNames}
                         imageScore = {model: np.zeros((nUnitSamples,len(truncTimes))) for model in modelNames}
                         imageFeatureImportance = {model: [] for model in modelNames}
@@ -858,7 +860,8 @@ for expInd,exp in enumerate(exps):
                                     if trunc==lastTrunc:
                                         changePredict[name].append(np.mean([estimator.predict(X[:trials.sum()]) for estimator in cv['estimator']],axis=0))
                                         if name=='randomForest':
-                                            changePredictProb[name].append(np.mean([estimator.predict_proba(X[:trials.sum()])[:,0] for estimator in cv['estimator']],axis=0))
+                                            changePredictProb[name].append(np.mean([estimator.predict_proba(X[:trials.sum()])[:,1] for estimator in cv['estimator']],axis=0))
+                                            changePredictProbValid[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
                                             changeFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
                                 # image identity
                                 imgSDFs = [changeSDFs[:,unitSamp,truncSlice][changeImage==img] for img in imageNames]
@@ -901,6 +904,7 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['changeScore'][model].append(changeScore[model].mean(axis=0))
                             result[exp][region][state]['changePredict'][model].append(np.mean(changePredict[model],axis=0))
                             result[exp][region][state]['changePredictProb'][model].append(np.mean(changePredictProb[model],axis=0))
+                            result[exp][region][state]['changePredictProbValid'][model].append(np.mean(changePredictProbValid[model],axis=0))
                             result[exp][region][state]['changeFeatureImportance'][model].append(np.mean(changeFeatureImportance[model],axis=0))
                             result[exp][region][state]['imageScore'][model].append(imageScore[model].mean(axis=0))
                             result[exp][region][state]['imageFeatureImportance'][model].append(np.mean(imageFeatureImportance[model],axis=0))
@@ -1046,6 +1050,7 @@ for model in modelNames:
                 if i==0 and j==0:
                     ax.set_ylabel('Decoder Accuracy')
         ax.set_xlabel('Time (ms)')
+
     
 # plot avg score for each area
 for model in modelNames:
@@ -1150,7 +1155,7 @@ for model in modelNames:
             ax.set_xticks([0,50,100,150,200])
             ax.set_yticks([0,0.25,0.5,0.75,1])
             ax.set_yticklabels([0,'',0.5,'',1])
-            ax.set_xlim([0,200])
+            ax.set_xlim([0,lastTrunc])
             ax.set_ylim([0,1])
             if i<len(regionLabels)-1:
                 ax.set_xticklabels([])
@@ -1329,17 +1334,16 @@ for model in modelNames:
 
 # plot predicted vs actual performance
 for model in ('randomForest',):
-    fracSame = {exp: {region: {state: np.nan for state in ('active','passive')} for region in regionLabels} for exp in result}
-    for exp in data:
-        response = data[exp]['response'][:]
-        trials = (response=='hit') | (response=='miss')
-        behavior = np.ones(trials.sum())
-        behavior[response[trials]=='miss'] = -1
+    fracSame = {exp: {region: {state: np.nan for state in ('active','passive')} for region in regionLabels} for exp in exps}
+    for exp in exps:        
+        behavior = result[exp]['behaviorResponse'][:].astype(int)
+        behavior[behavior<1] = -1
         for probe in result[exp]:
             for region in regionLabels:
                     for state in ('active','passive'):
                         p = result[exp][region][state]['changePredictProb'][model]
                         if len(p)>0:
+#                            fracSame[exp][region][state] = np.corrcoef(behavior,1-p[0])[0,1]
                             predictProb = p[0]
                             predict = (predictProb>0.5).astype(int)
                             predict[predict==0] = -1
@@ -1387,4 +1391,92 @@ for exp in result:
             ax = plt.subplot(111)
             ax.plot(s[0],'r')
             ax.plot(v[0],'k')
+            
+for model in modelNames:
+    for score,ylim in zip(('changeScoreWindows','imageScoreWindows'),([0.4,0.8],[0,0.6])):
+        fig = plt.figure(facecolor='w',figsize=(10,10))
+        fig.text(0.5,0.95,model+', '+score,fontsize=14,horizontalalignment='center')
+        gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
+        for i,region in enumerate(regionLabels):
+            for j,state in enumerate(('active','passive')):
+                ax = plt.subplot(gs[i,j])
+                regionScore = []
+                for exp in result:
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
+                n = len(regionScore)
+                if n>0:
+                    m = np.mean(regionScore,axis=0)
+                    s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+                    ax.plot(decodeWindows[0:-1]+5,m,color=clr,label=score[:score.find('S')])
+                    ax.fill_between(decodeWindows[0:-1]+5,m+s,m-s,color=clr,alpha=0.25)
+                for side in ('right','top'):
+                    ax.spines[side].set_visible(False)
+                ax.tick_params(direction='out',top=False,right=False)
+                ax.set_xticks([0,50,100,150,200])
+#                ax.set_yticks([0,0.25,0.5,0.75,1])
+#                ax.set_yticklabels([0,'',0.5,'',1])
+                ax.set_xlim([0,decodeWindows[-1]])
+                ax.set_ylim(ylim)
+                if i<len(regionLabels)-1:
+                    ax.set_xticklabels([])
+                if j>0:
+                    ax.set_yticklabels([])    
+                if i==0:
+                    if j==0:
+                        ax.set_title(region+', '+state)
+                    else:
+                        ax.set_title(state)
+                elif j==0:
+                    ax.set_title(region)
+                if i==0 and j==0:
+                    ax.set_ylabel('Decoder Accuracy')
+                if i==len(regionLabels)-1 and j==1:
+                    ax.legend()
+                ax.set_xlabel('Time (ms)')
 
+
+for model in ('randomForest',):
+    for score,ylim in zip(('changeFeatureImportance','imageFeatureImportance'),([0.4,0.8],[0,0.6])):
+        fig = plt.figure(facecolor='w',figsize=(10,10))
+        fig.text(0.5,0.95,model+', '+score,fontsize=14,horizontalalignment='center')
+        gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
+        for i,region in enumerate(regionLabels):
+            for j,state in enumerate(('active','passive')):
+                ax = plt.subplot(gs[i,j])
+                regionScore = []
+                for exp in result:
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
+                n = len(regionScore)
+                if n>0:
+                    m = np.mean(regionScore,axis=0)
+                    s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+                    ax.plot(np.arange(150),m,color=clr,label=score[:score.find('S')])
+                    ax.fill_between(np.arange(150),m+s,m-s,color=clr,alpha=0.25)
+                for side in ('right','top'):
+                    ax.spines[side].set_visible(False)
+                ax.tick_params(direction='out',top=False,right=False)
+                ax.set_xticks([0,50,100,150,200])
+#                ax.set_yticks([0,0.25,0.5,0.75,1])
+#                ax.set_yticklabels([0,'',0.5,'',1])
+                ax.set_xlim([0,lastTrunc])
+#                ax.set_ylim(ylim)
+                if i<len(regionLabels)-1:
+                    ax.set_xticklabels([])
+                if j>0:
+                    ax.set_yticklabels([])    
+                if i==0:
+                    if j==0:
+                        ax.set_title(region+', '+state)
+                    else:
+                        ax.set_title(state)
+                elif j==0:
+                    ax.set_title(region)
+                if i==0 and j==0:
+                    ax.set_ylabel('Feature Importance')
+                if i==len(regionLabels)-1 and j==1:
+                    ax.legend()
+                ax.set_xlabel('Time (ms)')
