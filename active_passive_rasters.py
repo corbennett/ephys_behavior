@@ -11,8 +11,8 @@ import summaryPlots
 from matplotlib import pyplot as plt
 
 #using our class for parsing the data (https://github.com/corbennett/ephys_behavior)
-b = getData.behaviorEphys('Z:\\08092019_423744')
-b.loadFromHDF5(r"Z:\analysis\08092019_423744.hdf5") 
+b = getData.behaviorEphys('Z:\\09122019_461027')
+b.loadFromHDF5(r"Z:\analysis\09122019_461027.hdf5") 
 
 #get the change times for this recording (when the image identity changed and the mouse should have licked)
 selectedTrials = (b.hit | b.miss)&(~b.ignore)   #Omit "ignore" trials (aborted trials when the mouse licked too early or catch trials when the image didn't actually change)
@@ -49,8 +49,8 @@ def plotRaster(spikes, alignTimes, ax=None, preTime = 1.5, postTime = 1.5, color
             ax.vlines(spikeTimesThisTrial, i, i+1, color=color)
 
 
-minTrial = 0
-maxTrial = 200
+#minTrial = 0
+#maxTrial = 200
 
 areasOfInterest = ['LGd']
 for area in areasOfInterest:
@@ -67,7 +67,7 @@ for area in areasOfInterest:
         fig.suptitle(area + ': ' + p + u)
         for it, (times, color) in enumerate(zip([active_changeTimes, passive_changeTimes], 'rb')):
             plotRaster(spikes, times, ax[it], color=color)
-            ax[it].set_ylim([minTrial, maxTrial])
+#            ax[it].set_ylim([minTrial, maxTrial])
 
 
 
