@@ -193,7 +193,7 @@ localDir = r'C:\Users\svc_ccg\Desktop\Analysis\Probe'
 
 mouseInfo = (
              ('409096',('03212019',),('ABCD',),'A',(False,)),
-             ('417882',('03262019','03272019'),('ABCEF','ABCF'),'AB',(False,False)),
+             ('417882',('03262019','03272019'),('ABCEF','ABCF'),'AA',(False,False)),
              ('408528',('04042019','04052019'),('ABCDE','ABCDE'),'AB',(True,True)),
              ('408527',('04102019','04112019'),('BCDEF','BCDEF'),'AB',(True,True)),
              ('421323',('04252019','04262019'),('ABCDEF','ABCDEF'),'AB',(True,True)),
@@ -1441,49 +1441,137 @@ for model in ('randomForest',):
 
 
 
-#
-regionLabels = ('LGd','VISp','VISl','VISal','VISrl','VISpm','VISam','LP')
-imgNames = np.unique(data[Aexps[0]]['changeImage'])
-changeModMatrix = np.zeros((imgNames.size,imgNames.size,len(regionLabels)))
-hitMatrix = changeModMatrix.copy()
-missMatrix = changeModMatrix.copy()
-for exps in Aexps:
-    initialImage = data[exp]['intitalImage'][:]
+###### behavior change mod correlation
+                
+Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im] for im in 'AB']
+regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
+
+exps = Aexps
+imgNames = np.unique(data[exps[0]]['initialImage'])
+preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(3)]
+hitMatrix = np.zeros((len(regionLabels),len(imgNames),len(imgNames)))
+missMatrix = hitMatrix.copy()
+for exp in exps:
+    print(exp)
+    initialImage = data[exp]['initialImage'][:]
     changeImage = data[exp]['changeImage'][:]
     changeTimes = data[exp]['behaviorChangeTimes'][:]
     response = data[exp]['response'][:]
     hit = response=='hit'
-    for trial,(initImg,chngImg,t,resp) in enumerate(zip(initialImage,changeImage,changeTimes,response)):
-        if resp in ('hit','miss'):
-            engaged = np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1
-            if engaged:
-                for k,region in enumerate(regionLabels):
-                    preSdfs = []
-                    changeSdfs = []
-                    for probe in data[exp]['sdfs']:
-                        ccf = data[exp]['ccfRegion'][probe][:]
-                        isi = data[exp]['isiRegion'][probe][()]
-                        if isi:
-                            ccf[data[exp]['inCortex'][probe][:]] = isi
-                        inRegion = np.in1d(ccf,region)
-                        if any(inRegion):
-                            pre,change = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trial] for epoch in ('preChange','change')]
-                            hasSpikes,hasResp = findResponsiveUnits(change,baseWin,respWin,thresh=5)
-                            preSdfs.append(pre[hasSpikes & hasResp])
-                            changeSdfs.append(change[hasSpikes & hasResp])
-                    if len(changeSdfs)>0:
-                        preSdfs = np.concatenate(preSdfs)
-                        preSdfs -= preSdfs[:,baseWin].mean(axis=1)[:,None]
-                        changeSdfs = np.concatenate(changeSdfs)
-                        changeSdfs -= changeSdfs[:,baseWin].mean(axis=1)[:,None]
-                        preResp,changeResp = [sdfs[:,respWin].mean(axis=1) for sdfs in (preSdfs,changeSdfs)]
-                        i,j = [np.where(imgNames==img)[0] for img in (initImg,chngImg)]
-                        changeModMatrix[i,j,k] += np.clip((changeResp-preResp)/(changeResp+preResp),-1,1)
-                        if resp=='hit':
-                            hitMatrix[i,j,k] += 1
-                        else:
-                            missMatrix[i,j,k] += 1
+    engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+    trials = engaged & (hit | (response=='miss'))
+    for r,region in enumerate(regionLabels):
+        preSdfs = []
+        changeSdfs = []
+        for probe in data[exp]['sdfs']:
+            ccf = data[exp]['ccfRegion'][probe][:]
+            isi = data[exp]['isiRegion'][probe][()]
+            if isi:
+                ccf[data[exp]['inCortex'][probe][:]] = isi
+            inRegion = np.in1d(ccf,region)
+            if any(inRegion):
+                pre,change = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trials] for epoch in ('preChange','change')]
+                hasSpikes,hasResp = findResponsiveUnits(change,baseWin,respWin,thresh=5)
+                preSdfs.append(pre[hasSpikes & hasResp])
+                changeSdfs.append(change[hasSpikes & hasResp])
+        if len(preSdfs)>0:
+            preSdfs = np.concatenate(preSdfs)
+            changeSdfs = np.concatenate(changeSdfs)
+            for ind,trial in enumerate(np.where(trials)[0]):
+                preResp,changeResp = [sdfs[:,ind,respWin].mean(axis=1)-sdfs[:,ind,baseWin].mean(axis=1) for sdfs in (preSdfs,changeSdfs)]
+                i,j = [np.where(imgNames==img)[0][0] for img in (initialImage[trial],changeImage[trial])]
+                preRespList[r][i][j].append(preResp)
+                changeRespList[r][i][j].append(changeResp)
+                changeModList[r][i][j].append(np.clip((changeResp-preResp)/(changeResp+preResp),-1,1))
+                if response[trial]=='hit':
+                    hitMatrix[r,i,j] += 1
+                else:
+                    missMatrix[r,i,j] += 1
+
+preRespMatrix = np.full(hitMatrix.shape,np.nan)
+changeRespMatrix = preRespMatrix.copy()
+changeModMatrix = preRespMatrix.copy()
+for r,_ in enumerate(regionLabels):
+    for i,_ in enumerate(imgNames):
+        for j,_ in enumerate(imgNames):
+            if len(preRespList[r][i][j])>0:
+                preRespMatrix[r,i,j] = np.nanmean(np.concatenate(preRespList[r][i][j]))
+                changeRespMatrix[r,i,j] = np.nanmean(np.concatenate(changeRespList[r][i][j]))
+                changeModMatrix[r,i,j] = np.nanmean(np.concatenate(changeModList[r][i][j]))
+popChangeModMatrix = np.clip((changeRespMatrix-preRespMatrix)/(changeRespMatrix+preRespMatrix),-1,1)
+
+hitRate = hitMatrix/(hitMatrix+missMatrix)
+imgOrder = np.argsort(np.nanmean(hitRate,axis=(0,1)))
+nonDiag = ~np.eye(len(imgNames),dtype=bool)   
 
 
+for ind,(region,hr) in enumerate(zip(regionLabels,hitRate)):
+    fig = plt.figure(facecolor='w',figsize=(7,9))
+    fig.text(0.5,0.95,region,fontsize=12,horizontalalignment='center')
+    gs = matplotlib.gridspec.GridSpec(4,2)
+    
+    ax = plt.subplot(gs[0,0])
+    im = ax.imshow(hr[imgOrder,:][:,imgOrder],cmap='magma')
+    ax.tick_params(direction='out',top=False,right=False,labelsize=6)
+    ax.set_xticks(np.arange(len(imgNames)))
+    ax.set_yticks(np.arange(len(imgNames)))
+    ax.set_xlabel('Change Image',fontsize=10)
+    ax.set_ylabel('Initial Image',fontsize=10)
+    ax.set_title('Hit Rate',fontsize=10)
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    
+    ax = plt.subplot(gs[0,1])
+    im = ax.imshow((hitMatrix[ind]+missMatrix[ind])[imgOrder,:][:,imgOrder],cmap='magma')
+    ax.tick_params(direction='out',top=False,right=False,labelsize=6)
+    ax.set_xticks(np.arange(len(imgNames)))
+    ax.set_yticks(np.arange(len(imgNames)))
+    ax.set_xlabel('Change Image',fontsize=10)
+    ax.set_ylabel('Initial Image',fontsize=10)
+    ax.set_title('Number of Trials',fontsize=10)
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    
+    for i,(d,lbl) in enumerate(zip((preRespMatrix,changeRespMatrix,changeModMatrix),('Pre Resp','Change Resp','Change Mod'))):
+        d = d[ind]
+        ax = plt.subplot(gs[i+1,0])
+        im = ax.imshow(d[imgOrder,:][:,imgOrder],cmap='magma')
+        ax.tick_params(direction='out',top=False,right=False,labelsize=6)
+        ax.set_xticks(np.arange(len(imgNames)))
+        ax.set_yticks(np.arange(len(imgNames)))
+        ax.set_xlabel('Change Image',fontsize=10)
+        ax.set_ylabel('Initial Image',fontsize=10)
+        ax.set_title(lbl,fontsize=10)
+        cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+        
+        ax = plt.subplot(gs[i+1,1])
+        ax.plot(hr[nonDiag],d[nonDiag],'ko')
+        slope,yint,rval,pval,stderr = scipy.stats.linregress(hr[nonDiag],d[nonDiag])
+        x = np.array([hr[nonDiag].min(),hr[nonDiag].max()])
+        ax.plot(x,slope*x+yint,'0.5')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.set_xlabel('Hit Rate',fontsize=10)
+        ax.set_ylabel(lbl,fontsize=10)
+        r,p = scipy.stats.pearsonr(hr[nonDiag],d[nonDiag])
+        ax.set_title('Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3)),fontsize=8)
+    plt.tight_layout()
+
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)
+xticks = np.arange(len(regionLabels))
+xlim = [-0.5,len(regionLabels)-0.5]
+ax.plot(xlim,[0,0],'k--')
+for param,clr,lbl in zip((preRespMatrix,changeRespMatrix,changeModMatrix),'brk',('Pre Resp','Change Resp','Change Mod')):
+    r = [scipy.stats.pearsonr(hr[nonDiag],d[nonDiag])[0] for hr,d in zip(hitRate,param)]
+    ax.plot(xticks,r,'o',mec=clr,mfc=clr,label=lbl)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+ax.set_xlim(xlim)
+ax.set_xticks(xticks)
+ax.set_xticklabels(regionLabels,fontsize=10)
+ax.set_ylabel('Correlation with hit rate',fontsize=10)
+ax.legend()
 
 
