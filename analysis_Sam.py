@@ -401,9 +401,9 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
                                 lat.append(np.nan)
                         activeFirstSpikeLat[ind].append(np.nanmedian(lat))
 
-nMice = [len(set(m)) for m in mouseIDs]
-nExps = [len(d) for d in expDates]
-nUnits = [sum([len(s) for s in sdfs]) for sdfs in activeChangeSdfs]
+nMice = np.array([len(set(m)) for m in mouseIDs])
+nExps = np.array([len(set(d)) for d in expDates])
+nUnits = np.array([sum([len(s) for s in sdfs]) for sdfs in activeChangeSdfs])
 activePreSdfs,activeChangeSdfs = [[np.concatenate(s) for s in sdfs] for sdfs in (activePreSdfs,activeChangeSdfs)]
 if 'passive' in behavStates:
     passivePreSdfs,passiveChangeSdfs = [[np.concatenate(s) for s in sdfs] for sdfs in (passivePreSdfs,passiveChangeSdfs)]
@@ -479,21 +479,77 @@ for region,activePre,activeChange,passivePre,passiveChange in zip(regionLabels,a
         ax.set_ylabel('Spikes/s')
         ax.set_title(region+' '+title)
         ax.legend()
+        
+# another representation of sdfs
+cortical_cmap = plt.cm.plasma
+subcortical_cmap = plt.cm.Reds
+regionsToUse = (('LGd',(0,0,0)),
+                ('V1',cortical_cmap(0)),
+                ('LM',cortical_cmap(0.1)),
+                ('RL',cortical_cmap(0.2)),
+                ('AL',cortical_cmap(0.3)),
+                ('PM',cortical_cmap(0.4)),
+                ('AM',cortical_cmap(0.5)),
+                ('LP',subcortical_cmap(0.4)),
+                ('APN',subcortical_cmap(0.5)),
+                ('SCd',subcortical_cmap(0.6)),
+                ('MB',subcortical_cmap(0.7)),
+                ('MRN',subcortical_cmap(0.8)),
+                ('SUB',subcortical_cmap(0.9)),
+                ('hipp',subcortical_cmap(1.0)))
+
+spacing = 0.1
+for i,(sdfs,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs,passiveChangeSdfs,passivePreSdfs),('Active Change','Active Pre','Passive Change','Passive Pre'))):
+    fig = plt.figure(figsize=(6,10))
+    ax = fig.subplots(1)
+    if i==0:
+        y = 0
+        yticks = []
+        norm = []
+    for j,(region,clr) in enumerate(regionsToUse[::-1]):
+        ind = regionLabels.index(region)
+        d = sdfs[ind]-sdfs[ind][:,baseWin].mean(axis=1)[:,None]
+        m = d.mean(axis=0)
+        s = d.std(axis=0)/(len(sdfs[ind])**0.5)
+        if i==0:
+            yticks.append(y)
+            norm.append(m.max())
+        m /= norm[j]
+        s /= norm[j]
+        m += yticks[j]
+        ax.plot(m,color=clr)
+        ax.fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25)
+        if i==0:
+            y = np.max(m+s)+spacing
+            ymax = y
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim([250,600])
+        ax.set_xticks([250,350,450,550])
+        ax.set_xticklabels([0,100,200,300,400])
+        ax.set_xlabel('Time (ms)')
+        ax.set_ylim([-spacing,ymax])
+        ax.set_yticks(yticks)
+        ax.set_yticklabels([r[0] for r in regionsToUse])
+        ax.set_title(lbl)
+    plt.tight_layout()
 
 
-# plot baseline rate, change mod, and behav mod
-xticks = np.arange(len(regionNames))
-for param,ylab,lbl in zip(((baseRateActive,baseRatePassive),(changeModActive,changeModPassive),(behavModChange,behavModPre)),
-                          (('Baseline Rate (spikes/s)','Change Modulation','Behavior Modulation')),
-                          (('Active','Passive'),('Active','Passive'),('Pre','Change'))):
+# plot baseline rate, change resp, change mod, and behav mod
+ind = [regionLabels.index(r[0]) for r in regionsToUse]
+xticks = np.arange(len(regionsToUse))
+for param,ylab,lbl in zip(((baseRateActive,baseRatePassive),(changeRespActive,changeRespPassive),(changeModActive,changeModPassive),(behavModChange,behavModPre)),
+                          (('Baseline Rate (spikes/s)','Change Response (spikes/s)','Change Modulation','Behavior Modulation')),
+                          ((('Active','Passive'),)*3+(('Change','Pre'),))):
     fig = plt.figure(facecolor='w',figsize=(15,8))
     ax = fig.subplots(1)
-    xlim = [-0.5,len(regionNames)-0.5]
-    ax.plot(xlim,[0,0],'k--')
-    for p,clr,lbl in zip(param,'rb',('Active','Passive')):
+    xlim = [-0.5,len(regionsToUse)-0.5]
+    for p,clr,l in zip(param,'rb',lbl):
+        p = [p[i] for i in ind]
         mean = [np.nanmean(d) for d in p]
         sem = [np.nanstd(d)/(np.sum(~np.isnan(d))**0.5) for d in p]
-        ax.plot(xticks,mean,'o',mec=clr,mfc='none',ms=12,label=lbl)
+        ax.plot(xticks,mean,'o',mec=clr,mfc='none',ms=10,label=l)
         for x,m,s in zip(xticks,mean,sem): 
             ax.plot([x,x],[m-s,m+s],color=clr)
     for side in ('right','top'):
@@ -501,9 +557,36 @@ for param,ylab,lbl in zip(((baseRateActive,baseRatePassive),(changeModActive,cha
     ax.tick_params(direction='out',top=False,right=False,labelsize=8)
     ax.set_xlim(xlim)
     ax.set_xticks(xticks)
-    ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionNames,nUnits,nExps,nMice)],fontsize=8)
+    ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionsToUse,nUnits[ind],nExps[ind],nMice[ind])],fontsize=8)
+    ylim = plt.get(ax,'ylim')
+    if ylim[0]>0:
+        ax.set_ylim([0,ylim[1]])
+    else:
+        ax.plot(xlim,[0,0],'--',color='0.5')
     ax.set_ylabel(ylab,fontsize=8)
     ax.legend()
+    
+# plot behav mod of change resp alone
+fig = plt.figure(facecolor='w',figsize=(15,8))
+ax = fig.subplots(1)
+p = [behavModChange[i] for i in ind]
+mean = [np.nanmean(d) for d in p]
+sem = [np.nanstd(d)/(np.sum(~np.isnan(d))**0.5) for d in p]
+ax.plot(xticks,mean,'o',mec='k',mfc='none',ms=10)
+for x,m,s in zip(xticks,mean,sem): 
+    ax.plot([x,x],[m-s,m+s],color='k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+ax.set_xlim(xlim)
+ax.set_xticks(xticks)
+ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionsToUse,nUnits[ind],nExps[ind],nMice[ind])],fontsize=8)
+ylim = plt.get(ax,'ylim')
+if ylim[0]>0:
+    ax.set_ylim([0,ylim[1]])
+else:
+    ax.plot(xlim,[0,0],'--',color='0.5')
+ax.set_ylabel('Behavior Modulation',fontsize=8)
 
 # plot pre and change resp together
 fig = plt.figure(facecolor='w',figsize=(15,8))
