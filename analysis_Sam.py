@@ -7,6 +7,7 @@ Created on Thu Aug 23 11:29:39 2018
 
 from __future__ import division
 import os
+import pickle
 import time
 import warnings
 from collections import OrderedDict
@@ -22,6 +23,7 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 from sklearn.model_selection import cross_validate, cross_val_score, cross_val_predict
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
+from sklearn.svm import SVC
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import fileIO
 import getData
@@ -230,7 +232,7 @@ getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('461027',))
 
 
 
-data = h5py.File(os.path.join(localDir,'popData.hdf5'),'r')
+data = h5py.File(os.path.join(localDir,'popData - Copy.hdf5'),'r')
 
 exps = data.keys()
 
@@ -842,8 +844,9 @@ truncTimes = np.arange(truncInterval,lastTrunc+1,truncInterval)
 
 preTruncTimes = np.arange(-750,0,50)
 
-windowInterval = 10
-decodeWindows = np.arange(0,281,windowInterval)
+decodeWindowSize = 10
+decodeWindows = np.arange(stimWin.start,respWin.stop+1,decodeWindowSize)
+preImageDecodeWindows = np.arange(stimWin.start,stimWin.start+751,decodeWindowSize)
 
 assert((len(nUnits)>=1 and len(truncTimes)==1) or (len(nUnits)==1 and len(truncTimes)>=1))
 
@@ -861,8 +864,9 @@ result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames
                                 'imageScore':{model:[] for model in modelNames},
                                 'imageFeatureImportance':{model:[] for model in modelNames},
                                 'preImageScore':{model:[] for model in modelNames},
-                                'imageScoreWindows':{model:[] for model in modelNames},
                                 'changeScoreWindows':{model:[] for model in modelNames},
+                                'imageScoreWindows':{model:[] for model in modelNames},
+                                'preImageScoreWindows':{model:[] for model in modelNames},
                                 'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in exps}
 
 warnings.filterwarnings('ignore')
@@ -911,8 +915,10 @@ for expInd,exp in enumerate(exps):
                         imageScore = {model: np.zeros((nUnitSamples,len(truncTimes))) for model in modelNames}
                         imageFeatureImportance = {model: [] for model in modelNames}
                         preImageScore = {model: np.zeros((nUnitSamples,len(preTruncTimes))) for model in modelNames}
-                        changeScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows)-1)) for model in modelNames}
-                        imageScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows)-1)) for model in modelNames}
+                        changeScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows))) for model in modelNames}
+                        changeScoreWindowsPredict = {model: np.zeros((nUnitSamples,len(decodeWindows),trials.sum())) for model in modelNames}
+                        imageScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows))) for model in modelNames}
+                        preImageScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows))) for model in modelNames}
                         respLatency = []
                         sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
                         preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
@@ -944,7 +950,7 @@ for expInd,exp in enumerate(exps):
                                     if trunc==lastTrunc and name=='randomForest':
                                         imageFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
                             
-                            # decode pre-change image identity
+                            # decode pre-change image identity for windows increasing in length backwards from time of change
                             for j,trunc in enumerate(preTruncTimes):
                                 preImgSDFs = [preChangeSDFs[:,unitSamp,trunc:][initialImage==img] for img in imageNames]
                                 X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
@@ -953,23 +959,33 @@ for expInd,exp in enumerate(exps):
                                     preImageScore[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                             
                             # decode image change and identity for sliding windows
-                            for j,(winBegin,winEnd) in enumerate(zip(decodeWindows[:-1],decodeWindows[1:])):
+                            for j,winStart in enumerate(decodeWindows):
                                 # image change
-                                winSlice = slice(stimWin.start+winBegin,stimWin.start+winEnd)
+                                winSlice = slice(winStart,winStart+decodeWindowSize)
                                 X = np.concatenate([s[:,unitSamp,winSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
                                 y = np.zeros(X.shape[0])
                                 y[:int(X.shape[0]/2)] = 1
                                 for model,name in zip(models,modelNames):
                                     changeScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                    changeScoreWindowsPredict[name][i,j] = cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1]
                                 # image identity
                                 imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
                                 X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
                                 y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
                                 for model,name in zip(models,modelNames):
                                     imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                    
+                            # decode pre-change image identity for sliding windows
+                            for j,winStart in enumerate(preImageDecodeWindows):
+                                winSlice = slice(winStart,winStart+decodeWindowSize)
+                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][initialImage==img] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                             
                             # calculate population response latency for unit sample
-                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,stimWin,method='abs',thresh=1)[0])
+                            respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,stimWin,method='abs',thresh=0.5)[0])
                         
                         for model in modelNames:
                             result[exp][region][state]['changeScore'][model].append(changeScore[model].mean(axis=0))
@@ -981,10 +997,22 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['imageFeatureImportance'][model].append(np.mean(imageFeatureImportance[model],axis=0))
                             result[exp][region][state]['preImageScore'][model].append(preImageScore[model].mean(axis=0))
                             result[exp][region][state]['changeScoreWindows'][model].append(changeScoreWindows[model].mean(axis=0))
+                            result[exp][region][state]['changeScoreWindowsPredict'][model].append(changeScoreWindowsPredict[model].mean(axis=0))
                             result[exp][region][state]['imageScoreWindows'][model].append(imageScoreWindows[model].mean(axis=0))
+                            result[exp][region][state]['preImageScoreWindows'][model].append(preImageScoreWindows[model].mean(axis=0))
                         result[exp][region][state]['respLatency'].append(np.nanmean(respLatency))
     print(time.clock()-startTime)
 warnings.filterwarnings('default')
+
+
+# save result to pkl file
+pkl = fileIO.saveFile(fileType='*.pkl')
+pickle.dump(result,open(pkl,'wb'))
+
+# get result from pkl file
+pkl = fileIO.getFile(fileType='*.pkl')
+result = pickle.load(open(pkl,'rb'))
+
 
 # plot scores vs number of units
 for model in modelNames:
