@@ -354,7 +354,7 @@ regionNames = (
                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'))
               )
 regionNames = regionNames[:8]
-regionLabels = [r[1][0] for r in regionNames]
+regionLabels = [r[0] for r in regionNames]
 
 mouseIDs = [[] for r in regionNames]
 expDates =  [[] for r in regionNames]
@@ -538,9 +538,48 @@ for i,(sdfs,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs,passiveChangeS
         ax.set_xlabel('Time (ms)')
         ax.set_ylim([-spacing,ymax])
         ax.set_yticks(yticks)
-        ax.set_yticklabels([r[0] for r in regionsToUse])
+        ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
         ax.set_title(lbl)
     plt.tight_layout()
+
+    
+fig = plt.figure(figsize=(3,10))
+ax = fig.subplots(1)
+y = 0
+yticks = []
+norm = []
+xlim = [270,390]
+for j,(region,clr) in enumerate(regionsToUse[::-1]):
+    ind = regionLabels.index(region)
+    for i,(sdfs,lineStyle) in enumerate(zip((activeChangeSdfs[ind],activePreSdfs[ind],activeChangeSdfs[ind]-activePreSdfs[ind]),('-','--','-'))):
+        d = sdfs-sdfs[:,baseWin].mean(axis=1)[:,None]
+        m = d.mean(axis=0)
+        s = d.std(axis=0)/(len(sdfs)**0.5)
+        if i==0:
+            yticks.append(y)
+            norm.append(m.max())
+        m /= norm[j]
+        s /= norm[j]
+        m += yticks[j]
+        c,lw,alpha = ('k',3,1) if i==2 else (clr,1,1)
+        z = -(i-2)
+        ax.plot(m,lineStyle,color=c,lineWidth=lw,alpha=alpha,zorder=z)
+        ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25,zorder=z+1)
+        if i==0:
+            y = np.max(m+s)+spacing
+            ymax = y
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xticks(xlim)
+    ax.set_xticklabels(np.array(xlim)-250)
+    ax.set_xlim(xlim)
+    ax.set_xlabel('Time (ms)')
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
+    ax.set_ylim([-spacing,ymax])
+    ax.set_title('Active')
+plt.tight_layout()
 
 
 # plot baseline rate, change resp, change mod, and behav mod
@@ -855,15 +894,15 @@ nUnitSamples = 5
 nCrossVal = 3
 
 decodeWindowSize = 10
-decodeWindows = np.arange(stimWin.start,respWin.stop,decodeWindowSize)
+decodeWindows = np.arange(stimWin.start,750,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
 preImageDecodeWindows = np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
 
 # models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4),LinearDiscriminantAnalysis(),SVC(kernel='linear',C=1.0,probability=True)))
 # modelNames = ('randomForest','supportVector','LDA')
-models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4))
-modelNames = ('randomForest','supportVector')
+models = (RandomForestClassifier(n_estimators=100),)
+modelNames = ('randomForest',)
 
 behavStates = ('active','passive')
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
@@ -930,25 +969,25 @@ for expInd,exp in enumerate(exps):
                         for i,unitSamp in enumerate(unitSamples):
                             # decode image change and identity for full response window
                             # image change
-                            winSlice = slice(stimWin.start,respWin.stop)
-                            X = np.concatenate([s[:,unitSamp,winSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
-                            y = np.zeros(X.shape[0])
-                            y[:int(X.shape[0]/2)] = 1
-                            for model,name in zip(models,modelNames):
-                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-                                changeScore[name].append(cv['test_score'].mean())
-                                if name=='randomForest':
-                                    changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
-                                    changeFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
-                            # image identity
-                            imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
-                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-                            y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-                            for model,name in zip(models,modelNames):
-                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-                                imageScore[name].append(cv['test_score'].mean())
-                                if name=='randomForest':
-                                    imageFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
+#                            winSlice = slice(stimWin.start,respWin.stop)
+#                            X = np.concatenate([s[:,unitSamp,winSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
+#                            y = np.zeros(X.shape[0])
+#                            y[:int(X.shape[0]/2)] = 1
+#                            for model,name in zip(models,modelNames):
+#                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+#                                changeScore[name].append(cv['test_score'].mean())
+#                                if name=='randomForest':
+#                                    changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
+#                                    changeFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
+#                            # image identity
+#                            imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
+#                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+#                            y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+#                            for model,name in zip(models,modelNames):
+#                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+#                                imageScore[name].append(cv['test_score'].mean())
+#                                if name=='randomForest':
+#                                    imageFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
                             
                             # decode image change and identity for sliding windows
                             for j,winStart in enumerate(decodeWindows):
@@ -962,20 +1001,20 @@ for expInd,exp in enumerate(exps):
                                     if name=='randomForest':
                                         changeScoreWindowsPredict[name][i,j] = cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1]
                                 # image identity
-                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
-                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-                                for model,name in zip(models,modelNames):
-                                    imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+#                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
+#                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+#                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+#                                for model,name in zip(models,modelNames):
+#                                    imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                                     
                             # decode pre-change image identity for sliding windows
-                            for j,winStart in enumerate(preImageDecodeWindows):
-                                winSlice = slice(winStart,winStart+preImageDecodeWindowSize)
-                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][initialImage==img] for img in imageNames]
-                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
-                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
-                                for model,name in zip(models,modelNames):
-                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+#                            for j,winStart in enumerate(preImageDecodeWindows):
+#                                winSlice = slice(winStart,winStart+preImageDecodeWindowSize)
+#                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][initialImage==img] for img in imageNames]
+#                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
+#                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
+#                                for model,name in zip(models,modelNames):
+#                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                             
                             # calculate population response latency for unit sample
                             respLatency.append(findLatency(changeSDFs.transpose((1,0,2))[unitSamp].mean(axis=(0,1))[None,:],baseWin,stimWin,method='abs',thresh=0.5)[0])
@@ -1341,17 +1380,25 @@ for model in modelNames:
     ax.set_xlabel('Time (ms)')
 
 # plot pre-change image 
-for model in modelNames:
-    fig = plt.figure(facecolor='w',figsize=(10,10))
-    fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
-    gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
+for model in ('randomForest',):
+    fig = plt.figure(facecolor='w',figsize=(5,10))
+#    fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
+    gs = matplotlib.gridspec.GridSpec(len(regionLabels),1)
     for i,region in enumerate(regionLabels):
-        for j,state in enumerate(('active','passive')):
+        for j,state in enumerate(('active',)):
             ax = plt.subplot(gs[i,j])
             for exp in result:
-                s = result[exp][region][state]['preImageScore'][model]
-                if len(s)>0:
-                    ax.plot(preTruncTimes,s[0],'k')
+                regionScore = []
+                for exp in result:
+                    s = result[exp][region][state]['preImageScore'][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
+                n = len(regionScore)
+                if n>0:
+                    m = np.mean(regionScore,axis=0)
+                    s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+                    ax.plot(preTruncTimes,m,color='k')
+                    ax.fill_between(preTruncTimes,m+s,m-s,color='k',alpha=0.025)
             for side in ('right','top'):
                 ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
@@ -1366,7 +1413,7 @@ for model in modelNames:
                 ax.set_yticklabels([])    
             if i==0:
                 if j==0:
-                    ax.set_title(region+', '+state)
+                    ax.set_title(region)
                 else:
                     ax.set_title(state)
             elif j==0:
@@ -1374,6 +1421,7 @@ for model in modelNames:
             if i==0 and j==0:
                 ax.set_ylabel('Decoder Accuracy')
     ax.set_xlabel('Time before change (ms)')
+    plt.tight_layout()
 
 # plot visual response, change decoding, and image decoding latencies
 latencyLabels = {'resp':'Visual Response Latency','change':'Change Decoding Latency','image':'Image Decoding Latency'}
@@ -1462,7 +1510,7 @@ for model in ('randomForest',):
         for probe in result[exp]:
             for region in regionLabels:
                     for state in ('active','passive'):
-                        p = result[exp][region][state]['changePredictProbValid'][model]
+                        p = result[exp][region][state]['changePredict'][model]
                         if len(p)>0:
                             fracSame[exp][region][state] = np.corrcoef(behavior,p[0])[0,1]
         
@@ -1554,8 +1602,8 @@ for model in ('randomForest',):
             if n>0:
                 m = np.mean(regionScore,axis=0)
                 s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
-                ax.plot(decodeWindows[0:-1]+5,m,color=clr,label=score[:score.find('S')])
-                ax.fill_between(decodeWindows[0:-1]+5,m+s,m-s,color=clr,alpha=0.25)
+                ax.plot(decodeWindows+decodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
+                ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
             for side in ('right','top'):
                 ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False,labelsize=8)
@@ -1567,8 +1615,9 @@ for model in ('randomForest',):
                 yticks = [0.1,0.75]
                 ylim = [0.1,0.75]
                 title = 'Image Identity'
-            ax.set_xticks([0,50,100,150,200,250])
-            ax.set_xlim([0,decodeWindows[-1]])
+            ax.set_xticks([250,300,350,400,450,500])
+            ax.set_xticklabels([0,50,100,150,200,250])
+            ax.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
             ax.set_yticks(yticks)
             ax.set_ylim(ylim)
             if i<len(regionLabels)-1:
@@ -1579,6 +1628,39 @@ for model in ('randomForest',):
                 ax.set_ylabel(region,fontsize=10)
             if i==0:
                 ax.set_title(title,fontsize=10)
+    plt.tight_layout()
+    
+for model in ('randomForest',):
+    fig = plt.figure(facecolor='w',figsize=(4,10))
+    fig.text(0.55,1,'Decoder Accuracy, Pre-change Image Indentity',fontsize=10,horizontalalignment='center',verticalalignment='top')
+    gs = matplotlib.gridspec.GridSpec(len(regionLabels),1)
+    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+        ax = plt.subplot(gs[i,0])
+        ax.plot([preImageDecodeWindows[0],preImageDecodeWindows[-1]+preImageDecodeWindowSize],[0.125,0.125],'--',color='0.5')
+        regionScore = []
+        for exp in result:
+            s = result[exp][region]['active']['preImageScoreWindows'][model]
+            if len(s)>0:
+                regionScore.append(s[0])
+        n = len(regionScore)
+        if n>0:
+            m = np.mean(regionScore,axis=0)
+            s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+            ax.plot(preImageDecodeWindows+preImageDecodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
+            ax.fill_between(preImageDecodeWindows+preImageDecodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.set_xticks([250,500,750,1000])
+        ax.set_xticklabels([0,250,500,750])
+        ax.set_xlim([preImageDecodeWindows[0],preImageDecodeWindows[-1]+preImageDecodeWindowSize])
+        ax.set_yticks([0.1,0.75])
+        ax.set_ylim([0.1,0.775])
+        if i<len(regionLabels)-1:
+            ax.set_xticklabels([])
+        else:
+            ax.set_xlabel('Time (ms)',fontsize=10)
+        ax.set_ylabel(region,fontsize=10)
     plt.tight_layout()
 
 #
@@ -1638,6 +1720,7 @@ imgNames = np.unique(data[exps[0]]['initialImage'])
 preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(3)]
 hitMatrix = np.zeros((len(regionLabels),len(imgNames),len(imgNames)))
 missMatrix = hitMatrix.copy()
+lickLatMatrix = hitMatrix.copy()
 for exp in exps:
     print(exp)
     initialImage = data[exp]['initialImage'][:]
@@ -1647,6 +1730,11 @@ for exp in exps:
     hit = response=='hit'
     engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
     trials = engaged & (hit | (response=='miss'))
+    
+    lickTimes = data[exp]['lickTimes'][:]
+    firstLickInd = np.searchsorted(lickTimes,changeTimes[trials])
+    lickLat = lickTimes[firstLickInd]-changeTimes[trials]
+    
     for r,region in enumerate(regionLabels):
         preSdfs = []
         changeSdfs = []
@@ -1672,6 +1760,7 @@ for exp in exps:
                 changeModList[r][i][j].append(np.clip((changeResp-preResp)/(changeResp+preResp),-1,1))
                 if response[trial]=='hit':
                     hitMatrix[r,i,j] += 1
+                    lickLatMatrix[r,i,j] += lickLat[ind]
                 else:
                     missMatrix[r,i,j] += 1
 
@@ -1687,45 +1776,20 @@ for r,_ in enumerate(regionLabels):
                 changeModMatrix[r,i,j] = np.nanmean(np.concatenate(changeModList[r][i][j]))
 popChangeModMatrix = np.clip((changeRespMatrix-preRespMatrix)/(changeRespMatrix+preRespMatrix),-1,1)
 
-hitRate = hitMatrix/(hitMatrix+missMatrix)
+nMatrix = hitMatrix+missMatrix
+hitRate /= nMatrix
+lickLatMatrix /= hitMatrix
 imgOrder = np.argsort(np.nanmean(hitRate,axis=(0,1)))
 nonDiag = ~np.eye(len(imgNames),dtype=bool)   
 
 
-for ind,(region,hr) in enumerate(zip(regionLabels,hitRate)):
-    fig = plt.figure(facecolor='w',figsize=(7,9))
-    fig.text(0.5,0.99,region,fontsize=12,horizontalalignment='center',verticalalignment='top')
-    gs = matplotlib.gridspec.GridSpec(4,2)
+for region,n,hr,lat,preResp,changeResp,changeMod in zip(regionLabels,nMatrix,hitRate,lickLatMatrix,preRespMatrix,changeRespMatrix,changeModMatrix):
+    fig = plt.figure(facecolor='w',figsize=(10,10))
+    fig.text(0.01,0.99,region,fontsize=12,horizontalalignment='left',verticalalignment='top')
+    gs = matplotlib.gridspec.GridSpec(4,3)
     
-    ax = plt.subplot(gs[0,0])
-    im = ax.imshow(hr[imgOrder,:][:,imgOrder],cmap='magma')
-    ax.tick_params(direction='out',top=False,right=False,labelsize=6)
-    ax.set_xticks(np.arange(len(imgNames)))
-    ax.set_yticks(np.arange(len(imgNames)))
-    ax.set_xlabel('Change Image',fontsize=8)
-    ax.set_ylabel('Initial Image',fontsize=8)
-    ax.set_title('Hit Rate',fontsize=10)
-    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
-    cb.ax.locator_params(nbins=3)
-    cb.ax.tick_params(labelsize=6) 
-    
-    ax = plt.subplot(gs[0,1])
-    nMatrix = hitMatrix[ind]+missMatrix[ind]
-    nMatrix[~nonDiag] = np.nan
-    im = ax.imshow(nMatrix[imgOrder,:][:,imgOrder],cmap='magma')
-    ax.tick_params(direction='out',top=False,right=False,labelsize=6)
-    ax.set_xticks(np.arange(len(imgNames)))
-    ax.set_yticks(np.arange(len(imgNames)))
-    ax.set_xlabel('Change Image',fontsize=8)
-    ax.set_ylabel('Initial Image',fontsize=8)
-    ax.set_title('Number of Trials',fontsize=10)
-    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
-    cb.ax.locator_params(nbins=3)
-    cb.ax.tick_params(labelsize=6)
-    
-    for i,(d,lbl) in enumerate(zip((preRespMatrix,changeRespMatrix,changeModMatrix),('Pre Resp','Change Resp','Change Mod'))):
-        d = d[ind]
-        ax = plt.subplot(gs[i+1,0])
+    for j,(d,lbl) in enumerate(zip((n,hr,lat),('Number of Trials','Hit Rate','Hit Trial Lick Latency (ms)'))):
+        ax = plt.subplot(gs[0,j])
         im = ax.imshow(d[imgOrder,:][:,imgOrder],cmap='magma')
         ax.tick_params(direction='out',top=False,right=False,labelsize=6)
         ax.set_xticks(np.arange(len(imgNames)))
@@ -1734,21 +1798,35 @@ for ind,(region,hr) in enumerate(zip(regionLabels,hitRate)):
         ax.set_ylabel('Initial Image',fontsize=8)
         ax.set_title(lbl,fontsize=10)
         cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
-        cb.ax.locator_params(nbins=3)
+        cb.ax.tick_params(labelsize=6)
+    
+    for i,(d,ylbl) in enumerate(zip((preResp,changeResp,changeMod),('Pre Resp','Change Resp','Change Mod'))):
+        ax = plt.subplot(gs[i+1,0])
+        im = ax.imshow(d[imgOrder,:][:,imgOrder],cmap='magma')
+        ax.tick_params(direction='out',top=False,right=False,labelsize=6)
+        ax.set_xticks(np.arange(len(imgNames)))
+        ax.set_yticks(np.arange(len(imgNames)))
+        ax.set_xlabel('Change Image',fontsize=8)
+        ax.set_ylabel('Initial Image',fontsize=8)
+        ax.set_title(ylbl,fontsize=10)
+        cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
         cb.ax.tick_params(labelsize=6)
         
-        ax = plt.subplot(gs[i+1,1])
-        ax.plot(hr[nonDiag],d[nonDiag],'ko')
-        slope,yint,rval,pval,stderr = scipy.stats.linregress(hr[nonDiag],d[nonDiag])
-        x = np.array([hr[nonDiag].min(),hr[nonDiag].max()])
-        ax.plot(x,slope*x+yint,'0.5')
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-        ax.set_xlabel('Hit Rate',fontsize=10)
-        ax.set_ylabel(lbl,fontsize=10)
-        r,p = scipy.stats.pearsonr(hr[nonDiag],d[nonDiag])
-        ax.set_title('Pearson: r = '+str(round(r,2))+', p = '+'{0:1.1e}'.format(p),fontsize=8)
+        for j,(b,xlbl) in enumerate(zip((hr,lat),('Hit Rate','Hit Trial Lick Latency (ms)'))):   
+            ax = plt.subplot(gs[i+1,j+1])
+            ax.plot(b[nonDiag],d[nonDiag],'ko')
+            slope,yint,rval,pval,stderr = scipy.stats.linregress(b[nonDiag],d[nonDiag])
+            x = np.array([b[nonDiag].min(),b[nonDiag].max()])
+            ax.plot(x,slope*x+yint,'0.5')
+            for side in ('right','top'):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+            if i==2:
+                ax.set_xlabel(xlbl,fontsize=10)
+            if j==0:
+                ax.set_ylabel(ylbl,fontsize=10)
+            r,p = scipy.stats.pearsonr(b[nonDiag],d[nonDiag])
+            ax.set_title('Pearson: r = '+str(round(r,2))+', p = '+'{0:1.1e}'.format(p),fontsize=8)
     plt.tight_layout()
 
 
