@@ -505,9 +505,9 @@ regionsToUse = (('LGd',(0,0,0)),
                 ('SUB',subcortical_cmap(0.9)),
                 ('hipp',subcortical_cmap(1.0)))
 
-spacing = 0.1
+spacing = -0.1
 for i,(sdfs,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs,passiveChangeSdfs,passivePreSdfs),('Active Change','Active Pre','Passive Change','Passive Pre'))):
-    fig = plt.figure(figsize=(6,10))
+    fig = plt.figure(figsize=(4.5,10))
     ax = fig.subplots(1)
     if i==0:
         y = 0
@@ -536,7 +536,7 @@ for i,(sdfs,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs,passiveChangeS
         ax.set_xticks([250,350,450,550])
         ax.set_xticklabels([0,100,200,300,400])
         ax.set_xlabel('Time (ms)')
-        ax.set_ylim([-spacing,ymax])
+        ax.set_ylim([-0.1,ymax-spacing+0.1])
         ax.set_yticks(yticks)
         ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
         ax.set_title(lbl)
@@ -548,10 +548,10 @@ ax = fig.subplots(1)
 y = 0
 yticks = []
 norm = []
-xlim = [270,390]
+xlim = [250,500]
 for j,(region,clr) in enumerate(regionsToUse[::-1]):
     ind = regionLabels.index(region)
-    for i,(sdfs,lineStyle) in enumerate(zip((activeChangeSdfs[ind],activePreSdfs[ind],activeChangeSdfs[ind]-activePreSdfs[ind]),('-','--','-'))):
+    for i,(sdfs,lineStyle) in enumerate(zip((activeChangeSdfs[ind],activePreSdfs[ind]),('-','--'))):
         d = sdfs-sdfs[:,baseWin].mean(axis=1)[:,None]
         m = d.mean(axis=0)
         s = d.std(axis=0)/(len(sdfs)**0.5)
@@ -561,7 +561,7 @@ for j,(region,clr) in enumerate(regionsToUse[::-1]):
         m /= norm[j]
         s /= norm[j]
         m += yticks[j]
-        c,lw,alpha = ('k',3,1) if i==2 else (clr,1,1)
+        c,lw,alpha = ('0.4',3,1) if i==2 else (clr,1,1)
         z = -(i-2)
         ax.plot(m,lineStyle,color=c,lineWidth=lw,alpha=alpha,zorder=z)
         ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25,zorder=z+1)
@@ -571,14 +571,50 @@ for j,(region,clr) in enumerate(regionsToUse[::-1]):
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xticks(xlim)
-    ax.set_xticklabels(np.array(xlim)-250)
+    ax.set_xticks([250,350,450])
+    ax.set_xticklabels([0,100,200])
     ax.set_xlim(xlim)
     ax.set_xlabel('Time (ms)')
     ax.set_yticks(yticks)
     ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
-    ax.set_ylim([-spacing,ymax])
-    ax.set_title('Active')
+    ax.set_ylim([-0.1,ymax-spacing+0.1])
+plt.tight_layout()
+
+fig = plt.figure(figsize=(3,10))
+ax = fig.subplots(1)
+y = 0
+yticks = []
+norm = []
+xlim = [250,500]
+for j,(region,clr) in enumerate(regionsToUse[::-1]):
+    ind = regionLabels.index(region)
+    for i,(sdfs,lineStyle) in enumerate(zip((activeChangeSdfs[ind],passiveChangeSdfs[ind]),('-','--'))):
+        d = sdfs-sdfs[:,baseWin].mean(axis=1)[:,None]
+        m = d.mean(axis=0)
+        s = d.std(axis=0)/(len(sdfs)**0.5)
+        if i==0:
+            yticks.append(y)
+            norm.append(m.max())
+        m /= norm[j]
+        s /= norm[j]
+        m += yticks[j]
+        c,lw,alpha = ('0.4',3,1) if i==2 else (clr,1,1)
+        z = -(i-2)
+        ax.plot(m,lineStyle,color=c,lineWidth=lw,alpha=alpha,zorder=z)
+        ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25,zorder=z+1)
+        if i==0:
+            y = np.max(m+s)+spacing
+            ymax = y
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xticks([250,350,450])
+    ax.set_xticklabels([0,100,200])
+    ax.set_xlim(xlim)
+    ax.set_xlabel('Time (ms)')
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
+    ax.set_ylim([-0.1,ymax-spacing+0.1])
 plt.tight_layout()
 
 
@@ -893,7 +929,7 @@ nUnits = [20]
 nUnitSamples = 5
 nCrossVal = 3
 
-decodeWindowSize = 10
+decodeWindowSize = 5
 decodeWindows = np.arange(stimWin.start,stimWin.start+500,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
@@ -1137,13 +1173,11 @@ for model in modelNames:
         ax.set_xlabel('Time (ms)')
     
 # compare scores for 150 ms window
-fig = plt.figure(facecolor='w',figsize=(10,6))
-xticks = np.arange(len(regionLabels))
-xlim = [xticks[0]-0.5,xticks[-1]+0.5]
-for j,(score,title) in enumerate(zip(('changeScore','imageScore'),('Change','Image Identity'))):
-    ax = plt.subplot(1,2,j+1)
-    if j==0:
-        ax.plot(xlim,[0.5,0.5],'--',color='0.5')
+for score,ymin,title in zip(('changeScore','imageScore'),(0.5,0.125),('Change','Image Identity')):
+    fig = plt.figure(facecolor='w')
+    xticks = np.arange(len(regionLabels))
+    xlim = [xticks[0]-0.5,xticks[-1]+0.5]
+    ax = fig.subplots(1)
     for model,lbl in zip(('randomForest','supportVector'),('Random Forest','Linear SVM')):
         mean = np.full(len(regionLabels),np.nan)
         sem = mean.copy()
@@ -1168,14 +1202,48 @@ for j,(score,title) in enumerate(zip(('changeScore','imageScore'),('Change','Ima
     ax.set_xticks(xticks)
     ax.set_xticklabels(regionLabels)
     ax.set_xlim(xlim)
-    ax.set_ylim([0.4,0.9])
-    if j==0:
-        ax.set_ylabel('Decoder Accuracy')
-    else:
-        ax.set_yticklabels([])
-        ax.legend()
+    ax.set_yticks([ymin,0.25,0.5,0.75,1])
+    ax.set_ylim([ymin,1])
+    ax.set_ylabel('Decoder Accuracy')
     ax.set_title(title)
+    ax.legend()
     plt.tight_layout()
+
+#fig = plt.figure(facecolor='w')
+#xticks = np.arange(len(regionLabels))
+#xlim = [xticks[0]-0.5,xticks[-1]+0.5]
+#ax1 = fig.subplots(1)
+#ax2 = ax1.twinx()
+#for ax,score,ymin in zip((ax1,ax2),('changeScore','imageScore'),(0.5,0.125)):
+#    for model,lbl in zip(('randomForest',),('Random Forest',)):
+#        mean = np.full(len(regionLabels),np.nan)
+#        sem = mean.copy()
+#        for i,region in enumerate(regionLabels):
+#            regionScore = []
+#            for exp in result:
+#                s = result[exp][region]['active'][score][model]
+#                if len(s)>0:
+#                    regionScore.append(s[0][-1])
+#            n = len(regionScore)
+#            if n>0:
+#                mean[i] = np.mean(regionScore)
+#                sem[i] = np.std(regionScore)/(n**0.5)
+#        for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
+#            mfc = clr if score=='changeScore' else 'none'
+#            l = lbl if i==0 else None
+#            ax.plot(x,m,'o',ms=10,mec=clr,mfc=mfc,label=l)
+#            ax.plot([x,x],[m-s,m+s],color=clr)           
+#    for side in ('top',):
+#        ax.spines[side].set_visible(False)
+#    ax.tick_params(direction='out',top=False)
+#    ax.set_xticks(xticks)
+#    ax.set_xticklabels(regionLabels)
+#    ax.set_xlim(xlim)
+#    ax.set_yticks([ymin,0.25,0.5,0.75,1])
+#    ax.set_ylim([ymin,1])
+#    ax.set_title('Decoder Accuracy')
+##    ax.legend()
+#    plt.tight_layout()
     
 # image and change feature importance
 for model in ('randomForest',):
@@ -1267,10 +1335,56 @@ for model in ('randomForest',):
                 ax.set_title(title,fontsize=10)
     plt.tight_layout()
 
+# overlay of change and image decoding
+for model in ('randomForest',):
+    fig = plt.figure(facecolor='w',figsize=(4,10))
+    fig.text(0.5,1,'Decoder Accuracy',fontsize=10,horizontalalignment='center',verticalalignment='top')
+    gs = matplotlib.gridspec.GridSpec(len(regionLabels),1)
+    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+        ax1 = plt.subplot(gs[i,0])
+        ax2 = ax1.twinx()
+        for j,(score,ax) in enumerate(zip(('changeScoreWindows','imageScoreWindows'),(ax1,ax2))):
+            if score=='changeScoreWindows':
+                lineStyle = '-'
+                yticks = [0.5,0.75]
+                ylim = [yticks[0]-0.05*(yticks[1]-yticks[0]),0.75]
+                lbl = 'Change'
+            else:
+                lineStyle = '--'
+                yticks = [0.125,0.75]
+                ylim = [yticks[0]-0.05*(yticks[1]-yticks[0]),0.75]
+                lbl = 'Image Identity'
+            regionScore = []
+            for exp in result:
+                s = result[exp][region]['active'][score][model]
+                if len(s)>0:
+                    regionScore.append(s[0])
+            n = len(regionScore)
+            if n>0:
+                m = np.mean(regionScore,axis=0)
+                s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+                ax.plot(decodeWindows+decodeWindowSize/2,m,lineStyle,color=clr,label=lbl)
+                ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
+            for side in ('top',):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,labelsize=8)
+            ax.set_xticks([250,300,350,400])
+            ax.set_xticklabels([0,50,100,150])
+            ax.set_xlim([250,400])
+            ax.set_yticks(yticks)
+            ax.set_ylim(ylim)
+            if i<len(regionLabels)-1:
+                ax.set_xticklabels([])
+            else:
+                ax.set_xlabel('Time (ms)',fontsize=10)
+#                ax.set_ylabel(lbl,fontsize=10)
+            ax.set_title(region,fontsize=10)
+    plt.tight_layout()
+
 # pre-change image decoding (sliding windows) 
 for model in ('randomForest',):
     fig = plt.figure(facecolor='w',figsize=(4,10))
-    fig.text(0.55,1,'Decoder Accuracy, Pre-change Image Indentity',fontsize=10,horizontalalignment='center',verticalalignment='top')
+    fig.text(0.55,1,'Decoder Accuracy, Pre-change Image Identity',fontsize=10,horizontalalignment='center',verticalalignment='top')
     gs = matplotlib.gridspec.GridSpec(len(regionLabels),1)
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
         ax = plt.subplot(gs[i,0])
