@@ -1426,10 +1426,10 @@ for model in ('randomForest',):#modelNames:
                 s = result[exp][region][state]['respLatency']
                 if len(s)>0:
                     latency[exp][region][state]['resp'] = s[0]
-                for score,decodeThresh in zip(('changeScore','imageScore'),(0.625,0.25)):
+                for score,decodeThresh in zip(('changeScoreWindows','imageScoreWindows'),(0.5+0.1*(1-0.5),0.125+0.1*(1-0.125))):
                     s = result[exp][region][state][score][model]
                     if len(s)>0:
-                        intpScore = np.interp(np.arange(truncTimes[0],truncTimes[-1]+1),truncTimes,s[0])
+                        intpScore = np.interp(np.arange(decodeWindows[0],decodeWindows[-1]+1)+decodeWindowSize/2,decodeWindows+decodeWindowSize/2,s[0])
                         latency[exp][region][state][score[:score.find('S')]] = findLatency(intpScore,method='abs',thresh=decodeThresh)[0]
     
     fig = plt.figure(facecolor='w',figsize=(10,10))
