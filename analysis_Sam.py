@@ -105,7 +105,6 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                     data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
                     data[expName]['passiveRunTime'] = obj.passiveRunTime
                     data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
-                # reward times
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
@@ -1411,7 +1410,7 @@ for model in ('randomForest',):
         if i<len(regionLabels)-1:
             ax.set_xticklabels([])
         else:
-            ax.set_xlabel('Time (ms)',fontsize=10)
+            ax.set_xlabel('Time from pre-change flash onset (ms)',fontsize=10)
         ax.set_ylabel(region,fontsize=10)
     plt.tight_layout()
 
