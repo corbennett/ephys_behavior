@@ -99,6 +99,7 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 data[expName]['behaviorRunTime'] = obj.behaviorRunTime
                 data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
                 data[expName]['lickTimes'] = obj.lickTimes
+                data[expName]['rewardTimes'] = obj.rewardTimes[trials]
                 if obj.passive_pickle_file is not None:
                     data[expName]['passiveFlashTimes'] = obj.passiveFrameAppearTimes[obj.flashFrames]
                     data[expName]['passiveOmitFlashTimes'] = obj.passiveFrameAppearTimes[obj.omittedFlashFrames]
