@@ -242,8 +242,7 @@ exps = Aexps+Bexps
 
 baseWin = slice(0,250)
 stimWin = slice(250,500)
-respWinOffset = 30
-respWin = slice(stimWin.start+respWinOffset,stimWin.stop+respWinOffset)
+respWin = slice(stimWin.start+30,stimWin.start+280)
 
 
 
@@ -353,7 +352,7 @@ regionNames = (
                ('SUB',('SUB','PRE','POST')),
                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'))
               )
-regionNames = regionNames[:8]
+#regionNames = regionNames[:8]
 regionLabels = [r[0] for r in regionNames]
 
 mouseIDs = [[] for r in regionNames]
@@ -1492,41 +1491,37 @@ for model in ('randomForest',):#modelNames:
             if i==0:
                 ax.set_title(state)
 
-# plot correlation of model prediction and mouse behavior
-for model in ('randomForest',):
-    corr = {exp: {region: {state: np.nan for state in ('active','passive')} for region in regionLabels} for exp in exps}
-    for exp in exps:        
-        behavior = result[exp]['behaviorResponse'][:].astype(float)
-        for probe in result[exp]:
-            for region in regionLabels:
-                    for state in ('active','passive'):
-                        p = result[exp][region][state]['changePredict'][model]
-                        if len(p)>0:
-                            corr[exp][region][state] = np.corrcoef(behavior,p[0])[0,1]
-        
-    fig = plt.figure(facecolor='w',figsize=(6,4))
-    ax = plt.subplot(1,1,1)
-    xticks = np.arange(len(regionLabels))
-    xlim = [-0.5,len(regionLabels)-0.5]
-    ax.plot(xlim,[0,0],'--',color='0.5')
-    for state,fill in zip(('active','passive'),(True,False)):
-        regionData = [[corr[exp][region][state] for exp in corr] for region in regionLabels]
-        mean = np.array([np.nanmean(d) for d in regionData])
-        sem = np.array([np.nanstd(d)/(np.sum(~np.isnan(d))**0.5) for d in regionData])
-        for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
+# plot correlation of model prediction and mouse behavior        
+fig = plt.figure(facecolor='w',figsize=(6,4))
+ax = plt.subplot(1,1,1)
+xticks = np.arange(len(regionLabels))
+xlim = [-0.5,len(regionLabels)-0.5]
+ax.plot(xlim,[0,0],'--',color='0.5')
+for state,fill in zip(('active','passive'),(True,False)):
+    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+        regionData = []
+        for exp in result:
+            behavior = result[exp]['behaviorResponse'][:].astype(float)
+            s = result[exp][region][state]['changePredict'][model]
+            if len(s)>0:
+                regionData.append(np.corrcoef(behavior,s[0])[0,1])
+        n = len(regionData)
+        if n>0:
+            m = np.mean(regionData)
+            s = np.std(regionData)/(n**0.5)
             mfc = clr if fill else 'none'
             lbl = state if i==0 else None
-            ax.plot(x,m,'o',mec=clr,mfc=mfc,label=lbl)
-            ax.plot([x,x],[m-s,m+s],color=clr)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xlim(xlim)
-    ax.set_xticks(xticks)
-    ax.set_xticklabels(regionLabels)
-    ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
-    ax.legend()
-    plt.tight_layout()
+            ax.plot(i,m,'o',mec=clr,mfc=mfc,label=lbl)
+            ax.plot([i,i],[m-s,m+s],color=clr)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim(xlim)
+ax.set_xticks(xticks)
+ax.set_xticklabels(regionLabels)
+ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
+ax.legend()
+plt.tight_layout()
     
 for model in ('randomForest',):    
     fig = plt.figure(facecolor='w',figsize=(6,10))
@@ -1535,16 +1530,16 @@ for model in ('randomForest',):
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
         for j,state in enumerate(('active','passive')):
             ax = plt.subplot(gs[i,j])
-            regionScore = []
+            regionData = []
             for exp in result:
                 behavior = result[exp]['behaviorResponse'][:].astype(float)
-                s = result[exp][region][state]['changeScoreWindowsPredict'][model]
+                s = result[exp][region][state]['changePredictWindows'][model]
                 if len(s)>0:
-                    regionScore.append([np.corrcoef(behavior,p)[0,1] for p in s[0]])
-            n = len(regionScore)
+                    regionData.append([np.corrcoef(behavior,p)[0,1] for p in s[0]])
+            n = len(regionData)
             if n>0:
-                m = np.mean(regionScore,axis=0)
-                s = np.std(regionScore,axis=0)/(n**0.5)
+                m = np.mean(regionData,axis=0)
+                s = np.std(regionData,axis=0)/(n**0.5)
                 ax.plot(decodeWindows+decodeWindowSize/2,m,color=clr)
                 ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
             for side in ('right','top'):
