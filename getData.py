@@ -233,10 +233,12 @@ class behaviorEphys():
         # get run start times
         self.behaviorRunStartTimes = find_run_transitions(self.behaviorRunSpeed, self.behaviorRunTime)
     
-        #get lick times
+        #get lick and reward times
         self.lickTimes = probeSync.get_sync_line_data(self.syncDataset, 'lick_sensor')[0]
         if len(self.lickTimes)==0:
             self.lickTimes = self.vsyncTimes[np.concatenate([lf for lf in self.trials['lick_frames']]).astype(int)]
+            
+        self.rewardTimes = self.vsyncTimes[self.trials['reward_frames'].astype(int)]
         
     
     def getEyeTrackingData(self):
