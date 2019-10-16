@@ -220,10 +220,12 @@ def calculate_lifetime_sparseness(mean_response_vector):
     return ls
 
 
-def formatFigure(fig, ax, title=None, xLabel=None, yLabel=None, xTickLabels=None, yTickLabels=None, blackBackground=False, saveName=None):
+def formatFigure(fig, ax, title=None, xLabel=None, yLabel=None, xTickLabels=None, yTickLabels=None, blackBackground=False, saveName=None, no_spines=False):
     fig.set_facecolor('w')
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
+    spinesToHide = ['right', 'top', 'left', 'bottom'] if no_spines else ['right', 'top']
+    for spines in spinesToHide:
+        ax.spines[spines].set_visible(False)
+
     ax.tick_params(direction='out',top=False,right=False)
     
     if title is not None:

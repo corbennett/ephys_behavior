@@ -10,6 +10,8 @@ import h5py, os
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from analysis_utils import formatFigure
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import Rectangle
 
 popFile = r"Z:\analysis\popData.hdf5"
 data = h5py.File(popFile)
@@ -71,35 +73,42 @@ lickTimes = d['lickTimes'][()]
 changeTimes = d['behaviorChangeTimes'][()]
 omitTimes = d['behaviorOmitFlashTimes'][()]
 
+cortical_cmap = cm.plasma
+#cortical_cmap = cm.viridis
+subcortical_cmap = cm.Reds
 areas = (
-         ('VISp', ('VISp')),
-         ('VISl', ('VISl')),
-         ('VISrl', ('VISrl')),
-         ('VISal', ('VISal')),
-         ('VISpm', ('VISpm')),
-         ('VISam', ('VISam')),
-         ('LGd', ('LGd')),
-         ('LP', ('LP')),
-         ('hipp', ('CA1', 'CA3', 'DG-mo', 'DG-sg', 'DG-po')),
-         ('SUB', ('PRE', 'POST', 'SUB')),
-         ('MB', ('MB', 'MRN')),
+         ('VISp', ('VISp'), cortical_cmap(0)),
+         ('VISl', ('VISl'), cortical_cmap(0.1)),
+         ('VISrl', ('VISrl'), cortical_cmap(0.2)),
+         ('VISal', ('VISal'), cortical_cmap(0.3)),
+         ('VISpm', ('VISpm'), cortical_cmap(0.4)),
+         ('VISam', ('VISam'), cortical_cmap(0.5)),
+         ('LGd', ('LGd'), subcortical_cmap(0)),
+         ('LP', ('LP'), subcortical_cmap(0)),
+         ('hipp', ('CA1', 'CA3', 'DG-mo', 'DG-sg', 'DG-po'), subcortical_cmap(0.6)),
+         ('SUB', ('PRE', 'POST', 'SUB'), subcortical_cmap(0.7)),
+         ('APN', ('APN'), subcortical_cmap(1.0)),
+         ('MB', ('MB', 'MRN'), subcortical_cmap(0.8)),
 #         ('MRN', ('MRN')),
-         ('SCd', ('SCig', 'SCig-b'))
+         ('SCd', ('SCig', 'SCig-b'), subcortical_cmap(0.9))
+         
         )
-cmap = cm.nipy_spectral_r
-cmap= cm.rainbow
-trialwin = 10
-for changeTrial in np.where(changeTrialIndex)[0][:2]:
-    sessionStartTime = behaviorFlashTimes[changeTrial-trialwin]
-    sessionEndTime = behaviorFlashTimes[changeTrial+trialwin]
-    trialsToRaster = slice(changeTrial-trialwin, changeTrial+trialwin)
+
+#cmap= cm.gnuplot2_r
+#cmap = cm.brg
+pretrialwin = 3
+posttrialwin= 7
+for changeTrial in np.where(changeTrialIndex)[0][:5]:
+    sessionStartTime = behaviorFlashTimes[changeTrial-pretrialwin]
+    sessionEndTime = behaviorFlashTimes[changeTrial+posttrialwin]
+    trialsToRaster = slice(changeTrial-pretrialwin, changeTrial+posttrialwin)
     trialTensor = tensor_active[:, :, trialsToRaster]
     #trialTensor = np.reshape(trialTensor, (trialTensor.shape[0], -1))
     trialTensor = np.hstack([trialTensor[:,:,i] for i in np.arange(trialTensor.shape[2])])
     unitCounter = 0
-    fig, ax = plt.subplots(figsize=(12,8))
-    for ia, (area, parts) in enumerate(areas[::-1]):
-        regioncolor = cmap(ia/(len(areas)-1))
+    fig, ax = plt.subplots(figsize=(12,12))
+    for ia, (area, parts,regioncolor) in enumerate(areas[::-1]):
+#        regioncolor = cmap(0.8*ia/(len(areas)-1))
         areaCounter=0
         for iu, ur in enumerate(unitRegion):
             if ur in parts:
@@ -112,8 +121,8 @@ for changeTrial in np.where(changeTrialIndex)[0][:2]:
         if areaCounter>0:
             ax.text(1.05*ax.get_xlim()[1], unitCounter - areaCounter/2, area, color=regioncolor)
     windowLicks = 1000*lickTimes[(sessionStartTime<lickTimes)&(lickTimes<sessionEndTime)] - 1000*sessionStartTime
-    ax.plot(windowLicks, -10*np.ones(windowLicks.size), 'ko')
-    formatFigure(fig,ax)
+    ax.plot(windowLicks, -20*np.ones(windowLicks.size), 'ko')
+    formatFigure(fig,ax, no_spines=True)
     
     axylims = ax.get_ylim()
     windowChanges = 1000*changeTimes[(sessionStartTime<changeTimes)&(changeTimes<sessionEndTime)] - 1000*sessionStartTime
@@ -122,6 +131,12 @@ for changeTrial in np.where(changeTrialIndex)[0][:2]:
     windowOmits = 1000*omitTimes[(sessionStartTime<omitTimes)&(omitTimes<sessionEndTime)] - 1000*sessionStartTime
     ax.vlines(windowOmits, *axylims, color='g', alpha=0.4)
     
+    for i, flashx in enumerate(np.arange(0, 750*(pretrialwin+posttrialwin+1), 750)):
+        if i<pretrialwin:
+            rect = Rectangle((flashx, unitCounter*1.1), 250, 100, facecolor='k', alpha=0.5)
+        else:
+            rect = Rectangle((flashx, unitCounter*1.1), 250, 100, facecolor='g', alpha=0.5)
+        ax.add_artist(rect)
 
 
 
