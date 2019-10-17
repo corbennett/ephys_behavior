@@ -917,22 +917,37 @@ ax.legend()
 
 
 ###### decoding analysis
-    
-regionLabels = ('LGd','VISp','VISl','VISrl','VISal','VISpm','VISam','LP')
-#regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
+
 cortical_cmap = plt.cm.plasma
 subcortical_cmap = plt.cm.Reds
-regionColors = ((0,0,0),cortical_cmap(0),cortical_cmap(0.1),cortical_cmap(0.2),cortical_cmap(0.3),cortical_cmap(0.4),cortical_cmap(0.5),subcortical_cmap(0.4))
-
-nUnits = [20]
+regionsToUse = (('LGd',('LGd',),(0,0,0)),
+                ('V1',('VISp',),cortical_cmap(0)),
+                ('LM',('VISl',),cortical_cmap(0.1)),
+                ('RL',('VISrl',),cortical_cmap(0.2)),
+                ('AL',('VISal',),cortical_cmap(0.3)),
+                ('PM',('VISpm',),cortical_cmap(0.4)),
+                ('AM',('VISam',),cortical_cmap(0.5)),
+                ('LP',('LP',),subcortical_cmap(0.4)),
+                ('APN',('APN',),subcortical_cmap(0.5)),
+                ('SCd',('SCig','SCig-a','SCig-b'),subcortical_cmap(0.6)),
+                ('MB',('MB',),subcortical_cmap(0.7)),
+                ('MRN',('MRN',),subcortical_cmap(0.8)),
+                ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
+                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0)))
+regionLabels = [r[0] for r in regionsToUse]
+regionColors = [r[2] for r in regionsToUse]
+    
+unitSampleSize = [1,5,10,20,40]
 nUnitSamples = 5
 nCrossVal = 3
 
+respWin = slice(stimWin.start+20,stimWin.start+180)
+
 decodeWindowSize = 5
-decodeWindows = np.arange(stimWin.start,stimWin.start+500,decodeWindowSize)
+decodeWindows = []#np.arange(stimWin.start,stimWin.start+500,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
-preImageDecodeWindows = np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
+preImageDecodeWindows = []#np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
 
 # models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4),LinearDiscriminantAnalysis(),SVC(kernel='linear',C=1.0,probability=True)))
 # modelNames = ('randomForest','supportVector','LDA')
@@ -956,15 +971,6 @@ for expInd,exp in enumerate(exps):
     print('experiment '+str(expInd+1)+' of '+str(len(exps)))
     startTime = time.clock()
     
-    unitRegions = []
-    for probe in data[exp]['sdfs']:
-        ccf = data[exp]['ccfRegion'][probe][:]
-        isi = data[exp]['isiRegion'][probe][()]
-        if isi:
-            ccf[data[exp]['inCortex'][probe][:]] = isi
-        unitRegions.append(ccf)
-    unitRegions = np.concatenate(unitRegions)
-    
     response = data[exp]['response'][:]
     hit = response=='hit'
     changeTimes = data[exp]['behaviorChangeTimes'][:]
@@ -976,18 +982,39 @@ for expInd,exp in enumerate(exps):
     changeImage = data[exp]['changeImage'][trials]
     imageNames = np.unique(changeImage)
     
-    (activePreSDFs,activeChangeSDFs),(passivePreSDFs,passiveChangeSDFs) = [[np.concatenate([data[exp]['sdfs'][probe][state][epoch][:,trials] for probe in data[exp]['sdfs']])  for epoch in ('preChange','change')] for state in ('active','passive')]
-    hasSpikesActive,hasRespActive = findResponsiveUnits(activeChangeSDFs,baseWin,respWin)
-    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChangeSDFs,baseWin,respWin)
-    hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
-    
-    for region in regionLabels:
-        inRegion = unitRegions==region
-        if any(inRegion):
-            units = np.where(inRegion & hasResp)[0]
-            for n in nUnits:
-                if len(units)>=n:
-                    unitSamples = [np.random.choice(units,size=n,replace=False) for _ in range(nUnitSamples)]
+    for region,regionCCFLabels,_ in regionsToUse:
+        activePreSDFs = []
+        activeChangeSDFs = []
+        passivePreSDFs = []
+        passiveChangeSDFs = []
+        for probe in data[exp]['sdfs']:
+            ccf = data[exp]['ccfRegion'][probe][:]
+            isi = data[exp]['isiRegion'][probe][()]
+            if isi:
+                ccf[data[exp]['inCortex'][probe][:]] = isi
+            inRegion = np.in1d(ccf,regionCCFLabels)
+            if any(inRegion):
+                activePre,activeChange = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trials] for epoch in ('preChange','change')]
+                hasSpikesActive,hasRespActive = findResponsiveUnits(activeChange,baseWin,respWin,thresh=5)
+                if 'passive' in behavStates:
+                    passivePre,passiveChange = [data[exp]['sdfs'][probe]['passive'][epoch][inRegion,:][:,trials] for epoch in ('preChange','change')]
+                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChange,baseWin,respWin,thresh=5)
+                    hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
+                    passivePreSDFs.append(passivePre[hasResp])
+                    passiveChangeSDFs.append(passiveChange[hasResp])
+                else:
+                    hasResp = hasSpikesActive & hasRespActive
+                activePreSDFs.append(activePre[hasResp])
+                activeChangeSDFs.append(activeChange[hasResp])
+        if len(activePreSDFs)>0:
+            activePreSDFs = np.concatenate(activePreSDFs)
+            activeChangeSDFs = np.concatenate(activeChangeSDFs)
+            passivePreSDFs = np.concatenate(passivePreSDFs)
+            passiveChangeSDFs = np.concatenate(passiveChangeSDFs)
+            nUnits = len(activePreSDFs)
+            for n in unitSampleSize:
+                if nUnits>=n:
+                    unitSamples = [np.random.choice(nUnits,size=n,replace=False) for _ in range(nUnitSamples)]
                     for state in behavStates:
                         changeScore = {model: [] for model in modelNames}
                         changePredict = {model: [] for model in modelNames}
@@ -1002,10 +1029,9 @@ for expInd,exp in enumerate(exps):
                         sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
                         preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
                         for i,unitSamp in enumerate(unitSamples):
-                            # decode image change and identity for first 150 ms of response
+                            # decode image change and identity for full respWin
                             # image change
-                            winSlice = slice(stimWin.start,stimWin.start+150)
-                            X = np.concatenate([s[:,unitSamp,winSlice].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
+                            X = np.concatenate([s[:,unitSamp,respWin].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
                             y = np.zeros(X.shape[0])
                             y[:int(X.shape[0]/2)] = 1
                             for model,name in zip(models,modelNames):
@@ -1015,7 +1041,7 @@ for expInd,exp in enumerate(exps):
                                     changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
                                     changeFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
                             # image identity
-                            imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeImage==img] for img in imageNames]
+                            imgSDFs = [changeSDFs[:,unitSamp,respWin][changeImage==img] for img in imageNames]
                             X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
                             y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
                             for model,name in zip(models,modelNames):
@@ -1091,19 +1117,18 @@ for model in modelNames:
             for exp in result:
                 scr = result[exp][region]['active'][score][model]
                 if len(scr)>0:
-                    scr = [s[0] for s in scr]
-                    scr += [np.nan]*(len(nUnits)-len(scr))
+                    scr = scr + [np.nan]*(len(unitSampleSize)-len(scr))
                     expScores.append(scr)
                     allScores[score].append(scr)
-                    ax.plot(nUnits,scr,'k')
-#            ax.plot(nUnits,np.nanmean(expScores,axis=0),'r',linewidth=2)
+                    ax.plot(unitSampleSize,scr,'k')
+            ax.plot(unitSampleSize,np.nanmean(expScores,axis=0),'r',linewidth=2)
             for side in ('right','top'):
                     ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
             ax.set_xticks(np.arange(0,100,10))
             ax.set_yticks([0,0.25,0.5,0.75,1])
             ax.set_yticklabels([0,'',0.5,'',1])
-            ax.set_xlim([0,max(nUnits)+5])
+            ax.set_xlim([0,max(unitSampleSize)+5])
             ax.set_ylim([ymin,1])
             if i<len(regionLabels)-1:
                 ax.set_xticklabels([])  
@@ -1122,14 +1147,14 @@ for model in modelNames:
     fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
     ax = plt.subplot(1,1,1)
     for score,clr in zip(('changeScore','imageScore'),('k','0.5')):
-        ax.plot(nUnits,np.nanmean(allScores[score],axis=0),color=clr,label=score[:score.find('S')])
+        ax.plot(unitSampleSize,np.nanmean(allScores[score],axis=0),color=clr,label=score[:score.find('S')])
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
     ax.set_xticks(np.arange(0,100,10))
     ax.set_yticks([0,0.25,0.5,0.75,1])
     ax.set_yticklabels([0,'',0.5,'',1])
-    ax.set_xlim([0,max(nUnits)+5])
+    ax.set_xlim([0,max(unitSampleSize)+5])
     ax.set_ylim([0,1])
     ax.set_xlabel('Number of Units')
     ax.set_ylabel('Decoder Accuracy')
@@ -1171,7 +1196,7 @@ for model in modelNames:
                     ax.set_ylabel('Decoder Accuracy')
         ax.set_xlabel('Time (ms)')
     
-# compare scores for 150 ms window
+# compare scores for full response window
 for score,ymin,title in zip(('changeScore','imageScore'),(0.5,0.125),('Change','Image Identity')):
     fig = plt.figure(facecolor='w')
     xticks = np.arange(len(regionLabels))
@@ -1185,7 +1210,7 @@ for score,ymin,title in zip(('changeScore','imageScore'),(0.5,0.125),('Change','
             for exp in result:
                 s = result[exp][region]['active'][score][model]
                 if len(s)>0:
-                    regionScore.append(s[0][-1])
+                    regionScore.append(s[0])
             n = len(regionScore)
             if n>0:
                 mean[i] = np.mean(regionScore)
