@@ -1111,16 +1111,16 @@ for model in modelNames:
     gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
     allScores = {score: [] for score in ('changeScore','imageScore')}
     for i,region in enumerate(regionLabels):
-        for j,(score,ymin) in enumerate(zip(('changeScore','imageScore'),(0.45,0))):
+        for j,(score,ymin) in enumerate(zip(('changeScore','imageScore'),(0.5,0.125))):
             ax = plt.subplot(gs[i,j])
             expScores = []
             for exp in result:
-                scr = result[exp][region]['active'][score][model]
-                if len(scr)>0:
-                    scr = scr + [np.nan]*(len(unitSampleSize)-len(scr))
-                    expScores.append(scr)
-                    allScores[score].append(scr)
-                    ax.plot(unitSampleSize,scr,'k')
+                s = result[exp][region]['active'][score][model]
+                if len(s)>0:
+                    s = s + [np.nan]*(len(unitSampleSize)-len(s))
+                    expScores.append(s)
+                    allScores[score].append(s)
+                    ax.plot(unitSampleSize,s,'k')
             ax.plot(unitSampleSize,np.nanmean(expScores,axis=0),'r',linewidth=2)
             for side in ('right','top'):
                     ax.spines[side].set_visible(False)
@@ -1142,9 +1142,9 @@ for model in modelNames:
             if i==0 and j==0:
                 ax.set_ylabel('Decoder Accuracy')
     ax.set_xlabel('Number of Units')
+    plt.tight_layout()
     
     fig = plt.figure(facecolor='w')
-    fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
     ax = plt.subplot(1,1,1)
     for score,clr in zip(('changeScore','imageScore'),('k','0.5')):
         ax.plot(unitSampleSize,np.nanmean(allScores[score],axis=0),color=clr,label=score[:score.find('S')])
@@ -1158,7 +1158,66 @@ for model in modelNames:
     ax.set_ylim([0,1])
     ax.set_xlabel('Number of Units')
     ax.set_ylabel('Decoder Accuracy')
+    ax.set_title(model)
     ax.legend()
+    plt.tight_layout()
+    
+    xticks = np.arange(len(regionLabels))
+    xlim = [-0.5,len(regionLabels)-0.5]
+    for score,ymin in zip(('changeScore','imageScore'),(0.5,0.125)):
+        fig = plt.figure(facecolor='w')
+        ax = plt.subplot(1,1,1)
+        for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.jet(np.linspace(0,1,len(unitSampleSize))))):
+            for j,region in enumerate(regionLabels):
+                regionData = []
+                for exp in result:
+                    s = result[exp][region]['active'][score][model]
+                    if len(s)>i:
+                        regionData.append(s[i])
+                if len(regionData)>0:
+                    m = np.mean(regionData)
+                    s = np.std(regionData)/(len(regionData)**0.5)
+                    lbl = str(n)+' cells' if j==0 else None
+                    ax.plot(j,m,'o',mec=clr,mfc='none',label=lbl)
+                    ax.plot([j,j],[m-s,m+s],color=clr)
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim(xlim)
+        ax.set_xticks(xticks)
+        ax.set_xticklabels(regionLabels)
+        ax.set_ylim([ymin,1])
+        ax.set_ylabel('Decoder Accuracy')
+        ax.set_title(model+', '+score[:score.find('S')])
+        ax.legend()
+        plt.tight_layout()
+        
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+ax.plot(xlim,[0,0],'--',color='0.5')
+for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.jet(np.linspace(0,1,len(unitSampleSize))))):
+    for j,region in enumerate(regionLabels):
+        regionData = []
+        for exp in result:
+            behavior = result[exp]['behaviorResponse'][:].astype(float)
+            s = result[exp][region]['active']['changePredict']['randomForest']
+            if len(s)>i:
+                regionData.append(np.corrcoef(behavior,s[i])[0,1])
+        if len(regionData)>0:
+            m = np.mean(regionData)
+            s = np.std(regionData)/(len(regionData)**0.5)
+            lbl = str(n)+' cells' if j==0 else None
+            ax.plot(j,m,'o',mec=clr,mfc='none',label=lbl)
+            ax.plot([j,j],[m-s,m+s],color=clr)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim(xlim)
+ax.set_xticks(xticks)
+ax.set_xticklabels(regionLabels)
+ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
+ax.legend()
+plt.tight_layout()
 
 # plot scores for each experiment
 for model in modelNames:
@@ -1232,42 +1291,6 @@ for score,ymin,title in zip(('changeScore','imageScore'),(0.5,0.125),('Change','
     ax.set_title(title)
     ax.legend()
     plt.tight_layout()
-
-#fig = plt.figure(facecolor='w')
-#xticks = np.arange(len(regionLabels))
-#xlim = [xticks[0]-0.5,xticks[-1]+0.5]
-#ax1 = fig.subplots(1)
-#ax2 = ax1.twinx()
-#for ax,score,ymin in zip((ax1,ax2),('changeScore','imageScore'),(0.5,0.125)):
-#    for model,lbl in zip(('randomForest',),('Random Forest',)):
-#        mean = np.full(len(regionLabels),np.nan)
-#        sem = mean.copy()
-#        for i,region in enumerate(regionLabels):
-#            regionScore = []
-#            for exp in result:
-#                s = result[exp][region]['active'][score][model]
-#                if len(s)>0:
-#                    regionScore.append(s[0][-1])
-#            n = len(regionScore)
-#            if n>0:
-#                mean[i] = np.mean(regionScore)
-#                sem[i] = np.std(regionScore)/(n**0.5)
-#        for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
-#            mfc = clr if score=='changeScore' else 'none'
-#            l = lbl if i==0 else None
-#            ax.plot(x,m,'o',ms=10,mec=clr,mfc=mfc,label=l)
-#            ax.plot([x,x],[m-s,m+s],color=clr)           
-#    for side in ('top',):
-#        ax.spines[side].set_visible(False)
-#    ax.tick_params(direction='out',top=False)
-#    ax.set_xticks(xticks)
-#    ax.set_xticklabels(regionLabels)
-#    ax.set_xlim(xlim)
-#    ax.set_yticks([ymin,0.25,0.5,0.75,1])
-#    ax.set_ylim([ymin,1])
-#    ax.set_title('Decoder Accuracy')
-##    ax.legend()
-#    plt.tight_layout()
     
 # image and change feature importance
 for model in ('randomForest',):
