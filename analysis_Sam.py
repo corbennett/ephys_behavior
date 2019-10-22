@@ -6,6 +6,7 @@ Created on Thu Aug 23 11:29:39 2018
 """
 
 from __future__ import division
+import math
 import os
 import pickle
 import time
@@ -938,7 +939,7 @@ regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
 unitSampleSize = [1,5,10,20,40]
-nUnitSamples = 5
+
 nCrossVal = 3
 
 respWin = slice(stimWin.start+20,stimWin.start+180)
@@ -951,10 +952,10 @@ preImageDecodeWindows = []#np.arange(stimWin.start,stimWin.start+750,preImageDec
 
 # models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4),LinearDiscriminantAnalysis(),SVC(kernel='linear',C=1.0,probability=True)))
 # modelNames = ('randomForest','supportVector','LDA')
-models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4))
-modelNames = ('randomForest','supportVector')
+models = (RandomForestClassifier(n_estimators=100),)
+modelNames = ('randomForest',)
 
-behavStates = ('active','passive')
+behavStates = ('active',)
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
                                 'changePredict':{model:[] for model in modelNames},
                                 'changeFeatureImportance':{model:[] for model in modelNames},
@@ -1009,22 +1010,28 @@ for expInd,exp in enumerate(exps):
         if len(activePreSDFs)>0:
             activePreSDFs = np.concatenate(activePreSDFs)
             activeChangeSDFs = np.concatenate(activeChangeSDFs)
-            passivePreSDFs = np.concatenate(passivePreSDFs)
-            passiveChangeSDFs = np.concatenate(passiveChangeSDFs)
+            if 'passive' in behavStates:
+                passivePreSDFs = np.concatenate(passivePreSDFs)
+                passiveChangeSDFs = np.concatenate(passiveChangeSDFs)
             nUnits = len(activePreSDFs)
-            for n in unitSampleSize:
-                if nUnits>=n:
-                    unitSamples = [np.random.choice(nUnits,size=n,replace=False) for _ in range(nUnitSamples)]
+            for sampleSize in unitSampleSize:
+                if nUnits>=sampleSize:
+                    if sampleSize>1:
+                        nsamples = int(2*math.ceil(nUnits/sampleSize))
+                        unitSamples = [np.random.choice(nUnits,sampleSize,replace=False) for _ in range(nsamples)]
+                    else:
+                        nsamples = nUnits
+                        unitSamples = [[_] for _ in range(nsamples)]
                     for state in behavStates:
                         changeScore = {model: [] for model in modelNames}
                         changePredict = {model: [] for model in modelNames}
                         changeFeatureImportance = {model: [] for model in modelNames}
                         imageScore = {model: [] for model in modelNames}
                         imageFeatureImportance = {model: [] for model in modelNames}
-                        changeScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows))) for model in modelNames}
-                        changePredictWindows = {model: np.zeros((nUnitSamples,len(decodeWindows),trials.sum())) for model in modelNames}
-                        imageScoreWindows = {model: np.zeros((nUnitSamples,len(decodeWindows))) for model in modelNames}
-                        preImageScoreWindows = {model: np.zeros((nUnitSamples,len(preImageDecodeWindows))) for model in modelNames}
+                        changeScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
+                        changePredictWindows = {model: np.zeros((nsamples,len(decodeWindows),trials.sum())) for model in modelNames}
+                        imageScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
+                        preImageScoreWindows = {model: np.zeros((nsamples,len(preImageDecodeWindows))) for model in modelNames}
                         respLatency = []
                         sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
                         preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
@@ -1121,7 +1128,8 @@ for model in modelNames:
                     expScores.append(s)
                     allScores[score].append(s)
                     ax.plot(unitSampleSize,s,'k')
-            ax.plot(unitSampleSize,np.nanmean(expScores,axis=0),'r',linewidth=2)
+            if len(expScores)>0:
+                ax.plot(unitSampleSize,np.nanmean(expScores,axis=0),'r',linewidth=2)
             for side in ('right','top'):
                     ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
