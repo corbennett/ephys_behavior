@@ -216,7 +216,7 @@ mouseInfo = (
 
 
 #
-makeSummaryPlots(miceToAnalyze=('461027',))
+makeSummaryPlots(miceToAnalyze=('421323','422856','423749'))
 
 
 # make new experiment hdf5s without updating popData.hdf5
@@ -942,7 +942,7 @@ unitSampleSize = [1,5,10,20,40]
 
 nCrossVal = 3
 
-respWin = slice(stimWin.start+20,stimWin.start+180)
+respWin = slice(stimWin.start,stimWin.start+100)
 
 decodeWindowSize = 5
 decodeWindows = []#np.arange(stimWin.start,stimWin.start+500,decodeWindowSize)
@@ -1769,5 +1769,74 @@ ax.set_xticks(xticks)
 ax.set_xticklabels(regionLabels,fontsize=10)
 ax.set_ylabel('Correlation with hit rate',fontsize=10)
 ax.legend()
+
+
+# run speed
+
+frameRate = 60
+preTime = 7.5
+postTime = 7.5
+rt = np.arange(-preTime,postTime+1/frameRate,1/frameRate)
+preHitRunSpeed = []
+hitRunSpeed = []
+correctRejectRunSpeed = []
+for exp in exps:
+    print(exp)
+    flashTimes = data[exp]['behaviorFlashTimes'][:]
+    changeTimes = data[exp]['behaviorChangeTimes'][:]
+    preChangeTimes = flashTimes[np.searchsorted(flashTimes,changeTimes)-1]
+    response = data[exp]['response'][:]
+    hit = response=='hit'
+    engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+    trials = engaged & hit
+    runTime = data[exp]['behaviorRunTime'][:]
+    runSpeed = data[exp]['behaviorRunSpeed'][:]
+    for speed,times in zip((preHitRunSpeed,hitRunSpeed,correctRejectRunSpeed),
+                           (preChangeTimes[engaged & hit],changeTimes[engaged & hit],changeTimes[engaged & (response=='correctReject')])):
+        trialSpeed = []
+        for t in times:
+            i = (runTime>=t-preTime) & (runTime<=t+postTime)
+            trialSpeed.append(np.interp(rt,runTime[i]-t,runSpeed[i]))
+        speed.append(np.mean(trialSpeed,axis=0))
+
+
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)
+for speed,clr,lbl in zip((hitRunSpeed,correctRejectRunSpeed),'rk',('hit','correct reject')):
+    m = np.mean(speed,axis=0)
+    s = np.std(speed,axis=0)/(len(speed)**0.5)
+    ax.plot(rt,m,clr,label=lbl)
+    ax.fill_between(rt,m+s,m-s,color=clr,alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim([-preTime,postTime])
+ax.set_xlabel('Time from change (s)')
+ax.set_ylabel('Run speed (cm/s)')
+ax.legend(loc='lower left')
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)
+diff = [h-cr for h,cr in zip(hitRunSpeed,correctRejectRunSpeed)]
+m = np.mean(diff,axis=0)
+s = np.std(diff,axis=0)/(len(speed)**0.5)
+ax.plot(rt,m,'b',label=lbl)
+ax.fill_between(rt,m+s,m-s,color='b',alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim([0,0.2])
+ax.set_ylim([-10,0])
+ax.set_xlabel('Time from change (s)')
+ax.set_ylabel('Difference (hit - correct reject, cm/s)')
+plt.tight_layout()
+
+
+
+
+
+
 
 
