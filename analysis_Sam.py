@@ -1046,7 +1046,7 @@ for expInd,exp in enumerate(exps):
                                 changeScore[name].append(cv['test_score'].mean())
                                 if name=='randomForest':
                                     changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
-                                    changeFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
+                                    changeFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
                             # image identity
                             imgSDFs = [changeSDFs[:,unitSamp,respWin][changeImage==img] for img in imageNames]
                             X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
@@ -1055,7 +1055,7 @@ for expInd,exp in enumerate(exps):
                                 cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
                                 imageScore[name].append(cv['test_score'].mean())
                                 if name=='randomForest':
-                                    imageFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(n,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
+                                    imageFeatureImportance[name].append(np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)).mean(axis=0) for estimator in cv['estimator']],axis=0))
                             
                             # decode image change and identity for sliding windows
                             for j,winStart in enumerate(decodeWindows):
@@ -1780,19 +1780,20 @@ rt = np.arange(-preTime,postTime+1/frameRate,1/frameRate)
 preHitRunSpeed = []
 hitRunSpeed = []
 correctRejectRunSpeed = []
+omitRunSpeed = []
 for exp in exps:
     print(exp)
     flashTimes = data[exp]['behaviorFlashTimes'][:]
     changeTimes = data[exp]['behaviorChangeTimes'][:]
     preChangeTimes = flashTimes[np.searchsorted(flashTimes,changeTimes)-1]
+    omitTimes = data[exp]['behaviorOmitFlashTimes'][:]
     response = data[exp]['response'][:]
     hit = response=='hit'
-    engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
-    trials = engaged & hit
+    engagedChange,engagedOmit = [np.min(np.absolute(times-changeTimes[hit][:,None]),axis=0) < 60 for times in (changeTimes,omitTimes)]
     runTime = data[exp]['behaviorRunTime'][:]
     runSpeed = data[exp]['behaviorRunSpeed'][:]
-    for speed,times in zip((preHitRunSpeed,hitRunSpeed,correctRejectRunSpeed),
-                           (preChangeTimes[engaged & hit],changeTimes[engaged & hit],changeTimes[engaged & (response=='correctReject')])):
+    for speed,times in zip((preHitRunSpeed,hitRunSpeed,correctRejectRunSpeed,omitRunSpeed),
+                           (preChangeTimes[engagedChange & hit],changeTimes[engagedChange & hit],changeTimes[engagedChange & (response=='correctReject')],omitTimes[engagedOmit])):
         trialSpeed = []
         for t in times:
             i = (runTime>=t-preTime) & (runTime<=t+postTime)
@@ -1822,8 +1823,8 @@ ax = fig.subplots(1)
 diff = [h-cr for h,cr in zip(hitRunSpeed,correctRejectRunSpeed)]
 m = np.mean(diff,axis=0)
 s = np.std(diff,axis=0)/(len(speed)**0.5)
-ax.plot(rt,m,'b',label=lbl)
-ax.fill_between(rt,m+s,m-s,color='b',alpha=0.25)
+ax.plot(rt,m,'k',label=lbl)
+ax.fill_between(rt,m+s,m-s,color='k',alpha=0.25)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
@@ -1831,6 +1832,20 @@ ax.set_xlim([0,0.2])
 ax.set_ylim([-10,0])
 ax.set_xlabel('Time from change (s)')
 ax.set_ylabel('Difference (hit - correct reject, cm/s)')
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w')
+ax = fig.subplots(1)
+m = np.mean(omitRunSpeed,axis=0)
+s = np.std(omitRunSpeed,axis=0)/(len(speed)**0.5)
+ax.plot(rt,m,'k',label=lbl)
+ax.fill_between(rt,m+s,m-s,color='k',alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim([-preTime,postTime])
+ax.set_xlabel('Time from omitted flash (s)')
+ax.set_ylabel('Run speed (cm/s)')
 plt.tight_layout()
 
 
