@@ -243,7 +243,7 @@ exps = Aexps+Bexps
 
 baseWin = slice(0,250)
 stimWin = slice(250,500)
-respWin = slice(stimWin.start,stimWin.start+100)
+respWin = slice(stimWin.start,stimWin.start+101)
 
 
 
@@ -936,11 +936,11 @@ regionsToUse = (('LGd',('LGd',),(0,0,0)),
                 ('MRN',('MRN',),subcortical_cmap(0.8)),
                 ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
                 ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0)))
-regionsToUse = regionsToUse[:8]
+#regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
-unitSampleSize = [20]
+unitSampleSize = [1]
 
 nCrossVal = 3
 
@@ -1309,24 +1309,24 @@ for score,ymin,title in zip(('changeScore',),(0.5,),('Change',)):
     xlim = [xticks[0]-0.5,xticks[-1]+0.5]
     ax = fig.subplots(1)
     for model,lbl in zip(('randomForest',),('Random Forest',)):
-        mean = np.full(len(regionLabels),np.nan)
-        sem = mean.copy()
-        for i,region in enumerate(regionLabels):
-            regionScore = []
-            for exp in result:
-                s = result[exp][region]['active'][score][model]
-                print(s)
-                if len(s)>3:
-                    regionScore.append(s[3])
-            n = len(regionScore)
-            if n>0:
-                mean[i] = np.mean(regionScore)
-                sem[i] = np.std(regionScore)/(n**0.5)
-        for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
-            mfc = clr if model=='randomForest' else 'none'
-            l = lbl if i==0 else None
-            ax.plot(x,m,'o',ms=10,mec=clr,mfc=mfc,label=l)
-            ax.plot([x,x],[m-s,m+s],color=clr)           
+        for state in ('active','passive'):
+            mean = np.full(len(regionLabels),np.nan)
+            sem = mean.copy()
+            for i,region in enumerate(regionLabels):
+                regionScore = []
+                for exp in result:
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[0])
+                n = len(regionScore)
+                if n>0:
+                    mean[i] = np.mean(regionScore)
+                    sem[i] = np.std(regionScore)/(n**0.5)
+            for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
+                mfc = clr if state=='active' else 'none'
+                l = state if i==0 else None
+                ax.plot(x,m,'o',ms=10,mec=clr,mfc=mfc,label=l)
+                ax.plot([x,x],[m-s,m+s],color=clr)           
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False,labelsize=16)
@@ -1712,7 +1712,7 @@ regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
 exps = Aexps
 imgNames = np.unique(data[exps[0]]['initialImage'])
 nexps = np.zeros(len(regionLabels),dtype=int)
-preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(3)]
+changeSdfList,diffSdfList,preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(5)]
 hitMatrix = np.zeros((len(regionLabels),len(imgNames),len(imgNames)))
 missMatrix = hitMatrix.copy()
 lickLatMatrix = hitMatrix.copy()
@@ -1752,6 +1752,8 @@ for exp in exps:
             for ind,trial in enumerate(np.where(trials)[0]):
                 preResp,changeResp = [sdfs[:,ind,respWin].mean(axis=1)-sdfs[:,ind,baseWin].mean(axis=1) for sdfs in (preSdfs,changeSdfs)]
                 i,j = [np.where(imgNames==img)[0][0] for img in (initialImage[trial],changeImage[trial])]
+                changeSdfList[r][i][j].append(changeSdfs[:,ind])
+                diffSdfList[r][i][j].append(changeSdfs[:,ind]-preSdfs[:,ind])
                 preRespList[r][i][j].append(preResp)
                 changeRespList[r][i][j].append(changeResp)
                 changeModList[r][i][j].append(np.clip((changeResp-preResp)/(changeResp+preResp),-1,1))
@@ -1761,13 +1763,17 @@ for exp in exps:
                 else:
                     missMatrix[r,i,j] += 1
 
-preRespMatrix = np.full(hitMatrix.shape,np.nan)
-changeRespMatrix = preRespMatrix.copy()
-changeModMatrix = preRespMatrix.copy()
+respLatMatrix = np.full(hitMatrix.shape,np.nan)
+diffLatMatrix = respLatMatrix.copy()
+preRespMatrix = respLatMatrix.copy()
+changeRespMatrix = respLatMatrix.copy()
+changeModMatrix = respLatMatrix.copy()
 for r,_ in enumerate(regionLabels):
     for i,_ in enumerate(imgNames):
         for j,_ in enumerate(imgNames):
             if len(preRespList[r][i][j])>0:
+                respLatMatrix[r,i,j] = findLatency(np.nanmean(np.concatenate(changeSdfList[r][i][j]),axis=0),baseWin,stimWin,method='abs',thresh=0.5)[0]
+                diffLatMatrix[r,i,j] = findLatency(np.nanmean(np.concatenate(diffSdfList[r][i][j]),axis=0),baseWin,stimWin,method='abs',thresh=0.5)[0]
                 preRespMatrix[r,i,j] = np.nanmean(np.concatenate(preRespList[r][i][j]))
                 changeRespMatrix[r,i,j] = np.nanmean(np.concatenate(changeRespList[r][i][j]))
                 changeModMatrix[r,i,j] = np.nanmean(np.concatenate(changeModList[r][i][j]))
@@ -1779,12 +1785,12 @@ lickLatMatrix /= hitMatrix
 imgOrder = np.argsort(np.nanmean(hitRate,axis=(0,1)))
 nonDiag = ~np.eye(len(imgNames),dtype=bool)   
 
-for region,n,ntrials,hr,lat,preResp,changeResp,changeMod in zip(regionLabels,nexps,nTrialsMatrix,hitRate,lickLatMatrix,preRespMatrix,changeRespMatrix,changeModMatrix):
+for region,n,ntrials,hr,lickLat,respLat,diffLat,preResp,changeResp,changeMod in zip(regionLabels,nexps,nTrialsMatrix,hitRate,lickLatMatrix,respLatMatrix,diffLatMatrix,preRespMatrix,changeRespMatrix,changeModMatrix):
     fig = plt.figure(facecolor='w',figsize=(10,10))
     fig.text(0.01,0.99,region+' ('+str(n)+' experiments)',fontsize=8,horizontalalignment='left',verticalalignment='top')
     gs = matplotlib.gridspec.GridSpec(4,4)
     
-    for j,(d,lbl) in enumerate(zip((ntrials,hr,lat),('Number of Trials','Hit Rate','Hit Lick Latency (ms)'))):
+    for j,(d,lbl) in enumerate(zip((ntrials,hr,lickLat),('Number of Trials','Hit Rate','Hit Lick Latency (ms)'))):
         ax = plt.subplot(gs[0,j])
         im = ax.imshow(d[imgOrder,:][:,imgOrder],cmap='magma')
         ax.tick_params(direction='out',top=False,right=False,labelsize=6)
@@ -1797,8 +1803,8 @@ for region,n,ntrials,hr,lat,preResp,changeResp,changeMod in zip(regionLabels,nex
         cb.ax.tick_params(labelsize=6)
     
     ax = plt.subplot(gs[0,3])
-    ax.plot(hr[nonDiag],lat[nonDiag],'ko')
-    slope,yint,rval,pval,stderr = scipy.stats.linregress(hr[nonDiag],lat[nonDiag])
+    ax.plot(hr[nonDiag],lickLat[nonDiag],'ko')
+    slope,yint,rval,pval,stderr = scipy.stats.linregress(hr[nonDiag],lickLat[nonDiag])
     x = np.array([hr[nonDiag].min(),hr[nonDiag].max()])
     ax.plot(x,slope*x+yint,'0.5')
     for side in ('right','top'):
@@ -1806,10 +1812,11 @@ for region,n,ntrials,hr,lat,preResp,changeResp,changeMod in zip(regionLabels,nex
     ax.tick_params(direction='out',top=False,right=False,labelsize=8)
     ax.set_xlabel('Hit Rate',fontsize=10)
     ax.set_ylabel('Hit Lick Latency (ms)',fontsize=10)
-    r,p = scipy.stats.pearsonr(hr[nonDiag],lat[nonDiag])
+    r,p = scipy.stats.pearsonr(hr[nonDiag],lickLat[nonDiag])
     ax.set_title('r = '+str(round(r,2))+', p = '+'{0:1.1e}'.format(p),fontsize=8)
     
-    for i,(d,ylbl) in enumerate(zip((preResp,changeResp,changeMod),('Pre-change Response (spikes/s)','Change Response (spikes/s)','Change Modulation Index'))):
+#    for i,(d,ylbl) in enumerate(zip((respLat,diffLat,preResp,changeResp,changeMod),('Response Latency (ms)','Change Modulaton Latency (ms)','Pre-change Response (spikes/s)','Change Response (spikes/s)','Change Modulation Index'))):
+    for i,(d,ylbl) in enumerate(zip((respLat,diffLat,changeMod),('Response Latency (ms)','Change Modulaton Latency (ms)','Change Modulation Index'))):
         ax = plt.subplot(gs[i+1,0])
         im = ax.imshow(d[imgOrder,:][:,imgOrder],cmap='magma')
         ax.tick_params(direction='out',top=False,right=False,labelsize=6)
@@ -1821,7 +1828,7 @@ for region,n,ntrials,hr,lat,preResp,changeResp,changeMod in zip(regionLabels,nex
         cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
         cb.ax.tick_params(labelsize=6)
         
-        for j,(b,xlbl) in enumerate(zip((hr,lat),('Hit Rate','Hit Lick Latency (ms)'))):   
+        for j,(b,xlbl) in enumerate(zip((hr,lickLat),('Hit Rate','Hit Lick Latency (ms)'))):   
             ax = plt.subplot(gs[i+1,j+1])
             ax.plot(b[nonDiag],d[nonDiag],'ko')
             slope,yint,rval,pval,stderr = scipy.stats.linregress(b[nonDiag],d[nonDiag])
@@ -1862,12 +1869,13 @@ ax.legend()
 frameRate = 60
 preTime = 7500
 postTime = 7500
-sampInt = 0.001
-rt = np.arange(-preTime,postTime+1)
-preHitRunSpeed = []
+sampInt = 10
+rt = np.arange(-preTime,postTime+sampInt,sampInt)
 hitRunSpeed = []
 correctRejectRunSpeed = []
 omitRunSpeed = []
+lickProb = []
+lickBins = np.arange(-preTime-sampInt/2,postTime+sampInt,sampInt)
 for exp in exps:
     print(exp)
     flashTimes = data[exp]['behaviorFlashTimes'][:]
@@ -1879,13 +1887,20 @@ for exp in exps:
     engagedChange,engagedOmit = [np.min(np.absolute(times-changeTimes[hit][:,None]),axis=0) < 60 for times in (changeTimes,omitTimes)]
     runTime = data[exp]['behaviorRunTime'][:]
     runSpeed = data[exp]['behaviorRunSpeed'][:]
-    for speed,times in zip((preHitRunSpeed,hitRunSpeed,correctRejectRunSpeed,omitRunSpeed),
-                           (preChangeTimes[engagedChange & hit],changeTimes[engagedChange & hit],changeTimes[engagedChange & (response=='correctReject')],omitTimes[engagedOmit])):
+    for speed,times in zip((hitRunSpeed,correctRejectRunSpeed,omitRunSpeed),
+                           (changeTimes[engagedChange & hit],changeTimes[engagedChange & (response=='correctReject')],omitTimes[engagedOmit])):
         trialSpeed = []
         for t in times:
             i = (runTime>=t-preTime) & (runTime<=t+postTime)
             trialSpeed.append(np.interp(rt,1000*(runTime[i]-t),runSpeed[i]))
         speed.append(np.mean(trialSpeed,axis=0))
+    lickTimes = data[exp]['lickTimes']
+    trialLicks = []
+    for t in changeTimes[engagedChange & hit]:
+        licks = lickTimes[(lickTimes>t-preTime) & (lickTimes<t+postTime)]
+        jitter = np.random.random_sample(licks.size)*(1/frameRate)-(0.5/frameRate)
+        trialLicks.append(np.histogram(1000*(licks-t+jitter),lickBins)[0])
+    lickProb.append(np.mean(trialLicks,axis=0))
 
 
 fig = plt.figure(facecolor='w')
@@ -1906,26 +1921,9 @@ plt.tight_layout()
 
 fig = plt.figure(facecolor='w')
 ax = fig.subplots(1)
-for speed,clr,lbl in zip((hitRunSpeed,correctRejectRunSpeed),'rk',('hit','correct reject')):
-    m = np.mean(speed,axis=0)
-    s = np.std(speed,axis=0)/(len(speed)**0.5)
-    ax.plot(rt,m,clr,label=lbl)
-    ax.fill_between(rt,m+s,m-s,color=clr,alpha=0.25)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=14)
-ax.set_xlim([0,250])
-ax.set_ylim([0,40])
-ax.set_xlabel('Time from change (ms)',fontsize=16)
-ax.set_ylabel('Run speed (cm/s)',fontsize=16)
-ax.legend(loc='lower left',fontsize=16)
-plt.tight_layout()
-
-fig = plt.figure(facecolor='w')
-ax = fig.subplots(1)
 diff = [h-cr for h,cr in zip(hitRunSpeed,correctRejectRunSpeed)]
 m = np.mean(diff,axis=0)
-s = np.std(diff,axis=0)/(len(speed)**0.5)
+s = np.std(diff,axis=0)/(len(hitRunSpeed)**0.5)
 ax.plot(rt,m,'k',label=lbl)
 ax.fill_between(rt,m+s,m-s,color='k',alpha=0.25)
 for side in ('right','top'):
@@ -1940,7 +1938,7 @@ plt.tight_layout()
 fig = plt.figure(facecolor='w')
 ax = fig.subplots(1)
 m = np.mean(omitRunSpeed,axis=0)
-s = np.std(omitRunSpeed,axis=0)/(len(speed)**0.5)
+s = np.std(omitRunSpeed,axis=0)/(len(omitRunSpeed)**0.5)
 ax.plot(rt,m,'k',label=lbl)
 ax.fill_between(rt,m+s,m-s,color='k',alpha=0.25)
 for side in ('right','top'):
@@ -1949,6 +1947,38 @@ ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim([-preTime,postTime])
 ax.set_xlabel('Time from omitted flash (ms)')
 ax.set_ylabel('Run speed (cm/s)')
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w',figsize=(6,8))
+ax = plt.subplot(2,1,1)
+m = np.mean(lickProb,axis=0)
+s = np.std(lickProb,axis=0)/(len(lickProb)**0.5)
+ax.plot(rt,m,'r',label=lbl)
+ax.fill_between(rt,m+s,m-s,color='r',alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=14)
+ax.set_xticklabels([])
+ax.set_xlim([0,500])
+ax.set_yticks(np.arange(0,1,0.02))
+ax.set_ylim([0,0.08])
+ax.set_ylabel('Lick probability',fontsize=16)
+
+ax = plt.subplot(2,1,2)
+for speed,clr,lbl in zip((hitRunSpeed,correctRejectRunSpeed),'rk',('hit','correct reject')):
+    m = np.mean(speed,axis=0)
+    s = np.std(speed,axis=0)/(len(speed)**0.5)
+    ax.plot(rt,m,clr,label=lbl)
+    ax.fill_between(rt,m+s,m-s,color=clr,alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=14)
+ax.set_xlim([0,500])
+ax.set_yticks(np.arange(0,50,10))
+ax.set_ylim([0,40])
+ax.set_xlabel('Time from change (ms)',fontsize=16)
+ax.set_ylabel('Run speed (cm/s)',fontsize=16)
+ax.legend(loc='lower left',fontsize=14)
 plt.tight_layout()
 
 
