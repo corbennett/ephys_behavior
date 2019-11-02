@@ -936,7 +936,7 @@ regionsToUse = (('LGd',('LGd',),(0,0,0)),
                 ('MRN',('MRN',),subcortical_cmap(0.8)),
                 ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
                 ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0)))
-#regionsToUse = regionsToUse[:8]
+regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
@@ -1640,7 +1640,7 @@ ax = plt.subplot(1,1,1)
 xticks = np.arange(len(regionLabels))
 xlim = [-0.5,len(regionLabels)-0.5]
 ax.plot(xlim,[0,0],'--',color='0.5')
-for state,fill in zip(('active','passive'),(True,False)):
+for state,fill in zip(('active',),(True,)):
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
         regionData = []
         for exp in result:
@@ -1662,7 +1662,7 @@ ax.tick_params(direction='out',top=False,right=False,labelsize=16)
 ax.set_xlim(xlim)
 ax.set_xticks(xticks)
 ax.set_xticklabels(regionLabels)
-ax.set_ylabel('Correlation',fontsize=16)
+ax.set_ylabel('Pearson\'s r',fontsize=16)
 plt.tight_layout()
     
 for model in ('randomForest',):    
@@ -1712,7 +1712,7 @@ regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
 exps = Aexps
 imgNames = np.unique(data[exps[0]]['initialImage'])
 nexps = np.zeros(len(regionLabels),dtype=int)
-changeSdfList,diffSdfList,preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(5)]
+behRespList,preSdfList,changeSdfList,preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(6)]
 hitMatrix = np.zeros((len(regionLabels),len(imgNames),len(imgNames)))
 missMatrix = hitMatrix.copy()
 lickLatMatrix = hitMatrix.copy()
@@ -1752,16 +1752,39 @@ for exp in exps:
             for ind,trial in enumerate(np.where(trials)[0]):
                 preResp,changeResp = [sdfs[:,ind,respWin].mean(axis=1)-sdfs[:,ind,baseWin].mean(axis=1) for sdfs in (preSdfs,changeSdfs)]
                 i,j = [np.where(imgNames==img)[0][0] for img in (initialImage[trial],changeImage[trial])]
+                preSdfList[r][i][j].append(preSdfs[:,ind])
                 changeSdfList[r][i][j].append(changeSdfs[:,ind])
-                diffSdfList[r][i][j].append(changeSdfs[:,ind]-preSdfs[:,ind])
                 preRespList[r][i][j].append(preResp)
                 changeRespList[r][i][j].append(changeResp)
                 changeModList[r][i][j].append(np.clip((changeResp-preResp)/(changeResp+preResp),-1,1))
                 if response[trial]=='hit':
                     hitMatrix[r,i,j] += 1
+                    behRespList[r][i][j].append(1)
                     lickLatMatrix[r,i,j] += lickLat[ind]
                 else:
                     missMatrix[r,i,j] += 1
+                    behRespList[r][i][j].append(0)
+                    
+nTrialsMatrix = hitMatrix+missMatrix
+hitRate = hitMatrix/nTrialsMatrix
+lickLatMatrix /= hitMatrix
+imgOrder = np.argsort(np.nanmean(hitRate,axis=(0,1)))
+nonDiag = ~np.eye(len(imgNames),dtype=bool)
+
+preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
+for i,unitSamp in enumerate(unitSamples):
+    # decode image change and identity for full respWin
+    # image change
+    X = np.concatenate([s[:,unitSamp,respWin].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
+    y = np.zeros(X.shape[0])
+    y[:int(X.shape[0]/2)] = 1
+    for model,name in zip(models,modelNames):
+        cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+        changeScore[name].append(cv['test_score'].mean())
+        if name=='randomForest':
+            changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
+            changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+
 
 respLatMatrix = np.full(hitMatrix.shape,np.nan)
 diffLatMatrix = respLatMatrix.copy()
@@ -1772,18 +1795,14 @@ for r,_ in enumerate(regionLabels):
     for i,_ in enumerate(imgNames):
         for j,_ in enumerate(imgNames):
             if len(preRespList[r][i][j])>0:
-                respLatMatrix[r,i,j] = findLatency(np.nanmean(np.concatenate(changeSdfList[r][i][j]),axis=0),baseWin,stimWin,method='abs',thresh=0.5)[0]
-                diffLatMatrix[r,i,j] = findLatency(np.nanmean(np.concatenate(diffSdfList[r][i][j]),axis=0),baseWin,stimWin,method='abs',thresh=0.5)[0]
+                preSdf,changeSdf = [np.nanmean(np.concatenate(s[r][i][j]),axis=0) for s in (preSdfList,changeSdfList)]
+                respLatMatrix[r,i,j] = findLatency(changeSdf,baseWin,stimWin,method='abs',thresh=0.5)[0]
+                diffLatMatrix[r,i,j] = findLatency(changeSdf-preSdf,baseWin,stimWin,method='abs',thresh=0.5)[0]
                 preRespMatrix[r,i,j] = np.nanmean(np.concatenate(preRespList[r][i][j]))
                 changeRespMatrix[r,i,j] = np.nanmean(np.concatenate(changeRespList[r][i][j]))
                 changeModMatrix[r,i,j] = np.nanmean(np.concatenate(changeModList[r][i][j]))
 popChangeModMatrix = np.clip((changeRespMatrix-preRespMatrix)/(changeRespMatrix+preRespMatrix),-1,1)
-
-nTrialsMatrix = hitMatrix+missMatrix
-hitRate = hitMatrix/nTrialsMatrix
-lickLatMatrix /= hitMatrix
-imgOrder = np.argsort(np.nanmean(hitRate,axis=(0,1)))
-nonDiag = ~np.eye(len(imgNames),dtype=bool)   
+   
 
 for region,n,ntrials,hr,lickLat,respLat,diffLat,preResp,changeResp,changeMod in zip(regionLabels,nexps,nTrialsMatrix,hitRate,lickLatMatrix,respLatMatrix,diffLatMatrix,preRespMatrix,changeRespMatrix,changeModMatrix):
     fig = plt.figure(facecolor='w',figsize=(10,10))
@@ -1850,18 +1869,21 @@ fig = plt.figure(facecolor='w')
 ax = fig.subplots(1)
 xticks = np.arange(len(regionLabels))
 xlim = [-0.5,len(regionLabels)-0.5]
-ax.plot(xlim,[0,0],'k--')
-for param,clr,lbl in zip((preRespMatrix,changeRespMatrix,changeModMatrix),'brk',('Pre Resp','Change Resp','Change Mod')):
-    r = [scipy.stats.pearsonr(hr[nonDiag],d[nonDiag])[0] for hr,d in zip(hitRate,param)]
-    ax.plot(xticks,r,'o',mec=clr,mfc=clr,label=lbl)
+for param,clr,lbl in zip((changeModMatrix,diffLatMatrix,),'kk',('Change Modulation Index','Change Modulation Latency')):
+    r = [scipy.stats.pearsonr(hr[~np.isnan(d)],d[~np.isnan(d)])[0] for hr,d in zip(hitRate,param)]
+    mfc = 'none' if 'Latency' in lbl else clr
+    ax.plot(xticks,np.absolute(r),'o',ms=10,mec=clr,mfc=mfc,label=lbl)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xlim(xlim)
 ax.set_xticks(xticks)
 ax.set_xticklabels(regionLabels,fontsize=10)
+ax.set_xlim(xlim)
+ax.set_ylim([0.4,0.65])
 ax.set_ylabel('Correlation with hit rate',fontsize=10)
-ax.legend()
+ax.legend(loc='upper left')
+plt.tight_layout()
+
 
 
 # run speed
