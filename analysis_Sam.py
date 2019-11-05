@@ -1712,7 +1712,7 @@ regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
 exps = Aexps
 imgNames = np.unique(data[exps[0]]['initialImage'])
 nexps = np.zeros(len(regionLabels),dtype=int)
-behRespList,preSdfList,changeSdfList,preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(6)]
+preSdfList,changeSdfList,preRespList,changeRespList,changeModList = [[[[[] for _ in imgNames] for _ in imgNames] for _ in regionLabels] for _ in range(5)]
 hitMatrix = np.zeros((len(regionLabels),len(imgNames),len(imgNames)))
 missMatrix = hitMatrix.copy()
 lickLatMatrix = hitMatrix.copy()
@@ -1759,31 +1759,15 @@ for exp in exps:
                 changeModList[r][i][j].append(np.clip((changeResp-preResp)/(changeResp+preResp),-1,1))
                 if response[trial]=='hit':
                     hitMatrix[r,i,j] += 1
-                    behRespList[r][i][j].append(1)
                     lickLatMatrix[r,i,j] += lickLat[ind]
                 else:
                     missMatrix[r,i,j] += 1
-                    behRespList[r][i][j].append(0)
                     
 nTrialsMatrix = hitMatrix+missMatrix
 hitRate = hitMatrix/nTrialsMatrix
 lickLatMatrix /= hitMatrix
 imgOrder = np.argsort(np.nanmean(hitRate,axis=(0,1)))
 nonDiag = ~np.eye(len(imgNames),dtype=bool)
-
-preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
-for i,unitSamp in enumerate(unitSamples):
-    # decode image change and identity for full respWin
-    # image change
-    X = np.concatenate([s[:,unitSamp,respWin].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
-    y = np.zeros(X.shape[0])
-    y[:int(X.shape[0]/2)] = 1
-    for model,name in zip(models,modelNames):
-        cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-        changeScore[name].append(cv['test_score'].mean())
-        if name=='randomForest':
-            changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
-            changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
 
 
 respLatMatrix = np.full(hitMatrix.shape,np.nan)
