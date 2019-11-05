@@ -15,21 +15,31 @@ import os
 
 
 def getUnitData(dataDir,syncDataset,probeID, probePXIDict, probeGen = '3b'):
-    if probeGen is '3a':
+    if probeGen == '3a':
         probeDir =  glob.glob(os.path.join(dataDir,'*Probe'+probeID+'_sorted'))[0]   
         probeTTLDir = os.path.join(probeDir,'events\\Neuropix-3a-100.0\\TTL_1')
         probeSpikeDir = os.path.join(probeDir,'continuous\\Neuropix-3a-100.0')
         
-    elif probeGen is '3b':
+    elif probeGen == '3b':
         eventsDir = os.path.join(dataDir, 'events')
         probeTTLDir = os.path.join(os.path.join(eventsDir,'Neuropix-PXI-' + probePXIDict[probeID]), 'TTL_1')
         probeSpikeDir = os.path.join(dataDir, 'Neuropix-PXI-' + probePXIDict[probeID] + '-AP_sortingResults')
+    
+    elif probeGen == 'pipeline':
+        baseString = os.path.basename(dataDir)
+        probeBase = os.path.join(dataDir, baseString + '_probe' + probeID + '_sorted')
+        probeTTLDir = os.path.join(probeBase, r'events\\Neuropix-PXI-100.0\\TTL_1')
+        probeSpikeDir = os.path.join(probeBase, r'continuous\\Neuropix-PXI-100.0')
+        
     
     print(probeTTLDir)
     print(probeSpikeDir)
     
     #Get barcodes from sync file
-    bRising, bFalling = get_sync_line_data(syncDataset, 'barcode')
+    if 'barcode' in syncDataset.line_labels:
+        bRising, bFalling = get_sync_line_data(syncDataset, 'barcode')
+    elif 'barcodes' in syncDataset.line_labels:
+        bRising, bFalling = get_sync_line_data(syncDataset, 'barcodes')
     bs_t, bs = ecephys.extract_barcodes_from_times(bRising, bFalling)
     
     #Get barcodes from ephys data
@@ -204,7 +214,12 @@ def getLFPData(dataDir, pid, syncDataset, probePXIDict, probeGen = '3b', num_cha
         probeDirName = 'Neuropix-PXI-'+probePXIDict[pid]
         lfp_data_dir = os.path.join(dataDir,probeDirName+'-LFP')
         events_dir = os.path.join(dataDir,'events',probeDirName,'TTL_1')
-    
+    elif probeGen == 'pipeline':
+        baseString = os.path.basename(dataDir)
+        probeBase = os.path.join(dataDir, baseString + '_probe' + pid + '_sorted')
+        lfp_data_dir = os.path.join(probeBase, r'continuous\\\Neuropix-PXI-100.1')
+        events_dir = os.path.join(probeBase, r'events\\Neuropix-PXI-100.0\\TTL_l')
+        
     lfp_data_file = os.path.join(lfp_data_dir, 'continuous.dat') 
         
     if not os.path.exists(lfp_data_file):
@@ -217,10 +232,14 @@ def getLFPData(dataDir, pid, syncDataset, probePXIDict, probeGen = '3b', num_cha
     time_stamps = np.load(os.path.join(lfp_data_dir, 'lfp_timestamps.npy'))    
     
     #Get barcodes from sync file
-    bRising, bFalling = get_sync_line_data(syncDataset, 'barcode')
+    if 'barcode' in syncDataset.line_labels:
+        bRising, bFalling = get_sync_line_data(syncDataset, 'barcode')
+    elif 'barcodes' in syncDataset.line_labels:
+        bRising, bFalling = get_sync_line_data(syncDataset, 'barcodes')
+        
     bs_t, bs = ecephys.extract_barcodes_from_times(bRising, bFalling)
     
-    #Get barcodes from ephys data
+
     #Get barcodes from ephys data
     if '03122019' in dataDir and 'slot3' in events_dir: 
         #files on slot3 for this day saved extra bytes at beginning, must skip them to get the right time stamps

@@ -32,7 +32,13 @@ class behaviorEphys():
             self.dataDir = dataDir
         else:
             self.dataDir = baseDir
-        sync_file = glob.glob(os.path.join(self.dataDir,'*'+('[0-9]'*18)+'.h5'))
+        
+        if probeGen=='pipeline':
+            sync_file = glob.glob(os.path.join(self.dataDir,'*.sync'))
+            
+        else:
+            sync_file = glob.glob(os.path.join(self.dataDir,'*'+('[0-9]'*18)+'.h5'))
+            
         self.sync_file = sync_file[0] if len(sync_file)>0 else None
         self.syncDataset = sync.Dataset(self.sync_file) if self.sync_file is not None else None
         if probes is None:
