@@ -12,7 +12,7 @@ import nidaqmx
 class LaserControl():
     
     def __init__(self):
-        nidaqDeviceName = 'Dev1'
+        nidaqDeviceName = 'Dev2'
         aoSampleRate = 5000
         laserCh = 0
         laserAmp = 1 # volts
