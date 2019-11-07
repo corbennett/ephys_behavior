@@ -12,6 +12,7 @@ import nidaqmx
 class LaserControl():
     
     def __init__(self):
+        nidaqDeviceName = 'Dev1'
         aoSampleRate = 5000
         laserCh = 0
         laserAmp = 1 # volts
@@ -27,7 +28,7 @@ class LaserControl():
             self.laserSignal[-(laserRamp.size+1):-1] = laserRamp[::-1]
         
         self.laserTask = nidaqmx.Task()
-        self.laserTask.ao_channels.add_ao_voltage_chan(self.nidaqDeviceName+'/ao'+str(laserCh),min_val=0,max_val=1.5)
+        self.laserTask.ao_channels.add_ao_voltage_chan(nidaqDeviceName+'/ao'+str(laserCh),min_val=0,max_val=1.5)
         self.laserTask.write(0)
         self.laserTask.timing.cfg_samp_clk_timing(aoSampleRate,samps_per_chan=laserBufferSize)
 
