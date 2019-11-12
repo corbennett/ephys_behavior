@@ -1896,7 +1896,7 @@ for exp in exps:
         preChangeTimes = flashTimes[np.searchsorted(flashTimes,changeTimes)-1]
         omitTimes = data[exp][state+'OmitFlashTimes'][:]
         runTime = data[exp][state+'RunTime'][:]
-        runSpeed = data[exp][state+'RunDx'][:]
+        runSpeed = data[exp][state+'RunSpeed'][:]
         engagedChange,engagedOmit = [np.min(np.absolute(times-changeTimes[hit][:,None]),axis=0) < 60 for times in (changeTimes,omitTimes)]
         for ind,(speed,times) in enumerate(zip((hitRunSpeed[state],correctRejectRunSpeed[state],engagedRunSpeed[state],disengagedRunSpeed[state],omitRunSpeed[state]),
                                                (changeTimes[engagedChange & hit],changeTimes[engagedChange & (response=='correctReject')],changeTimes[engagedChange],changeTimes[~engagedChange],omitTimes[engagedOmit]))):
