@@ -1883,23 +1883,35 @@ plotTime = np.arange(-preTime,postTime+sampInt,sampInt)
 lickBins = np.arange(-preTime-sampInt/2,postTime+sampInt,sampInt)
 
 state = ('behavior','passive')
-hitRunSpeed,correctRejectRunSpeed,engagedRunSpeed,disengagedRunSpeed,omitRunSpeed = [{state: [] for state in states} for _ in range(5)]
+hitRunSpeed,correctRejectRunSpeed,engagedRunSpeed,disengagedRunSpeed,omitRunSpeed,omitPreChangeRunSpeed = [{state: [] for state in states} for _ in range(6)]
 lickProb = []
 
 for exp in exps:
     print(exp)
     response = data[exp]['response'][:]
     hit = response=='hit'
+    miss = response=='miss'
     for state in states:
+        runSpeed = data[exp][state+'RunSpeed'][:]
+        medianRunSpeed = np.median(runSpeed)
+        print(medianRunSpeed)
+        if medianRunSpeed<1:
+            break
+        runSpeed -= medianRunSpeed
+        runTime = data[exp][state+'RunTime'][:]
         flashTimes = data[exp][state+'FlashTimes'][:]
         changeTimes = data[exp][state+'ChangeTimes'][:]
         preChangeTimes = flashTimes[np.searchsorted(flashTimes,changeTimes)-1]
         omitTimes = data[exp][state+'OmitFlashTimes'][:]
-        runTime = data[exp][state+'RunTime'][:]
-        runSpeed = data[exp][state+'RunSpeed'][:]
+        omitChangeDiff = omitTimes-changeTimes[:,None]
         engagedChange,engagedOmit = [np.min(np.absolute(times-changeTimes[hit][:,None]),axis=0) < 60 for times in (changeTimes,omitTimes)]
-        for ind,(speed,times) in enumerate(zip((hitRunSpeed[state],correctRejectRunSpeed[state],engagedRunSpeed[state],disengagedRunSpeed[state],omitRunSpeed[state]),
-                                               (changeTimes[engagedChange & hit],changeTimes[engagedChange & (response=='correctReject')],changeTimes[engagedChange],changeTimes[~engagedChange],omitTimes[engagedOmit]))):
+        for ind,(speed,times) in enumerate(((hitRunSpeed[state], changeTimes[engagedChange & hit]),
+                                            (correctRejectRunSpeed[state], changeTimes[engagedChange & (response=='correctReject')]),
+                                            (engagedRunSpeed[state], changeTimes[engagedChange]),
+                                            (disengagedRunSpeed[state], changeTimes[~engagedChange]),
+                                            (omitRunSpeed[state], omitTimes[engagedOmit & np.all((omitChangeDiff<0) | (omitChangeDiff>7.5),axis=0)]),
+                                            (omitPreChangeRunSpeed[state], omitTimes[engagedOmit & np.any((omitChangeDiff<0) & (omitChangeDiff>-2.5),axis=0)]),
+                                          )):
             if ind in (2,3) and np.all(engagedChange):
                 continue
             else:
@@ -1917,14 +1929,15 @@ for exp in exps:
                 trialLicks.append(np.histogram(1000*(licks-t+jitter),lickBins)[0])
             lickProb.append(np.mean(trialLicks,axis=0))
 
-xlim = [-3250,3500]
-ylim = [0,40]
+
+xlim = [-1250,1250]
+ylim = [-10,10]
 plotFlashTimes = np.concatenate((np.arange(0,-preTime,-750),np.arange(0,postTime,750)))
 for state in states:
         fig = plt.figure(facecolor='w',figsize=(6,8))
         ax = fig.add_subplot(3,1,1)
         for t in plotFlashTimes:
-            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5))
+            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
         for speed,clr,lbl in zip((hitRunSpeed[state],correctRejectRunSpeed[state]),'rk',('hit (engaged)','correct reject (engaged)')):
             m = np.mean(speed,axis=0)
             n = len(speed)
@@ -1933,17 +1946,17 @@ for state in states:
             ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-        ax.set_xlabel('Time from change (ms)')
-        ax.set_ylabel('Run speed (cm/s)')
-        ax.legend(loc='lower left')
-        ax.set_title(state)
+        ax.set_xlabel('Time from change (ms)',fontsize=10)
+        ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
+        ax.legend(loc='upper right',fontsize=8)
+        ax.set_title(state,fontsize=12)
         
         ax = fig.add_subplot(3,1,2)
         for t in plotFlashTimes:
-            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5))
+            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
         for speed,clr,lbl in zip((engagedRunSpeed[state],disengagedRunSpeed[state]),'mg',('engaged (all changes)','disengaged (all changes)')):
             m = np.mean(speed,axis=0)
             n = len(speed)
@@ -1952,29 +1965,34 @@ for state in states:
             ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-        ax.set_xlabel('Time from change (ms)')
-        ax.set_ylabel('Run speed (cm/s)')
-        ax.legend(loc='lower left')
+        ax.set_xlabel('Time from change (ms)',fontsize=10)
+        ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
+        ax.legend(loc='upper right',fontsize=8)
     
         ax = fig.add_subplot(3,1,3)
         for t in plotFlashTimes:
-            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5))
-        m = np.mean(omitRunSpeed[state],axis=0)
-        n = len(omitRunSpeed[state])
-        s = np.std(omitRunSpeed[state],axis=0)/(n**0.5)
-        ax.plot(plotTime,m,'k',label='engaged, n='+str(n))
-        ax.fill_between(plotTime,m+s,m-s,color='k',alpha=0.25)
+            if t==0:
+                ax.plot([t,t],ylim,'--',color='0.9',zorder=0)
+            else:
+                ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
+        for speed,clr,lbl in zip((omitPreChangeRunSpeed[state],),'k',('<2500 ms before change (engaged)',)):
+            m = np.mean(speed,axis=0)
+            n = len(speed)
+            s = np.std(speed,axis=0)/(n**0.5)
+            ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
+            ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-        ax.set_xlabel('Time from omitted flash (ms)')
-        ax.set_ylabel('Run speed (cm/s)')
-        ax.legend(loc='lower left')
+        ax.set_xlabel('Time from omitted flash (ms)',fontsize=10)
+        ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
+        loc = 'lower right' if state=='behavior' else 'upper right'
+        ax.legend(loc=loc,fontsize=8)
         plt.tight_layout()
 
    
