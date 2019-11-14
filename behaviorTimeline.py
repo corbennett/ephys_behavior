@@ -76,7 +76,7 @@ imageHitRate = []
 imageHitRateEngaged = []
 frameRate = 60.0
 windowFrames = 60*frameRate
-for mouseID,ephysDates in mouseInfo[-2:]: 
+for mouseID,ephysDates in mouseInfo: 
     print('loading mouse '+mouseID)
     ephysDateTimes = [datetime.datetime.strptime(d,'%m%d%Y') for d in ephysDates] if ephysDates is not None else (None,)
     trainingDate = []
