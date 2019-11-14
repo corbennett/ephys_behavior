@@ -1995,7 +1995,7 @@ for state in states:
         ax.legend(loc=loc,fontsize=8)
         plt.tight_layout()
 
-   
+
 ax = fig.add_subplot(3,1,2)
     for flashTime in (-7500,0):
         ax.plot([flashTime]*2,ylim,'k--')
