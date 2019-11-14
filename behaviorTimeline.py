@@ -56,6 +56,11 @@ mouseInfo = (('385533',('09072018','09102018','09112018','09172018')),
              ('423749',('05162019','05172019')),
              ('427937',('06062019','06072019')),
              ('423745',('06122019','06132019')),
+             ('429084',('07112019','07122019')),
+             ('423744',('08082019','08092019')),
+             ('423750',('08132019','08142019')),
+             ('459521',('09052019','09062019')),
+             ('461027',('09122019','09132019')),
             )
 
 unloadablePklFiles = []
@@ -71,7 +76,7 @@ imageHitRate = []
 imageHitRateEngaged = []
 frameRate = 60.0
 windowFrames = 60*frameRate
-for mouseID,ephysDates in mouseInfo: 
+for mouseID,ephysDates in mouseInfo[-2:]: 
     print('loading mouse '+mouseID)
     ephysDateTimes = [datetime.datetime.strptime(d,'%m%d%Y') for d in ephysDates] if ephysDates is not None else (None,)
     trainingDate = []

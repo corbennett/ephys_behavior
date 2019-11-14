@@ -184,7 +184,10 @@ class behaviorEphys():
         if not hasattr(self, 'vsyncTimes'):
             self.getFrameTimes()
             
-        self.pkl_file = glob.glob(os.path.join(self.dataDir,'*[0-9].pkl'))[0]
+        if self.probeGen == 'pipeline':
+            self.pkl_file = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))[0]
+        else:
+            self.pkl_file = glob.glob(os.path.join(self.dataDir,'*[0-9].pkl'))[0]
         behaviordata = pd.read_pickle(self.pkl_file)
         self.core_data = data_to_change_detection_core(behaviordata)
         
@@ -240,7 +243,7 @@ class behaviorEphys():
         self.behaviorRunStartTimes = find_run_transitions(self.behaviorRunSpeed, self.behaviorRunTime)
     
         #get lick times
-        self.lickTimes = probeSync.get_sync_line_data(self.syncDataset, 'lick_sensor')[0]
+        self.lickTimes = probeSync.get_sync_line_data(self.syncDataset, channel=31)[0]
         if len(self.lickTimes)==0:
             self.lickTimes = self.vsyncTimes[np.concatenate([f for f in self.trials['lick_frames']]).astype(int)]
         
@@ -274,9 +277,14 @@ class behaviorEphys():
             
     
     def getRFandFlashStimInfo(self):
-        rf_pickle = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
+        
+        if self.probeGen == 'pipeline':
+            rf_pickle = glob.glob(os.path.join(self.dataDir, '*replay-session*mapping*.pkl'))
+        else:
+            rf_pickle = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
+        
         if len(rf_pickle)==0:
-            self.rf_pickel_file = None
+            self.rf_pickle_file = None
         else:
             self.rf_pickle_file = rf_pickle[0]
             self.rfFlashStimDict = pd.read_pickle(self.rf_pickle_file)
@@ -297,7 +305,12 @@ class behaviorEphys():
     
         
     def getPassiveStimInfo(self):
-        passivePklFiles = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
+        
+        if self.probeGen == 'pipeline':
+            passivePklFiles = glob.glob(os.path.join(self.dataDir, '*replay-session*replay*.pkl'))
+        else:
+            passivePklFiles = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
+        
         if len(passivePklFiles)==0:
             self.passive_pickle_file = None
         else:
