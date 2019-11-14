@@ -238,6 +238,7 @@ class behaviorEphys():
         # get running data
         self.behaviorRunTime = self.vsyncTimes[self.core_data['running'].frame]
         self.behaviorRunSpeed = self.core_data['running'].speed
+        self.behaviorRunDx = self.core_data['running'].dx
         
         # get run start times
         self.behaviorRunStartTimes = find_run_transitions(self.behaviorRunSpeed, self.behaviorRunTime)
@@ -337,6 +338,7 @@ class behaviorEphys():
             dx,vsig,vin = [self.passiveStimDict['items']['foraging']['encoders'][0][key] for key in ('dx','vsig','vin')]
             self.passiveRunTime = self.vsyncTimes[firstPassiveFrame:]
             self.passiveRunSpeed = visual_behavior.analyze.compute_running_speed(dx,self.passiveRunTime,vsig,vin)
+            self.passiveRunDx = dx
             
     
     def getVisualResponsiveness(self):
