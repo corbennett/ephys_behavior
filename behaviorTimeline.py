@@ -214,7 +214,7 @@ params = (numRewards,engaged,dpr)
 paramNames = ('Rewards Earned','Prob. Engaged','d prime')
 
 show = slice(0,6)
-fig = plt.figure(facecolor='w',figsize=(8,6))
+fig = plt.figure(facecolor='w',figsize=(10,10))
 for i,(prm,ylab,ylim) in enumerate(zip(params,paramNames,([0,300],[0,1],[0,4]))):
     ax = plt.subplot(len(params),1,i+1)
     ymax = 0
@@ -238,7 +238,7 @@ for i,(prm,ylab,ylim) in enumerate(zip(params,paramNames,([0,300],[0,1],[0,4])))
     ymax = 1.05*max(ymax,np.nanmax((meanPrm+stdPrm)[show])) if ylim is None else ylim[1]
     ax.plot([(show.stop-show.start)-2.5]*2,[0,ymax],'k--')
     ax.set_ylim([0,ymax])
-    ax.set_xticks(np.arange(len(labels[show])))
+    ax.set_xticks(np.arange(show.start,show.stop))
     if i==len(params)-1:
         ax.set_xticklabels(['Last NSB','First NP3',-2,-1,1,2])
         ax.set_xlabel('Day',fontsize=12)
@@ -249,6 +249,7 @@ for i,(prm,ylab,ylim) in enumerate(zip(params,paramNames,([0,300],[0,1],[0,4])))
     ax.locator_params(axis='y',nbins=3)
 fig.text(0.37,0.95,'Training',fontsize=14,horizontalalignment='center')
 fig.text(0.79,0.95,'Ephys',fontsize=14,horizontalalignment='center')
+plt.tight_layout()
 
 
 meanImageHitRate = []
