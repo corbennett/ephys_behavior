@@ -1409,7 +1409,7 @@ for model in ('randomForest',):
 for model in ('randomForest',):
     for state in ('active','passive'):
         fig = plt.figure(facecolor='w',figsize=(6,10))
-        fig.text(0.55,1,'Decoder Accuracy',fontsize=10,horizontalalignment='center',verticalalignment='top')
+        fig.text(0.55,1,'Decoder Accuracy'+' ('+state+')',fontsize=10,horizontalalignment='center',verticalalignment='top')
         gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
         for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
             for j,score in enumerate(('imageScoreWindows','changeScoreWindows')):
@@ -1430,11 +1430,11 @@ for model in ('randomForest',):
                 ax.tick_params(direction='out',top=False,right=False,labelsize=8)
                 if score=='changeScoreWindows':
                     yticks = [0.5,0.75]
-                    ylim = [0.475,0.75]
+                    ylim = [0.475,0.9]
                     title = 'Change'
                 else:
                     yticks = [0.1,0.75]
-                    ylim = [0.1,0.75]
+                    ylim = [0.1,0.9]
                     title = 'Image Identity'
                 ax.set_xticks([250,350,450,550,650,750])
                 ax.set_xticklabels([0,100,200,300,400,500])
@@ -1924,7 +1924,8 @@ for exp in exps:
                     trialSpeed.append(np.interp(plotTime,1000*(runTime[i]-t),runSpeed[i]))
                 speed.append(np.mean(trialSpeed,axis=0))
         if state=='behavior':
-            lickTimes = data[exp]['lickTimes']
+            lickTimes = data[exp]['lickTimes'][:]
+#            lickProb.append(changeTimes - lickTimes[np.searchsorted(lickTimes,changeTimes)-1])
             trialLicks = []
             for t in changeTimes[engagedChange & hit]:
                 licks = lickTimes[(lickTimes>t-preTime) & (lickTimes<t+postTime)]
@@ -1999,7 +2000,7 @@ for state in states:
     plt.tight_layout()
     
     
-xlim = [-2.75,2.75]
+xlim = [-5.75,5.75]
 ylim = [0,45]
 fig = plt.figure(facecolor='w')
 ax = fig.add_subplot(1,1,1)
