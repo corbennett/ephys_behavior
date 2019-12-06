@@ -85,8 +85,7 @@ def calculateFlashTriggeredRunning(core_data):
 
 pickleDir = r'\\EphysRoom342\Data\behavior pickle files'
 
-mouseInfo = (('385533',('09072018','09102018','09112018','09172018')),
-             ('390339',('09192018','09202018','09212018')),
+mouseInfo = (('390339',('09192018','09202018','09212018')),
              ('394873',('10042018','10052018')),
              ('403472',('10312018','11012018')),
              ('403468',('11142018','11152018')),
@@ -123,9 +122,30 @@ trainingDate = []
 changeTriggeredRunning = []
 flashTriggeredRunning = []
 imageHitRateEngaged = []
+mouseIDs = [mouse[0] for mouse in mouseInfo]
+ephysDays = [[datetime.datetime.strptime(d,'%m%d%Y') for d in mouse[1]] for mouse in mouseInfo]
+
 frameRate = 60.0
-windowFrames = 60*frameRate
-for mouseID,ephysDates in mouseInfo: 
+
+mouseWeights = pd.read_csv(os.path.join(os.path.dirname(pickleDir),'mouseWeights.csv'))
+mouseWeights['date_time'] = pd.to_datetime(mouseWeights['date_time'])
+mouseWeights['dayofweek'] = mouseWeights['date_time'].dt.dayofweek
+
+params = ('trainingDate',
+          'trainingStage',
+          'rigID',
+          'rewardsEarned',
+          'dprimeOverall',
+          'dprimeEngaged',
+          'probEngaged')
+
+data = {p:[[] for _ in range(len(mouseInfo))] for p in params}
+data['ephys'] = []
+data['weighDate'] = []
+data['weight'] = []
+
+unloadablePkl = []
+for mouseInd,mouseID in enumerate(mouseIDs): 
     print('loading mouse '+mouseID)
     ephysDateTimes = [datetime.datetime.strptime(d,'%m%d%Y') for d in ephysDates] if ephysDates is not None else (None,)
     rigID = []
@@ -140,6 +160,7 @@ for mouseID,ephysDates in mouseInfo:
     imageHitRate.append([])
     imageHitRateEngaged.append([])
     unloadablePklFiles.append([])
+    
     for pklFile in glob.glob(os.path.join(pickleDir,mouseID,'*.pkl')):
         try:
             core_data = data_to_change_detection_core(pd.read_pickle(pklFile))
@@ -149,12 +170,12 @@ for mouseID,ephysDates in mouseInfo:
                 licks=core_data['licks'],
                 time=core_data['time'])
         except:
-            unloadablePklFiles[-1].append(pklFile)
+            unloadablePkl.append(pklFile)
             continue
         
-        trainingDate[-1].append(datetime.datetime.strptime(os.path.basename(pklFile)[:6],'%y%m%d'))
-        trainingStage[-1].append(core_data['metadata']['stage'])
-        rigID.append(core_data['metadata']['rig_id'])
+        data['trainingDate'][mouseInd].append(datetime.datetime.strptime(os.path.basename(pklFile)[:6],'%y%m%d'))
+        data['trainingStage'][mouseInd].append(core_data['metadata']['stage'])
+        data['rigID'][mouseInd].append(core_data['metadata']['rig_id'])
         
         autoRewarded = np.array(trials['auto_rewarded']).astype(bool)
         earlyResponse = np.array(trials['response_type']=='EARLY_RESPONSE')
@@ -164,8 +185,8 @@ for mouseID,ephysDates in mouseInfo:
         falseAlarm = np.array(trials['response_type']=='FA')
         correctReject = np.array(trials['response_type']=='CR')
         
-        rewardsEarned[-1].append(hit.sum())
-        dprimeOverall[-1].append(calculateDprime(hit.sum(),miss.sum(),falseAlarm.sum(),correctReject.sum()))
+        data['rewardsEarned'][mouseInd].append(hit.sum())
+        data['dprimeOverall'][mouseInd].append(calculateDprime(hit.sum(),miss.sum(),falseAlarm.sum(),correctReject.sum()))
         
         startFrame = int(trials['startframe'][0])
         endFrame = int(np.array(trials['endframe'])[-1])
@@ -179,8 +200,9 @@ for mouseID,ephysDates in mouseInfo:
         rewardRate[halfBin:halfBin+hitFrames.size-binSize+1] = np.correlate(hitFrames,np.ones(binSize))
         rewardRate[:halfBin] = rewardRate[halfBin]
         rewardRate[-halfBin:] = rewardRate[-halfBin]
-        probEngaged[-1].append(np.sum(rewardRate>engagedThresh)/rewardRate.size)
+        data['probEngaged'][mouseInd].append(np.sum(rewardRate>engagedThresh)/rewardRate.size)
         engagedTrials = rewardRate[changeFrames[~ignore].astype(int)]>engagedThresh
+
         dprimeEngaged[-1].append(calculateDprime(*(r[~ignore][engagedTrials].sum() for r in (hit,miss,falseAlarm,correctReject))))
         changeTriggeredRun = calculateChangeTriggeredRunning(core_data, changeFrames[~ignore][engagedTrials])
         changeTriggeredRunning[-1].append(changeTriggeredRun)
@@ -196,12 +218,49 @@ for mouseID,ephysDates in mouseInfo:
             imageHitRate[-1][-1].append(calculateHitRate(hit[ind].sum(),miss[ind].sum()))
             engaged = rewardRate[changeFrames[ind].astype(int)]>engagedThresh
             imageHitRateEngaged[-1][-1].append(calculateHitRate(hit[ind][engaged].sum(),miss[ind][engaged].sum()))
-             
+        data['dprimeEngaged'][mouseInd].append(calculateDprime(*(r[~ignore][engagedTrials].sum() for r in (hit,miss,falseAlarm,correctReject))))     
+   
     trainingDay.append(np.array([(d-min(trainingDate[-1])).days+1 for d in trainingDate[-1]]))
     isImages.append(np.array(['images' in s for s in trainingStage]))
     isRig.append(np.array([r=='NP3' for r in rigID]))
-    isEphys.append(np.array([d in ephysDateTimes for d in trainingDate[-1]]))
-
+    isEphys.append(np.array([d in ephysDateTimes for d in trainingDate[-1]]))        
+    
+    df = mouseWeights[(mouseWeights['MID']==int(mouseID)) & (mouseWeights['dayofweek'].isin((5,6)))]
+    data['weighDate'].append(df['date_time'].dt.to_pydatetime())
+    data['weight'].append(np.array(df['wt_g']))
+    
+    
+for mouseInd,(mouseID,ephysdates) in enumerate(zip(mouseIDs,ephysDays)):
+    trainDate = np.array(data['trainingDate'][mouseInd])
+    sortInd = np.argsort(trainDate)
+    handoffReady = ['handoff_ready' in stage for stage in np.array(data['trainingStage'][mouseInd])[sortInd]].index(True)
+    rig = [rigID=='NP3' for rigID in np.array(data['rigID'][mouseInd])[sortInd]].index(True)
+    ephys = np.where(np.in1d(trainDate[sortInd],ephysdates))[0][0]
+    weighDay = [d.days for d in data['weighDate'][mouseInd]-trainDate.min()]
+    trainDay = [d.days for d in trainDate[sortInd]-trainDate.min()]
+    
+    fig = plt.figure(facecolor='w')
+    ax1 = fig.add_subplot(2,1,1)
+    ax1.plot(trainDay,np.array(data['rewardsEarned'][mouseInd])[sortInd],'ko')
+    
+    ax2 = fig.add_subplot(2,1,2)
+    ax2.plot(weighDay,data['weight'][mouseInd],'ko')
+    
+    for i,(ax,ylbl) in enumerate(zip((ax1,ax2),('Rewards','Weight (g)'))):
+        for j,lbl in zip((handoffReady,rig,ephys),('handoff\nready','on rig','ephys')):
+            x = trainDay[j]-0.5
+            ax.axvline(x,color='k')
+            if i==0:
+                ylim = plt.get(ax,'ylim')
+                ax.text(x,ylim[0]+1.05*(ylim[1]-ylim[0]),lbl,horizontalalignment='center',verticalalignment='bottom')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim([-1,max(trainDay)+1])
+        if i==1:
+            ax.set_xlabel('Day')
+        ax.set_ylabel(ylbl)
+    
 
 params = (rewardsEarned,dprimeEngaged,probEngaged)
 labels = ('Rewards Earned','d prime','prob. engaged')
@@ -244,6 +303,8 @@ for day,rig,ephys,rewards,d,eng in zip(trainingDay,isRig,isEphys,rewardsEarned,d
         engaged[-1].append(eng[lastNSBDay])
         firstRigDay = np.where(rig)[0][0]
         numRewards[-1].append(rewards[firstRigDay])
+        if rewards[firstRigDay]<1:
+            print(mouseInfo[len(numRewards)-1][0])
         dpr[-1].append(d[firstRigDay])
         engaged[-1].append(eng[firstRigDay])
     else:
@@ -265,44 +326,45 @@ for day,rig,ephys,rewards,d,eng in zip(trainingDay,isRig,isEphys,rewardsEarned,d
         engaged[-1].append(np.nan)
 
 params = (numRewards,engaged,dpr)
-paramNames = ('Rewards Earned','Prob. Engaged','d prime')
+paramNames = ('Rewards Earned','Prob. Engaged','d\' (engaged)')
 
 show = slice(0,6)
-fig = plt.figure(facecolor='w',figsize=(8,6))
+fig = plt.figure(facecolor='w',figsize=(10,10))
 for i,(prm,ylab,ylim) in enumerate(zip(params,paramNames,([0,300],[0,1],[0,4]))):
     ax = plt.subplot(len(params),1,i+1)
     ymax = 0
-    for p,rig in zip(prm,isRig):
-        if not all(rig):
-            ax.plot(p[show],'o-',color='0.8',mec='0.8',ms=2)
-            ymax = max(ymax,max(p[show]))
+#    for p,rig in zip(prm,isRig):
+#        if not all(rig):
+#            ax.plot(p[show],'o-',color='0.8',mec='0.8',ms=2)
+#            ymax = max(ymax,max(p[show]))
     prm = np.array([p for p,rig in zip(prm,isRig) if not all(rig)])
     meanPrm = np.nanmean(prm,axis=0)
     n = np.sum(~np.isnan(prm),axis=0)
     print(n)
     stdPrm = np.nanstd(prm,axis=0)
     semPrm = stdPrm/n**0.5
-    ax.plot(meanPrm[show],'o',mfc='k',mec='k',ms=8)
+    ax.plot(meanPrm[show],'o',mfc='k',mec='k',ms=10)
     for x,(m,s) in enumerate(zip(meanPrm[show],semPrm[show])):
         ax.plot([x]*2,m+np.array([-s,s]),'k',linewidth=2)
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=14)
     ax.set_xlim([-0.25,show.stop-show.start-0.75])
-    ymax = 1.05*max(ymax,np.nanmax((meanPrm+stdPrm)[show])) if ylim is None else ylim[1]
+    ymax = 1.05*max(ymax,np.nanmax((meanPrm+stdPrm)[show])) #if ylim is None else ylim[1]
     ax.plot([(show.stop-show.start)-2.5]*2,[0,ymax],'k--')
     ax.set_ylim([0,ymax])
-    ax.set_xticks(np.arange(len(labels[show])))
+    ax.set_xticks(np.arange(show.start,show.stop))
     if i==len(params)-1:
         ax.set_xticklabels(['Last NSB','First NP3',-2,-1,1,2])
-        ax.set_xlabel('Day',fontsize=12)
+        ax.set_xlabel('Day',fontsize=16)
     else:
         ax.set_xticklabels([])
-    ax.set_ylabel(ylab,fontsize=12)
+    ax.set_ylabel(ylab,fontsize=16)
     ax.yaxis.set_label_coords(-0.075,0.5)
     ax.locator_params(axis='y',nbins=3)
-fig.text(0.37,0.95,'Training',fontsize=14,horizontalalignment='center')
-fig.text(0.79,0.95,'Ephys',fontsize=14,horizontalalignment='center')
+fig.text(0.38,0.95,'Training',fontsize=18,horizontalalignment='center')
+fig.text(0.85,0.95,'Ephys',fontsize=18,horizontalalignment='center')
+plt.tight_layout()
 
 
 meanImageHitRate = []
