@@ -934,22 +934,22 @@ regionsToUse = (('LGd',('LGd',),(0,0,0)),
                 ('LP',('LP',),subcortical_cmap(0.4)),
                 ('APN',('APN',),subcortical_cmap(0.5)),
                 ('SCd',('SCig','SCig-a','SCig-b'),subcortical_cmap(0.6)),
-                ('MB',('MB',),subcortical_cmap(0.7)),
+#                ('MB',('MB',),subcortical_cmap(0.7)),
                 ('MRN',('MRN',),subcortical_cmap(0.8)),
-                ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
+#                ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
                 ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0)))
 regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
-unitSampleSize = [1]
+unitSampleSize = [5,20]
 
 nCrossVal = 3
 
 respWin = slice(stimWin.start,stimWin.start+101)
 
-decodeWindowSize = 5
-decodeWindows = []#np.arange(stimWin.start,stimWin.start+500,decodeWindowSize)
+decodeWindowSize = 10
+decodeWindows = np.arange(stimWin.start,stimWin.start+500,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
 preImageDecodeWindows = []#np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
@@ -1022,6 +1022,8 @@ for expInd,exp in enumerate(exps):
                 if nUnits>=sampleSize:
                     if sampleSize>1:
                         nsamples = int(2*math.ceil(nUnits/sampleSize))
+                        if nsamples > 8:
+                            nsamples = 8
                         unitSamples = [np.random.choice(nUnits,sampleSize,replace=False) for _ in range(nsamples)]
                     else:
                         nsamples = nUnits
@@ -1042,24 +1044,24 @@ for expInd,exp in enumerate(exps):
                         for i,unitSamp in enumerate(unitSamples):
                             # decode image change and identity for full respWin
                             # image change
-                            X = np.concatenate([s[:,unitSamp,respWin].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
-                            y = np.zeros(X.shape[0])
-                            y[:int(X.shape[0]/2)] = 1
-                            for model,name in zip(models,modelNames):
-                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-                                changeScore[name].append(cv['test_score'].mean())
-                                if name=='randomForest':
-                                    changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
-                                    changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
-                            # image identity
-                            imgSDFs = [changeSDFs[:,unitSamp,respWin][changeImage==img] for img in imageNames]
-                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-                            y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-                            for model,name in zip(models,modelNames):
-                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-                                imageScore[name].append(cv['test_score'].mean())
-                                if name=='randomForest':
-                                    imageFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+#                            X = np.concatenate([s[:,unitSamp,respWin].reshape((s.shape[0],-1)) for s in (changeSDFs,preChangeSDFs)])
+#                            y = np.zeros(X.shape[0])
+#                            y[:int(X.shape[0]/2)] = 1
+#                            for model,name in zip(models,modelNames):
+#                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+#                                changeScore[name].append(cv['test_score'].mean())
+#                                if name=='randomForest':
+#                                    changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:trials.sum(),1])
+#                                    changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+#                            # image identity
+#                            imgSDFs = [changeSDFs[:,unitSamp,respWin][changeImage==img] for img in imageNames]
+#                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+#                            y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+#                            for model,name in zip(models,modelNames):
+#                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+#                                imageScore[name].append(cv['test_score'].mean())
+#                                if name=='randomForest':
+#                                    imageFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                             
                             # decode image change and identity for sliding windows
                             for j,winStart in enumerate(decodeWindows):
@@ -1405,48 +1407,49 @@ for model in ('randomForest',):
     
 # image identity and change decoding for sliding windows         
 for model in ('randomForest',):
-    fig = plt.figure(facecolor='w',figsize=(6,10))
-    fig.text(0.55,1,'Decoder Accuracy',fontsize=10,horizontalalignment='center',verticalalignment='top')
-    gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
-    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
-        for j,score in enumerate(('imageScoreWindows','changeScoreWindows')):
-            ax = plt.subplot(gs[i,j])
-            regionScore = []
-            for exp in result:
-                s = result[exp][region]['active'][score][model]
-                if len(s)>0:
-                    regionScore.append(s[0])
-            n = len(regionScore)
-            if n>0:
-                m = np.mean(regionScore,axis=0)
-                s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
-                ax.plot(decodeWindows+decodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
-                ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
-            for side in ('right','top'):
-                ax.spines[side].set_visible(False)
-            ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-            if score=='changeScoreWindows':
-                yticks = [0.5,0.75]
-                ylim = [0.475,0.75]
-                title = 'Change'
-            else:
-                yticks = [0.1,0.75]
-                ylim = [0.1,0.75]
-                title = 'Image Identity'
-            ax.set_xticks([250,350,450,550,650,750])
-            ax.set_xticklabels([0,100,200,300,400,500])
-            ax.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
-            ax.set_yticks(yticks)
-            ax.set_ylim(ylim)
-            if i<len(regionLabels)-1:
-                ax.set_xticklabels([])
-            else:
-                ax.set_xlabel('Time (ms)',fontsize=10)
-            if j==0:
-                ax.set_ylabel(region,fontsize=10)
-            if i==0:
-                ax.set_title(title,fontsize=10)
-    plt.tight_layout()
+    for state in ('active','passive'):
+        fig = plt.figure(facecolor='w',figsize=(6,10))
+        fig.text(0.55,1,'Decoder Accuracy'+' ('+state+')',fontsize=10,horizontalalignment='center',verticalalignment='top')
+        gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
+        for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+            for j,score in enumerate(('imageScoreWindows','changeScoreWindows')):
+                ax = plt.subplot(gs[i,j])
+                regionScore = []
+                for exp in result:
+                    s = result[exp][region][state][score][model]
+                    if len(s)>0:
+                        regionScore.append(s[-1])
+                n = len(regionScore)
+                if n>0:
+                    m = np.mean(regionScore,axis=0)
+                    s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+                    ax.plot(decodeWindows+decodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
+                    ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
+                for side in ('right','top'):
+                    ax.spines[side].set_visible(False)
+                ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+                if score=='changeScoreWindows':
+                    yticks = [0.5,0.75]
+                    ylim = [0.475,0.9]
+                    title = 'Change'
+                else:
+                    yticks = [0.1,0.75]
+                    ylim = [0.1,0.9]
+                    title = 'Image Identity'
+                ax.set_xticks([250,350,450,550,650,750])
+                ax.set_xticklabels([0,100,200,300,400,500])
+                ax.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
+                ax.set_yticks(yticks)
+                ax.set_ylim(ylim)
+                if i<len(regionLabels)-1:
+                    ax.set_xticklabels([])
+                else:
+                    ax.set_xlabel('Time (ms)',fontsize=10)
+                if j==0:
+                    ax.set_ylabel(region,fontsize=10)
+                if i==0:
+                    ax.set_title(title,fontsize=10)
+        plt.tight_layout()
 
 # overlay of change and image decoding
 for model in ('randomForest',):
@@ -1680,7 +1683,7 @@ for model in ('randomForest',):
                 behavior = result[exp]['behaviorResponse'][:].astype(float)
                 s = result[exp][region][state]['changePredictWindows'][model]
                 if len(s)>0:
-                    regionData.append([np.corrcoef(behavior,p)[0,1] for p in s[0]])
+                    regionData.append([np.corrcoef(behavior,p)[0,1] for p in s[-1]])
             n = len(regionData)
             if n>0:
                 m = np.mean(regionData,axis=0)
@@ -1693,7 +1696,7 @@ for model in ('randomForest',):
             ax.set_xticks([250,350,450,550,650,750])
             ax.set_xticklabels([0,100,200,300,400,500])
             ax.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
-            ax.set_ylim([-0.1,0.5])
+            ax.set_ylim([-0.1,0.75])
             if i<len(regionLabels)-1:
                 ax.set_xticklabels([])
             else:
@@ -1882,7 +1885,7 @@ sampInt = 10
 plotTime = np.arange(-preTime,postTime+sampInt,sampInt)
 lickBins = np.arange(-preTime-sampInt/2,postTime+sampInt,sampInt)
 
-state = ('behavior','passive')
+states = ('behavior','passive')
 hitRunSpeed,correctRejectRunSpeed,engagedRunSpeed,disengagedRunSpeed,omitRunSpeed,omitPreChangeRunSpeed = [{state: [] for state in states} for _ in range(6)]
 lickProb = []
 
@@ -1897,7 +1900,7 @@ for exp in exps:
         print(medianRunSpeed)
         if medianRunSpeed<1:
             break
-        runSpeed -= medianRunSpeed
+#        runSpeed -= medianRunSpeed
         runTime = data[exp][state+'RunTime'][:]
         flashTimes = data[exp][state+'FlashTimes'][:]
         changeTimes = data[exp][state+'ChangeTimes'][:]
@@ -1921,7 +1924,8 @@ for exp in exps:
                     trialSpeed.append(np.interp(plotTime,1000*(runTime[i]-t),runSpeed[i]))
                 speed.append(np.mean(trialSpeed,axis=0))
         if state=='behavior':
-            lickTimes = data[exp]['lickTimes']
+            lickTimes = data[exp]['lickTimes'][:]
+#            lickProb.append(changeTimes - lickTimes[np.searchsorted(lickTimes,changeTimes)-1])
             trialLicks = []
             for t in changeTimes[engagedChange & hit]:
                 licks = lickTimes[(lickTimes>t-preTime) & (lickTimes<t+postTime)]
@@ -1931,86 +1935,111 @@ for exp in exps:
 
 
 xlim = [-1250,1250]
-ylim = [-10,10]
-plotFlashTimes = np.concatenate((np.arange(0,-preTime,-750),np.arange(0,postTime,750)))
+ylim = [0,40]
+plotFlashTimes = np.concatenate((np.arange(-750,-preTime,-750),np.arange(0,postTime,750)))
 for state in states:
-        fig = plt.figure(facecolor='w',figsize=(6,8))
-        ax = fig.add_subplot(3,1,1)
-        for t in plotFlashTimes:
-            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
-        for speed,clr,lbl in zip((hitRunSpeed[state],correctRejectRunSpeed[state]),'rk',('hit (engaged)','correct reject (engaged)')):
-            m = np.mean(speed,axis=0)
-            n = len(speed)
-            s = np.std(speed,axis=0)/(n**0.5)
-            ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
-            ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_xlabel('Time from change (ms)',fontsize=10)
-        ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
-        ax.legend(loc='upper right',fontsize=8)
-        ax.set_title(state,fontsize=12)
-        
-        ax = fig.add_subplot(3,1,2)
-        for t in plotFlashTimes:
-            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
-        for speed,clr,lbl in zip((engagedRunSpeed[state],disengagedRunSpeed[state]),'mg',('engaged (all changes)','disengaged (all changes)')):
-            m = np.mean(speed,axis=0)
-            n = len(speed)
-            s = np.std(speed,axis=0)/(n**0.5)
-            ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
-            ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_xlabel('Time from change (ms)',fontsize=10)
-        ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
-        ax.legend(loc='upper right',fontsize=8)
+    fig = plt.figure(facecolor='w',figsize=(6,8))
+    ax = fig.add_subplot(3,1,1)
+    for t in plotFlashTimes:
+        ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
+    for speed,clr,lbl in zip((hitRunSpeed[state],correctRejectRunSpeed[state]),'rk',('hit (engaged)','correct reject (engaged)')):
+        m = np.mean(speed,axis=0)
+        n = len(speed)
+        s = np.std(speed,axis=0)/(n**0.5)
+        ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
+        ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_xlabel('Time from change (ms)',fontsize=10)
+    ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
+    ax.legend(loc='upper right',fontsize=8)
+    ax.set_title(state,fontsize=12)
     
-        ax = fig.add_subplot(3,1,3)
-        for t in plotFlashTimes:
-            if t==0:
-                ax.plot([t,t],ylim,'--',color='0.9',zorder=0)
-            else:
-                ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
-        for speed,clr,lbl in zip((omitPreChangeRunSpeed[state],),'k',('<2500 ms before change (engaged)',)):
-            m = np.mean(speed,axis=0)
-            n = len(speed)
-            s = np.std(speed,axis=0)/(n**0.5)
-            ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
-            ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-        ax.set_xlim(xlim)
-        ax.set_ylim(ylim)
-        ax.set_xlabel('Time from omitted flash (ms)',fontsize=10)
-        ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
-        loc = 'lower right' if state=='behavior' else 'upper right'
-        ax.legend(loc=loc,fontsize=8)
-        plt.tight_layout()
+    ax = fig.add_subplot(3,1,2)
+    for t in plotFlashTimes:
+        ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
+    for speed,clr,lbl in zip((engagedRunSpeed[state],disengagedRunSpeed[state]),'mg',('engaged (all changes)','disengaged (all changes)')):
+        m = np.mean(speed,axis=0)
+        n = len(speed)
+        s = np.std(speed,axis=0)/(n**0.5)
+        ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
+        ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_xlabel('Time from change (ms)',fontsize=10)
+    ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
+    ax.legend(loc='upper right',fontsize=8)
+
+    ax = fig.add_subplot(3,1,3)
+    for t in plotFlashTimes:
+        if t==0:
+            ax.plot([t,t],ylim,'--',color='0.9',zorder=0)
+        else:
+            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=250,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
+    for speed,clr,lbl in zip((omitPreChangeRunSpeed[state],),'k',('<2500 ms before change (engaged)',)):
+        m = np.mean(speed,axis=0)
+        n = len(speed)
+        s = np.std(speed,axis=0)/(n**0.5)
+        ax.plot(plotTime,m,clr,label=lbl+', n='+str(n))
+        ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.25)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_xlabel('Time from omitted flash (ms)',fontsize=10)
+    ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=10)
+    loc = 'lower right' if state=='behavior' else 'upper right'
+    ax.legend(loc=loc,fontsize=8)
+    plt.tight_layout()
+    
+    
+xlim = [-5.75,5.75]
+ylim = [0,45]
+fig = plt.figure(facecolor='w')
+ax = fig.add_subplot(1,1,1)
+for t in plotFlashTimes:
+    clr = '0.8' if t<0 else '0.4'
+    ax.add_patch(matplotlib.patches.Rectangle([t/1000,ylim[0]],width=0.25,height=ylim[1]-ylim[0],color=clr,alpha=0.2,zorder=0))
+for speed,clr,lbl in zip((hitRunSpeed['behavior'],correctRejectRunSpeed['passive']),'mg',('active','passive')):
+    m = np.mean(speed,axis=0)
+    n = len(speed)
+    s = np.std(speed,axis=0)/(n**0.5)
+    ax.plot(plotTime/1000,m,clr,label=lbl)
+    ax.fill_between(plotTime/1000,m+s,m-s,color=clr,alpha=0.1)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+ax.set_yticks(np.arange(0,60,10))
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
+ax.set_xlabel('Time from change (s)',fontsize=12)
+ax.set_ylabel('Run speed (cm/s)',fontsize=12)
+ax.legend(loc='lower left',fontsize=12)
+
 
 
 ax = fig.add_subplot(3,1,2)
-    for flashTime in (-7500,0):
-        ax.plot([flashTime]*2,ylim,'k--')
-    diff = [h-cr for h,cr in zip(hitRunSpeed[state],correctRejectRunSpeed[state])]
-    m = np.mean(diff,axis=0)
-    s = np.std(diff,axis=0)/(len(hitRunSpeed[state])**0.5)
-    ax.plot(plotTime,m,'k',label=lbl)
-    ax.fill_between(plotTime,m+s,m-s,color='k',alpha=0.25)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xlim(xlim)
+for flashTime in (-7500,0):
+    ax.plot([flashTime]*2,ylim,'k--')
+diff = [h-cr for h,cr in zip(hitRunSpeed[state],correctRejectRunSpeed[state])]
+m = np.mean(diff,axis=0)
+s = np.std(diff,axis=0)/(len(hitRunSpeed[state])**0.5)
+ax.plot(plotTime,m,'k',label=lbl)
+ax.fill_between(plotTime,m+s,m-s,color='k',alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim(xlim)
 #    ax.set_ylim(ylim)
-    ax.set_xlabel('Time from change (ms)')
-    ax.set_ylabel('Difference (hit - correct reject, cm/s)')
+ax.set_xlabel('Time from change (ms)')
+ax.set_ylabel('Difference (hit - correct reject, cm/s)')
 
 fig = plt.figure(facecolor='w',figsize=(6,8))
 ax = plt.subplot(2,1,1)

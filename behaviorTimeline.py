@@ -122,6 +122,7 @@ trainingDate = []
 changeTriggeredRunning = []
 flashTriggeredRunning = []
 imageHitRateEngaged = []
+
 mouseIDs = [mouse[0] for mouse in mouseInfo]
 ephysDays = [[datetime.datetime.strptime(d,'%m%d%Y') for d in mouse[1]] for mouse in mouseInfo]
 
@@ -147,6 +148,7 @@ data['weight'] = []
 unloadablePkl = []
 for mouseInd,mouseID in enumerate(mouseIDs): 
     print('loading mouse '+mouseID)
+
     ephysDateTimes = [datetime.datetime.strptime(d,'%m%d%Y') for d in ephysDates] if ephysDates is not None else (None,)
     rigID = []
     trainingDate.append([])
@@ -203,6 +205,7 @@ for mouseInd,mouseID in enumerate(mouseIDs):
         data['probEngaged'][mouseInd].append(np.sum(rewardRate>engagedThresh)/rewardRate.size)
         engagedTrials = rewardRate[changeFrames[~ignore].astype(int)]>engagedThresh
 
+
         dprimeEngaged[-1].append(calculateDprime(*(r[~ignore][engagedTrials].sum() for r in (hit,miss,falseAlarm,correctReject))))
         changeTriggeredRun = calculateChangeTriggeredRunning(core_data, changeFrames[~ignore][engagedTrials])
         changeTriggeredRunning[-1].append(changeTriggeredRun)
@@ -219,7 +222,7 @@ for mouseInd,mouseID in enumerate(mouseIDs):
             engaged = rewardRate[changeFrames[ind].astype(int)]>engagedThresh
             imageHitRateEngaged[-1][-1].append(calculateHitRate(hit[ind][engaged].sum(),miss[ind][engaged].sum()))
         data['dprimeEngaged'][mouseInd].append(calculateDprime(*(r[~ignore][engagedTrials].sum() for r in (hit,miss,falseAlarm,correctReject))))     
-   
+        data['dprimeEngaged'][mouseInd].append(calculateDprime(*(r[~ignore][engagedTrials].sum() for r in (hit,miss,falseAlarm,correctReject))))
     trainingDay.append(np.array([(d-min(trainingDate[-1])).days+1 for d in trainingDate[-1]]))
     isImages.append(np.array(['images' in s for s in trainingStage]))
     isRig.append(np.array([r=='NP3' for r in rigID]))
