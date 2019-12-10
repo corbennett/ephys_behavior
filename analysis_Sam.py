@@ -2075,6 +2075,65 @@ plt.tight_layout()
 
 
 
+# lick prob for all changes and non-change flashes
+flashType = ('flash','change')
+timeSinceChange = {event:[] for event in flashType}
+timeSinceLick = {event:[] for event in flashType}
+lickInWindow = {event:[] for event in flashType}
+hitRate = []
+falseAlarmRate = []
+for exp in exps:
+    print(exp)
+    response = data[exp]['response'][:]
+    flashTimes = data[exp]['behaviorFlashTimes'][:]
+    changeTimes = data[exp]['behaviorChangeTimes'][:]
+    changeTrials = np.in1d(response,('hit','miss'))
+    lickTimes = data[exp]['lickTimes'][:]
+    engagedFlash,engagedChange = [np.min(np.absolute(times-changeTimes[response=='hit',None]),axis=0) < 60 for times in (flashTimes,changeTimes)]
+    firstChange = changeTimes[changeTrials][0]
+    flashes = flashTimes[engagedFlash & (flashTimes>firstChange) & (~np.in1d(flashTimes,changeTimes[changeTrials]))]
+    changes = changeTimes[changeTrials & engagedChange & (changeTimes>firstChange)]
+    for event,times in zip(flashType,(flashes,changes)):
+        timeSinceChange[event].append(times-changeTimes[changeTrials][np.searchsorted(changeTimes[changeTrials],times)-1])
+        timeSinceLick[event].append(times-lickTimes[np.searchsorted(lickTimes,times)-1])
+        timesBeforeLick = times<lickTimes[-1]
+        timeToLick = lickTimes[np.searchsorted(lickTimes,times[timesBeforeLick])]-times[timesBeforeLick]
+        lick = np.zeros(len(times),dtype='bool')
+        lick[timesBeforeLick] = (timeToLick>0.15) & (timeToLick<0.75)
+        lickInWindow[event].append(lick)
+    hitRate.append(np.sum(response[engagedChange]=='hit')/np.sum(changeTrials & engagedChange))
+    falseAlarmRate.append(np.sum(response[engagedChange]=='falseAlarm')/np.sum(~changeTrials & engagedChange))
+
+bins = np.arange(0.375,61,0.75)   
+t = bins-0.375
+for exp,_ in enumerate(exps):
+    fig = plt.figure(facecolor='w',figsize=(6,8))
+    ax1 = fig.add_subplot(2,1,1)
+    ax2 = fig.add_subplot(2,1,2)
+    ax1.plot([0,60],[hitRate[exp]]*2,'g--',label='hit rate')
+    ax1.plot([0,60],[falseAlarmRate[exp]]*2,'r--',label='false alarm rate')
+    for event,clr in zip(flashType,'rg'):
+        timeToBinIndex = np.searchsorted(bins,timeSinceChange[event][exp])
+        lick = np.zeros(len(bins))
+        nolick = lick.copy()
+        for i in range(len(bins)):
+            ind = np.where(timeToBinIndex==i)[0]
+            lick[i] = lickInWindow[event][exp][ind].sum()
+            nolick[i] = len(ind)-lick[i]
+        ax1.plot(t,lick/(lick+nolick),clr,label=event)
+        ax2.plot(t,lick+nolick,clr)
+    for ax in (ax1,ax2):
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+    ax1.set_ylabel('Lick Prob.')
+    ax2.set_ylabel('N')
+    ax2.set_xlabel('Time since change (s)')
+    ax1.legend()
+
+
+
+
 
 
 
