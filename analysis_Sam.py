@@ -1897,10 +1897,9 @@ for exp in exps:
     for state in states:
         runSpeed = data[exp][state+'RunSpeed'][:]
         medianRunSpeed = np.median(runSpeed)
-        print(medianRunSpeed)
         if medianRunSpeed<1:
             break
-#        runSpeed -= medianRunSpeed
+        runSpeed -= medianRunSpeed
         runTime = data[exp][state+'RunTime'][:]
         flashTimes = data[exp][state+'FlashTimes'][:]
         changeTimes = data[exp][state+'ChangeTimes'][:]
@@ -2000,14 +1999,14 @@ for state in states:
     plt.tight_layout()
     
     
-xlim = [-5.75,5.75]
+xlim = [-2.75,2.75]
 ylim = [0,45]
 fig = plt.figure(facecolor='w')
 ax = fig.add_subplot(1,1,1)
 for t in plotFlashTimes:
     clr = '0.8' if t<0 else '0.4'
     ax.add_patch(matplotlib.patches.Rectangle([t/1000,ylim[0]],width=0.25,height=ylim[1]-ylim[0],color=clr,alpha=0.2,zorder=0))
-for speed,clr,lbl in zip((hitRunSpeed['behavior'],correctRejectRunSpeed['passive']),'mg',('active','passive')):
+for speed,clr,lbl in zip((hitRunSpeed['behavior'],hitRunSpeed['passive']),'mg',('active','passive')):
     m = np.mean(speed,axis=0)
     n = len(speed)
     s = np.std(speed,axis=0)/(n**0.5)
@@ -2023,62 +2022,48 @@ ax.set_xlabel('Time from change (s)',fontsize=12)
 ax.set_ylabel('Run speed (cm/s)',fontsize=12)
 ax.legend(loc='lower left',fontsize=12)
 
-
-
-ax = fig.add_subplot(3,1,2)
-for flashTime in (-7500,0):
-    ax.plot([flashTime]*2,ylim,'k--')
-diff = [h-cr for h,cr in zip(hitRunSpeed[state],correctRejectRunSpeed[state])]
-m = np.mean(diff,axis=0)
-s = np.std(diff,axis=0)/(len(hitRunSpeed[state])**0.5)
-ax.plot(plotTime,m,'k',label=lbl)
-ax.fill_between(plotTime,m+s,m-s,color='k',alpha=0.25)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim(xlim)
-#    ax.set_ylim(ylim)
-ax.set_xlabel('Time from change (ms)')
-ax.set_ylabel('Difference (hit - correct reject, cm/s)')
-
-fig = plt.figure(facecolor='w',figsize=(6,8))
-ax = plt.subplot(2,1,1)
-m = np.mean(lickProb,axis=0)
-s = np.std(lickProb,axis=0)/(len(lickProb)**0.5)
-ax.plot(rt,m,'k',label=lbl)
-ax.fill_between(rt,m+s,m-s,color='k',alpha=0.25)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=14)
-ax.set_xticklabels([])
-ax.set_xlim([0,500])
-ax.set_yticks(np.arange(0,1,0.02))
-ax.set_ylim([0,0.08])
-ax.set_ylabel('Lick probability',fontsize=16)
-
-ax = plt.subplot(2,1,2)
-for speed,clr,lbl in zip((hitRunSpeed,),'k',('hit',)):
+xlim = [-500,500]
+ylim = [-10,5]
+fig = plt.figure(facecolor='w')
+ax = fig.add_subplot(2,1,1)
+ax.plot([130]*2,ylim,'k:')
+ax.text(130,5.1,'Reaction time\n~130 ms',horizontalalignment='center')
+for speed,clr,lbl in zip((hitRunSpeed['behavior'],correctRejectRunSpeed['behavior']),'mk',('hit','correct reject')):
     m = np.mean(speed,axis=0)
-    s = np.std(speed,axis=0)/(len(speed)**0.5)
-    ax.plot(rt,m,clr,label=lbl)
-    ax.fill_between(rt,m+s,m-s,color=clr,alpha=0.25)
+    n = len(speed)
+    s = np.std(speed,axis=0)/(n**0.5)
+    ax.plot(plotTime,m,clr,label=lbl)
+    ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.1)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=14)
-ax.set_xlim([0,500])
-ax.set_yticks(np.arange(0,50,10))
-ax.set_ylim([0,40])
-ax.set_xlabel('Time from change (ms)',fontsize=16)
-ax.set_ylabel('Run speed (cm/s)',fontsize=16)
-#ax.legend(loc='lower left',fontsize=14)
-plt.tight_layout()
+ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+ax.set_yticks(np.arange(-10,10,5))
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
+ax.set_xticklabels([])
+ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=12)
+ax.legend(loc='lower left',fontsize=12)
+
+ax = fig.add_subplot(2,1,2)
+for speed,clr,lbl in zip((lickProb,),'m',('hit',)):
+    m = np.mean(speed,axis=0)
+    n = len(speed)
+    s = np.std(speed,axis=0)/(n**0.5)
+    ax.plot(plotTime,m,clr,label=lbl)
+    ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.1)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+ax.set_xlim(xlim)
+ax.set_xlabel('Time from change/catch (ms)',fontsize=12)
+ax.set_ylabel('Lick Probability',fontsize=12)
 
 
-
-# lick prob for all changes and non-change flashes
+###### lick prob for all changes and non-change flashes
 flashType = ('flash','change')
 timeSinceChange = {event:[] for event in flashType}
 timeSinceLick = {event:[] for event in flashType}
+timeSinceReward = {event:[] for event in flashType}
 lickInWindow = {event:[] for event in flashType}
 hitRate = []
 falseAlarmRate = []
@@ -2089,6 +2074,7 @@ for exp in exps:
     changeTimes = data[exp]['behaviorChangeTimes'][:]
     changeTrials = np.in1d(response,('hit','miss'))
     lickTimes = data[exp]['lickTimes'][:]
+    rewardTimes = data[exp]['rewardTimes'][:]
     engagedFlash,engagedChange = [np.min(np.absolute(times-changeTimes[response=='hit',None]),axis=0) < 60 for times in (flashTimes,changeTimes)]
     firstChange = changeTimes[changeTrials][0]
     flashes = flashTimes[engagedFlash & (flashTimes>firstChange) & (~np.in1d(flashTimes,changeTimes[changeTrials]))]
@@ -2096,6 +2082,7 @@ for exp in exps:
     for event,times in zip(flashType,(flashes,changes)):
         timeSinceChange[event].append(times-changeTimes[changeTrials][np.searchsorted(changeTimes[changeTrials],times)-1])
         timeSinceLick[event].append(times-lickTimes[np.searchsorted(lickTimes,times)-1])
+        timeSinceReward[event].append(times-rewardTimes[np.searchsorted(rewardTimes,times)-1])
         timeToLick = lickTimes-times[:,None]
         lickInWindow[event].append(np.any((timeToLick>0.15) & (timeToLick<0.75),axis=1))
     hitRate.append(np.sum(response[engagedChange]=='hit')/np.sum(changeTrials & engagedChange))
