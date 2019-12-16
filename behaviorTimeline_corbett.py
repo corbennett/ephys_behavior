@@ -362,11 +362,10 @@ for mousenum in np.arange(len(trainingDate)):
 
 import scipy.signal
 from matplotlib import cm
-def filterTrace(trace, highcutoff=0.2, sampleFreq=60):
+def filterTrace(trace, highFreqCutoff=0.2, sampleFreq=60):
     if trace.ndim==2:
         trace = np.mean(trace, axis=0)
     
-    highFreqCutoff = 0.2 #frequency below which the signal will get attenuated
     b,a = scipy.signal.butter(4, highFreqCutoff/(sampleFreq/2.), btype='high') #I made it a fourth order filter, not actually sure what the best way to determine this is...
     filttrace = scipy.signal.filtfilt(b,a,trace)
     
@@ -406,6 +405,9 @@ for a1, a2 in zip(*all_axes):
 
 
 ###### Running over training ###########
+firstGrating = []
+firstImage = []
+lastImage = []
 for mousenum in np.arange(len(trainingDate)): 
 
     datadict = {'trainingDate':trainingDate[mousenum],
@@ -432,6 +434,10 @@ for mousenum in np.arange(len(trainingDate)):
         late_images = flashdf['flashRunning'].iloc[-3]
         first_image_flash = flashdf[flashdf['trainingStage'].str.contains('images')].iloc[0]['flashRunning']
         
+        firstGrating.append(first_grating_flash)
+        firstImage.append(first_image_flash)
+        lastImage.append(late_images)
+        
         fig, ax = plt.subplots()
         fig.suptitle(mousenum)
         ax.plot(filterTrace(first_grating_flash), color=cmap(0.1))
@@ -453,7 +459,51 @@ for mousenum in np.arange(len(trainingDate)):
 
     except:
         continue
+
+from analysis_utils import formatFigure  
+fig, ax = plt.subplots()
+counter=0
+fg_ttp = []
+li_ttp = []
+for fg, fi, li in zip(firstGrating, firstImage, lastImage):
+    filtfg = filterTrace(fg)
+    filtli = filterTrace(li)
     
-    
+    if filtfg.max()>0.3 and filtli.max()>0.3:
+        counter+=1
+        maxfg_t = np.argmax(filtfg[25:100])+25
+        maxli_t = np.argmax(filtli[25:100])+25
+        
+        fg_ttp.append(maxfg_t - 75)
+        li_ttp.append(maxli_t - 75)
+        
+        ax.plot(filterTrace(fg), 'r')
+        ax.plot(maxfg_t, filtfg.max(), 'ro')
+        
+    #    plt.plot(filterTrace(fi), 'b')
+        ax.plot(filterTrace(li), 'k')
+        ax.plot(maxli_t, filtli.max(), 'ko')
+
+ax.text(0, 2, 'n='+str(counter))
+ax.set_xticks([78.6 + o for o in [-75, -50, -25, 0, 25, 50, 75]])
+ax.set_xticklabels([-750, -500, -250, 0, 250, 500, 750])
+ylim = ax.get_ylim()
+ax.add_patch(matplotlib.patches.Rectangle([78.6,ylim[0]],width=25,height=ylim[1]-ylim[0],color='k',alpha=0.2,zorder=0, ec=None))
+ax.add_patch(matplotlib.patches.Rectangle([78.6-75,ylim[0]],width=25,height=ylim[1]-ylim[0],color='k',alpha=0.2,zorder=0, ec=None))
+formatFigure(fig, ax, xLabel='Time from flash (ms)', yLabel='Running Speed (filtered>0.2 Hz)')
+
+ax.plot(np.mean(fg_ttp)+75, ylim[1], 'r|', lw=20, ms=20)
+ax.plot(np.mean(li_ttp)+75, ylim[1], 'k|', lw=20, ms=20)
+ax.add_patch(matplotlib.patches.Rectangle([np.mean(fg_ttp)+75-np.std(fg_ttp)/(counter**0.5),ylim[1]-0.05*ylim[1]],width=2*np.std(fg_ttp)/counter**0.5,height=0.1*ylim[1],color='r',alpha=0.2,zorder=0, ec=None))
+ax.add_patch(matplotlib.patches.Rectangle([np.mean(li_ttp)+75-np.std(li_ttp)/(counter**0.5),ylim[1]-0.05*ylim[1]],width=2*np.std(li_ttp)/counter**0.5,height=0.1*ylim[1],color='k',alpha=0.2,zorder=0, ec=None))
+
+
+
+
+fig, ax = plt.subplots()
+ax.plot(np.ones(len(fg_ttp)), fg_ttp, 'ro', alpha=0.5)
+ax.plot(1, np.mean(fg_ttp), 'ro')
+ax.plot(2*np.ones(len(li_ttp)), li_ttp, 'ko', alpha=0.5)
+ax.plot(2, np.mean(li_ttp), 'ko')
 
     
