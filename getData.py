@@ -209,7 +209,7 @@ class behaviorEphys():
         self.images = self.core_data['image_set']['images']
         newSize = tuple(int(s/10) for s in self.images[0].shape[::-1])
         self.imagesDownsampled = [cv2.resize(img,newSize,interpolation=cv2.INTER_AREA) for img in self.images]
-        self.imageNames = [i['image_name'] for i in self.core_data['image_set']['image_attributes']]
+        self.imageNames = [str(i['image_name'],'utf-8') for i in self.core_data['image_set']['image_attributes']]
         
         candidateOmittedFlashFrames = behaviordata['items']['behavior']['stimuli']['images']['flashes_omitted']
         drawlog = behaviordata['items']['behavior']['stimuli']['images']['draw_log']
