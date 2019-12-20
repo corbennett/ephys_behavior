@@ -184,9 +184,9 @@ class behaviorEphys():
         if not hasattr(self, 'vsyncTimes'):
             self.getFrameTimes()
             
-        f = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))
-        if len(f)>0:
-            self.pkl_file = f[0]
+        pkl = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))
+        if len(pkl)>0:
+            self.pkl_file = pkl[0]
         else:
             self.pkl_file = glob.glob(os.path.join(self.dataDir,'*[0-9].pkl'))[0]
         behaviordata = pd.read_pickle(self.pkl_file)
@@ -280,15 +280,14 @@ class behaviorEphys():
     
     def getRFandFlashStimInfo(self):
         
-        if self.probeGen == 'pipeline':
-            rf_pickle = glob.glob(os.path.join(self.dataDir, '*replay-session*mapping*.pkl'))
-        else:
-            rf_pickle = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
+        pkl = glob.glob(os.path.join(self.dataDir, '*replay-session*mapping*.pkl'))
+        if len(pkl)<1:
+            pkl = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
         
-        if len(rf_pickle)==0:
+        if len(pkl)<1:
             self.rf_pickle_file = None
         else:
-            self.rf_pickle_file = rf_pickle[0]
+            self.rf_pickle_file = pkl[0]
             self.rfFlashStimDict = pd.read_pickle(self.rf_pickle_file)
             self.monSizePix = self.rfFlashStimDict['monitor']['sizepix']
             self.monHeightCm = self.monSizePix[1]/self.monSizePix[0]*self.rfFlashStimDict['monitor']['widthcm']
@@ -308,26 +307,25 @@ class behaviorEphys():
         
     def getPassiveStimInfo(self):
         
-        if self.probeGen == 'pipeline':
-            passivePklFiles = glob.glob(os.path.join(self.dataDir, '*replay-session*replay*.pkl'))
-        else:
-            passivePklFiles = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
+        pkl = glob.glob(os.path.join(self.dataDir, '*replay-session*replay*.pkl'))
+        if len(pkl)<1:
+            pkl = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
         
-        if len(passivePklFiles)==0:
+        if len(pkl)<1:
             self.passive_pickle_file = None
         else:
-            if len(passivePklFiles)>1:
-                vsynccount = [pd.read_pickle(f)['vsynccount'] for f in passivePklFiles]
+            if len(pkl)>1:
+                vsynccount = [pd.read_pickle(f)['vsynccount'] for f in pkl]
                 goodPklInd = np.argmax(vsynccount)
-                self.passive_pickle_file = passivePklFiles[goodPklInd]
+                self.passive_pickle_file = pkl[goodPklInd]
                 abortedVsyncs = sum(vsynccount)-vsynccount[goodPklInd]
             else:
-                self.passive_pickle_file = passivePklFiles[0]
+                self.passive_pickle_file = pkl[0]
                 abortedVsyncs = 0
             self.passiveStimDict = pd.read_pickle(self.passive_pickle_file)
             self.passiveStimParams = self.passiveStimDict['stimuli'][0]
             self.passiveFrameImages = np.array(self.passiveStimParams['sweep_params']['ReplaceImage'][0])
-            passiveImageNames = [img for img in np.unique(self.passiveFrameImages) if img is not None]
+            passiveImageNames = np.unique([img for img in self.passiveFrameImages if img is not None])
             nonGrayFrames = np.in1d(self.passiveFrameImages,passiveImageNames)
             self.passiveImageOnsetFrames = np.where(np.diff(nonGrayFrames.astype(int))>0)[0]+1
             self.passiveChangeFrames = np.array([frame for i,frame in enumerate(self.passiveImageOnsetFrames[1:]) if self.passiveFrameImages[frame]!=self.passiveFrameImages[self.passiveImageOnsetFrames[i]]])
