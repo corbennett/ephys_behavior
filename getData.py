@@ -114,7 +114,7 @@ class behaviorEphys():
                 self.probeCCF[pid]['shift'] = shift
                 self.probeCCF[pid]['stretch'] = stretch
                 self.probeCCF[pid]['entryChannel'] = entryChannel
-                self.probeCCF[pid]['ISIRegion'] = entry[6] if isinstance(entry[6],basestring) else None
+                self.probeCCF[pid]['ISIRegion'] = entry[6] if isinstance(entry[6],str) else None
                 for u in self.units[pid]:
                     distFromTip = tipLength+self.units[pid][u]['position'][1]
                     distFromEntry = probeLength-distFromTip
@@ -159,7 +159,7 @@ class behaviorEphys():
             r = np.array([self.units[pid][u]['peakMeanVisualResponse'] for u in probeSync.getOrderedUnits(self.units[pid])]).astype(float)
             if appendEntry:
                 r = np.append(r,np.median(r)).astype(float) # add probe entry point
-            np.save(rf, r)      
+            np.save(rf, r)
 
                 
     def getFrameTimes(self):
@@ -184,8 +184,9 @@ class behaviorEphys():
         if not hasattr(self, 'vsyncTimes'):
             self.getFrameTimes()
             
-        if self.probeGen == 'pipeline':
-            self.pkl_file = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))[0]
+        f = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))
+        if len(f)>0:
+            self.pkl_file = f[0]
         else:
             self.pkl_file = glob.glob(os.path.join(self.dataDir,'*[0-9].pkl'))[0]
         behaviordata = pd.read_pickle(self.pkl_file)
