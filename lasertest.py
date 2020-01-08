@@ -18,10 +18,10 @@ from visual_behavior.translator.foraging2 import data_to_change_detection_core
 
 dataDir = 'Z:\\'
 
-syncFile = fileIO.getFile('choose sync file',dataDir)
+syncFile = fileIO.getFile('choose sync file',dataDir,'*.h5')
 syncDataset = sync.Dataset(syncFile)
 
-pklFile = fileIO.getFile('choose pkl file',dataDir)
+pklFile = fileIO.getFile('choose pkl file',dataDir,'*.pkl')
 pkl = pd.read_pickle(pklFile)
 
 
@@ -44,21 +44,33 @@ laserStartTimes = probeSync.get_sync_line_data(syncDataset, 'opto_sweep')[0]
 trialLog = pkl['items']['behavior']['trial_log']
 laserTrials = pkl['items']['behavior']['layzer_trials']
 
-#laserFrameTimes = vsyncTimes[[trial['actual_layzer_frame'] for trial in laserTrials if 'actual_layzer_frame' in trial]]
+laserFrameTimes = vsyncTimes[[trial['actual_layzer_frame'] for trial in laserTrials if 'actual_layzer_frame' in trial]]
 
-#changeTimes = vsyncTimes[[trial['stimulus_changes'][0][-1] for trial in trialLog if len(trial['stimulus_changes'])>0]]
+changeTimes = frameAppearTimes[[trial['stimulus_changes'][0][-1] for trial in trialLog if len(trial['stimulus_changes'])>0]]
 
-#changeLog = pkl['items']['behavior']['stimuli']['images']['change_log']
+changeLog = pkl['items']['behavior']['stimuli']['images']['change_log']
 
 changeTimes = []
 laserFrameTimes = []
 for trial,laser in zip(trialLog,laserTrials):
     if len(trial['stimulus_changes'])>0:
-        changeTimes.append(vsyncTimes[trial['stimulus_changes'][0][-1]])
+        changeTimes.append(frameAppearTimes[trial['stimulus_changes'][0][-1]])
         if 'actual_layzer_frame' in laser:
+            laser['expected(layzer_flash']-laser['expected_change_flash']
             laserFrameTimes.append(vsyncTimes[laser['actual_layzer_frame']])
         else:
             laserFrameTimes.append(np.nan)
+  
+changeFrame = []          
+for trial in trialLog:
+    if len(trial['stimulus_changes'])>0:
+        changeFrame.append(trial['stimulus_changes'][0][-1])
+    else:
+        changeFrame.append(np.nan)
+        
+actualChangeFrame = [trial['actual_change_frame'] for trial in laserTrials]
+
+[(a,b) for a,b in zip(changeFrame,actualChangeFrame)]
             
             
 plt.hist(np.array(laserStartTimes)-changeTimes)

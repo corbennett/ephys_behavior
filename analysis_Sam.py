@@ -99,7 +99,6 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                 data[expName]['behaviorChangeTimes'] = obj.frameAppearTimes[obj.changeFrames[trials]]
                 data[expName]['behaviorRunTime'] = obj.behaviorRunTime
                 data[expName]['behaviorRunSpeed'] = obj.behaviorRunSpeed
-                data[expName]['behaviorRunDx'] = obj.behaviorRunDx
                 data[expName]['lickTimes'] = obj.lickTimes
                 data[expName]['rewardTimes'] = obj.rewardTimes[trials]
                 if obj.passive_pickle_file is not None:
@@ -108,7 +107,6 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                     data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
                     data[expName]['passiveRunTime'] = obj.passiveRunTime
                     data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
-                    data[expName]['passiveRunDx'] = obj.passiveRunDx
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
