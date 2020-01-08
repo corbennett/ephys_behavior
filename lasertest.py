@@ -56,24 +56,33 @@ for trial,laser in zip(trialLog,laserTrials):
     if len(trial['stimulus_changes'])>0:
         changeTimes.append(frameAppearTimes[trial['stimulus_changes'][0][-1]])
         if 'actual_layzer_frame' in laser:
-            laser['expected(layzer_flash']-laser['expected_change_flash']
             laserFrameTimes.append(vsyncTimes[laser['actual_layzer_frame']])
         else:
             laserFrameTimes.append(np.nan)
+    else:
+        break
   
-changeFrame = []          
+changeFrames = []          
 for trial in trialLog:
     if len(trial['stimulus_changes'])>0:
-        changeFrame.append(trial['stimulus_changes'][0][-1])
+        changeFrames.append(trial['stimulus_changes'][0][-1])
     else:
-        changeFrame.append(np.nan)
+        changeFrames.append(np.nan)
         
-actualChangeFrame = [trial['actual_change_frame'] for trial in laserTrials]
+laserChangeFrames = [trial['actual_change_frame'] for trial in laserTrials]
 
-[(a,b) for a,b in zip(changeFrame,actualChangeFrame)]
+
+laserChangeTimes = frameAppearTimes[laserChangeFrames]
+
+isLaserTrial = ['actual_layzer_frame' in trial for trial in laserTrials]
+
+
+[(a,b) for a,b in zip(changeFrames,laserChangeFrames)]
+
+[(a,b) for a,b in zip(laserStartTimes,laserFrameTimes)]
             
             
-plt.hist(np.array(laserStartTimes)-changeTimes)
+plt.hist(np.array(laserStartTimes)-laserChangeTimes[isLaserTrial],bins=np.arange(-1,1,0.001))
 
 
 
