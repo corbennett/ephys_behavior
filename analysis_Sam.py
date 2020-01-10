@@ -226,6 +226,9 @@ getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('479219',))
 # make new experiment hdf5s and add to existing popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('461027',))
 
+# make new experiment hdf5s and popData.hdf5
+getPopData(objToHDF5=True,popDataToHDF5=True)
+
 # make popData.hdf5 from existing experiment hdf5s
 getPopData(objToHDF5=False,popDataToHDF5=True)
 

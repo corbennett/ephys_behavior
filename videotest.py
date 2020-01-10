@@ -21,6 +21,8 @@ syncDataset = sync.Dataset(syncFile)
 
 lickTimes = probeSync.get_sync_line_data(syncDataset, channel=31)[0]
 
-camFrameTimes = probeSync.get_sync_line_data(syncDataset,'behavior')[0]
+camFramesRising,camFramesFalling = probeSync.get_sync_line_data(syncDataset,'behavior')
+
+camFrameTimes = np.sort(np.concatenate((camFramesRising,camFramesFalling)))
 
 camFramesWithLicks = np.searchsorted(camFrameTimes,lickTimes)

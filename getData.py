@@ -35,11 +35,22 @@ class behaviorEphys():
         
         if probeGen=='pipeline':
             sync_file = glob.glob(os.path.join(self.dataDir,'*.sync'))
-            
         else:
             sync_file = glob.glob(os.path.join(self.dataDir,'*'+('[0-9]'*18)+'.h5'))
             
-        self.sync_file = sync_file[0] if len(sync_file)>0 else None
+        if len(sync_file)>0:
+            if len(sync_file)>1:
+                # get the last generated syncfile (assuming earlier were false starts)
+                ftime = []
+                for f in sync_file:
+                    i = f.find('.')
+                    ftime.append(datetime.datetime.strptime(f[i-6:i],'%H%M%S'))
+                self.sync_file = sync_file[ftime.index(max(ftime))]
+            else:
+                self.sync_file = sync_file[0] 
+        else: 
+            self.sync_file =None
+        
         self.syncDataset = sync.Dataset(self.sync_file) if self.sync_file is not None else None
         if probes is None:
             self.probes_to_analyze = probeIDs
