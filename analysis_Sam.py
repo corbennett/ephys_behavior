@@ -947,7 +947,7 @@ unitSampleSize = [20]
 
 nCrossVal = 3
 
-respWin = slice(stimWin.start,stimWin.start+151)
+respWin = slice(stimWin.start+25,stimWin.start+101)
 
 decodeWindowSize = 10
 decodeWindows = []#np.arange(stimWin.start,stimWin.start+151,decodeWindowSize)
@@ -962,16 +962,17 @@ modelNames = ('randomForest',)
 
 behavStates = ('active','passive')
 
+# add catchScore, catchPrediction, reactionScore
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
-                                'changePredict':{model:[] for model in modelNames},
-                                'changeFeatureImportance':{model:[] for model in modelNames},
-                                'imageScore':{model:[] for model in modelNames},
-                                'imageFeatureImportance':{model:[] for model in modelNames},
-                                'changeScoreWindows':{model:[] for model in modelNames},
-                                'changePredictWindows':{model:[] for model in modelNames},
-                                'imageScoreWindows':{model:[] for model in modelNames},
-                                'preImageScoreWindows':{model:[] for model in modelNames},
-                                'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in exps}
+                                 'changePredict':{model:[] for model in modelNames},
+                                 'changeFeatureImportance':{model:[] for model in modelNames},
+                                 'imageScore':{model:[] for model in modelNames},
+                                 'imageFeatureImportance':{model:[] for model in modelNames},
+                                 'changeScoreWindows':{model:[] for model in modelNames},
+                                 'changePredictWindows':{model:[] for model in modelNames},
+                                 'imageScoreWindows':{model:[] for model in modelNames},
+                                 'preImageScoreWindows':{model:[] for model in modelNames},
+                                 'respLatency':[]} for state in behavStates} for region in regionLabels} for exp in exps}
 
 warnings.filterwarnings('ignore')
 for expInd,exp in enumerate(exps):
@@ -1027,12 +1028,13 @@ for expInd,exp in enumerate(exps):
                             nsamples = 1
                             unitSamples = [np.arange(nUnits)]
                         else:
-                            # >95% chance each neuron is chosen at least once
-                            nsamples = int(math.ceil(math.log(0.05)/math.log(1-sampleSize/nUnits)))
+                            # >99% chance each neuron is chosen at least once
+                            nsamples = int(math.ceil(math.log(0.01)/math.log(1-sampleSize/nUnits)))
                             unitSamples = [np.random.choice(nUnits,sampleSize,replace=False) for _ in range(nsamples)]
                     else:
                         nsamples = nUnits
                         unitSamples = [[_] for _ in range(nsamples)]
+                    print(nsamples)
                     for state in behavStates:
                         changeScore = {model: [] for model in modelNames}
                         changePredict = {model: [] for model in modelNames}
@@ -1659,45 +1661,14 @@ for model in ('randomForest',):
                 ax.set_title(state,fontsize=10)
     plt.tight_layout()
     
-    
-anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
-    
-hier = hierScore_8regions
-
-paramLabels = ('Decoder accuracy','Correlation of decoder prediction and mouse behavior')
-for param,lbl in zip((changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive),paramLabels):
-    fig = plt.figure(facecolor='w',figsize=(8,6))
-    ax = plt.subplot(1,1,1)
-    m = [np.nanmean(reg) for reg in param]
-    ci = [np.percentile([np.nanmean(np.random.choice(reg,len(reg),replace=True)) for _ in range(5000)],(2.5,97.5)) for reg in param]
-    ax.plot(hier,m,'ko',ms=6)
-    for h,c in zip(hier,ci):
-        ax.plot([h,h],c,'k')
-    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
-    x = np.array([min(hier),max(hier)])
-    ax.plot(x,slope*x+yint,'0.5')
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-    ax.set_xticks(hier)
-    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
-    ax.set_xlabel('Hierarchy Score',fontsize=10)
-    ax.set_ylabel(lbl,fontsize=10)
-    r,p = scipy.stats.pearsonr(hier,m)
-    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    r,p = scipy.stats.spearmanr(hier,m)
-    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    ax.set_title(title,fontsize=8)
-    plt.tight_layout()
-                
-
 
 
 ###### hit rate, lick time, and change mod correlation
                 
 Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im] for im in 'AB']
 regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
+
+respWin = slice(stimWin.start+25,stimWin.start+100)
 
 exps = Aexps
 imgNames = np.unique(data[exps[0]]['initialImage'])
@@ -1823,9 +1794,10 @@ for region,n,ntrials,hr,lickLat,respLat,diffLat,preResp,changeResp,changeMod in 
         
         for j,(b,xlbl) in enumerate(zip((hr,lickLat),('Hit Rate','Hit Lick Latency (ms)'))):   
             ax = plt.subplot(gs[i+1,j+1])
-            ax.plot(b[nonDiag],d[nonDiag],'ko')
-            slope,yint,rval,pval,stderr = scipy.stats.linregress(b[nonDiag],d[nonDiag])
-            x = np.array([b[nonDiag].min(),b[nonDiag].max()])
+            notnan = ~np.isnan(d)
+            ax.plot(b[notnan],d[notnan],'ko')
+            slope,yint,rval,pval,stderr = scipy.stats.linregress(b[notnan],d[notnan])
+            x = np.array([b[notnan].min(),b[notnan].max()])
             ax.plot(x,slope*x+yint,'0.5')
             for side in ('right','top'):
                 ax.spines[side].set_visible(False)
@@ -1834,7 +1806,7 @@ for region,n,ntrials,hr,lickLat,respLat,diffLat,preResp,changeResp,changeMod in 
                 ax.set_xlabel(xlbl,fontsize=10)
             if j==0:
                 ax.set_ylabel(ylbl,fontsize=10)
-            r,p = scipy.stats.pearsonr(b[nonDiag],d[nonDiag])
+            r,p = scipy.stats.pearsonr(b[notnan],d[notnan])
             ax.set_title('r = '+str(round(r,2))+', p = '+'{0:1.1e}'.format(p),fontsize=8)
     plt.tight_layout()
 
@@ -1844,7 +1816,7 @@ ax = fig.subplots(1)
 xticks = np.arange(len(regionLabels))
 xlim = [-0.5,len(regionLabels)-0.5]
 for param,clr,lbl in zip((changeModMatrix,diffLatMatrix,),'kk',('Change Modulation Index','Change Modulation Latency')):
-    r = [scipy.stats.pearsonr(hr[~np.isnan(d)],d[~np.isnan(d)])[0] for hr,d in zip(hitRate,param)]
+    r = [scipy.stats.pearsonr(hr[~np.isnan(d)],d[~np.isnan(d)])[0] for hr,d in zip(hitLickLatency,param)]
     mfc = 'none' if 'Latency' in lbl else clr
     ax.plot(xticks,np.absolute(r),'o',ms=10,mec=clr,mfc=mfc,label=lbl)
 for side in ('right','top'):
