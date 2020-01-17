@@ -945,12 +945,13 @@ regionColors = [r[2] for r in regionsToUse]
     
 unitSampleSize = [20]
 
-nCrossVal = 3
+nCrossVal = 5
 
+baseWin = slice(stimWin.start-151,stimWin.start)
 respWin = slice(stimWin.start,stimWin.start+151)
 
 decodeWindowSize = 10
-decodeWindows = []#np.arange(stimWin.start,stimWin.start+151,decodeWindowSize)
+decodeWindows = []#np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
 preImageDecodeWindows = []#np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
@@ -992,12 +993,19 @@ for expInd,exp in enumerate(exps):
     catchTrials = engaged & (falseAlarm | (response=='correctReject'))
     result[exp]['responseToChange'] = hit[changeTrials]
     result[exp]['responseToCatch'] = falseAlarm[catchTrials]
+    result[exp]['reactionTime'] = data[exp]['rewardTimes'][engaged & hit] - changeTimes[engaged & hit]
+    
+#    flashTimes = data[exp]['behaviorFlashTimes'][:]
+#    lickTimes = data[exp]['lickTimes'][:]
+#    for t in flashTimes:
+#        if min(abs(changeTimes-t))>5:
+#            lickLat = lickTimes-t
+#            if any((lickLat>0.15) & (lickLat<0.75)):
+#                pass
     
     initialImage = data[exp]['initialImage'][changeTrials]
     changeImage = data[exp]['changeImage'][changeTrials]
     imageNames = np.unique(changeImage)
-    
-    # reactionTime = data[exp]['rewardTimes'][hit] - changeTimes[hit]
     
     for region,regionCCFLabels,_ in regionsToUse:
         activePreSDFs = []
