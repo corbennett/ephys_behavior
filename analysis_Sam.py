@@ -1651,6 +1651,43 @@ ax.set_xlabel('Hierarchy score')
 ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
 plt.tight_layout()
 
+fig = plt.figure(facecolor='w',figsize=(6,4))
+ax = plt.subplot(1,1,1)
+for state,fill in zip(('active',),(True,)):
+    meanRegionData = []
+    for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
+        regionData = []
+        for exp in result:
+            s = result[exp][region][state]['changeScore']['randomForest']
+            if len(s)>0:
+                regionData.append(s[0])
+        n = len(regionData)
+        if n>0:
+            m = np.mean(regionData)
+            s = np.std(regionData)/(n**0.5)
+            mfc = clr if fill else 'none'
+            lbl = state if i==0 else None
+            ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
+            ax.plot([h,h],[m-s,m+s],color=clr)
+            meanRegionData.append(m)
+        else:
+            meanRegionData.append(np.nan)
+    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
+    x = np.array([min(hier),max(hier)])
+    ax.plot(x,slope*x+yint,'0.5')
+    r,p = scipy.stats.pearsonr(hier,meanRegionData)
+    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    r,p = scipy.stats.spearmanr(hier,meanRegionData)
+    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    ax.set_title(title,fontsize=8)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([0.5,1])
+ax.set_xlabel('Hierarchy score')
+ax.set_ylabel('Decoder accuracy')
+plt.tight_layout()
+
 
     
 for model in ('randomForest',):    

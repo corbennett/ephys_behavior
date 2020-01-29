@@ -13,7 +13,7 @@ from sync import sync
 import probeSync
 
 
-dataDir = r'\\allen\programs\braintv\workgroups\nc-ophys\corbettb\videotest'
+dataDir = r'Z:\videotest'
 
 syncFile = fileIO.getFile('choose sync file',dataDir,'*.h5')
 syncDataset = sync.Dataset(syncFile)
@@ -21,7 +21,9 @@ syncDataset = sync.Dataset(syncFile)
 
 lickTimes = probeSync.get_sync_line_data(syncDataset, channel=31)[0]
 
-camFramesRising,camFramesFalling = probeSync.get_sync_line_data(syncDataset,'behavior')
+cam1FramesRising,cam1FramesFalling = probeSync.get_sync_line_data(syncDataset,'cam1_exposure')
+
+cam2FramesRising,cam2FramesFalling = probeSync.get_sync_line_data(syncDataset,'cam2_exposure')
 
 camFrameTimes = np.sort(np.concatenate((camFramesRising,camFramesFalling)))
 
