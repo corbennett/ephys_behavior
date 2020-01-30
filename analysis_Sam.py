@@ -947,8 +947,8 @@ unitSampleSize = [20]
 
 nCrossVal = 5
 
-baseWin = slice(stimWin.start-151,stimWin.start)
-respWin = slice(stimWin.start,stimWin.start+151)
+baseWin = slice(stimWin.start-150,stimWin.start)
+respWin = slice(stimWin.start,stimWin.start+150)
 
 decodeWindowSize = 10
 decodeWindows = []#np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
@@ -961,7 +961,7 @@ preImageDecodeWindows = []#np.arange(stimWin.start,stimWin.start+750,preImageDec
 models = (RandomForestClassifier(n_estimators=100),)
 modelNames = ('randomForest',)
 
-behavStates = ('active','passive')
+behavStates = ('active',)
 
 # add catchScore, catchPrediction, reactionScore
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
@@ -995,13 +995,20 @@ for expInd,exp in enumerate(exps):
     result[exp]['responseToCatch'] = falseAlarm[catchTrials]
     result[exp]['reactionTime'] = data[exp]['rewardTimes'][engaged & hit] - changeTimes[engaged & hit]
     
-#    flashTimes = data[exp]['behaviorFlashTimes'][:]
-#    lickTimes = data[exp]['lickTimes'][:]
-#    for t in flashTimes:
-#        if min(abs(changeTimes-t))>5:
-#            lickLat = lickTimes-t
-#            if any((lickLat>0.15) & (lickLat<0.75)):
-#                pass
+    flashTimes = data[exp]['behaviorFlashTimes'][:]
+    nonChangeFlashes = []
+    result[exp]['responseToNonChangeFlash'] = []
+    lickTimes = data[exp]['lickTimes'][:]
+    for i,t in enumerate(flashTimes):
+        if (len(nonChangeFlashes)<1) or (t>flashTimes[nonChangeFlashes[-1]]+4):
+            nearestChange = min(abs(changeTimes-t))
+            if (nearestChange>4) and (nearestChange<60):
+                nonChangeFlashes.append(i)
+                lickLat = lickTimes-t
+                result[exp]['responseToNonChangeFlash'].append(any((lickLat>0.15) & (lickLat<0.75)))
+    nonChangeFlashTimes = flashTimes[nonChangeFlashes]
+    if 'passive' in behavStates:
+        passiveNonChangeFlashTimes = data[exp]['passiveFlashTimes'][nonChangeFlashes]
     
     initialImage = data[exp]['initialImage'][changeTrials]
     changeImage = data[exp]['changeImage'][changeTrials]
@@ -1010,8 +1017,10 @@ for expInd,exp in enumerate(exps):
     for region,regionCCFLabels,_ in regionsToUse:
         activePreSDFs = []
         activeChangeSDFs = []
+        activeNonChangeSDFs = []
         passivePreSDFs = []
         passiveChangeSDFs = []
+        passiveNonChangeSDFs = []
         for probe in data[exp]['sdfs']:
             ccf = data[exp]['ccfRegion'][probe][:]
             isi = data[exp]['isiRegion'][probe][()]
@@ -1031,12 +1040,20 @@ for expInd,exp in enumerate(exps):
                     hasResp = hasSpikesActive & hasRespActive
                 activePreSDFs.append(activePre[hasResp])
                 activeChangeSDFs.append(activeChange[hasResp])
+                
+                units = data[exp]['units'][probe][inRegion][hasResp]
+                spikes = data[exp]['spikeTimes'][probe]
+                activeNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],nonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
+                if 'passive' in behavStates:
+                    passiveNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],passiveNonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
         if len(activePreSDFs)>0:
             activePreSDFs = np.concatenate(activePreSDFs)
             activeChangeSDFs = np.concatenate(activeChangeSDFs)
+            activeNonChangeSDFs = np.concatenate(activeNonChangeSDFs)
             if 'passive' in behavStates:
                 passivePreSDFs = np.concatenate(passivePreSDFs)
                 passiveChangeSDFs = np.concatenate(passiveChangeSDFs)
+                passiveNonChangeSDFs = np.concatenate(passiveNonChangeSDFs)
             nUnits = len(activePreSDFs)
             for sampleSize in unitSampleSize:
                 if nUnits>=sampleSize:
@@ -1066,8 +1083,8 @@ for expInd,exp in enumerate(exps):
                         imageScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
                         preImageScoreWindows = {model: np.zeros((nsamples,len(preImageDecodeWindows))) for model in modelNames}
                         
-                        sdfs = (activePreSDFs,activeChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs)
-                        preChangeSDFs,changeSDFs = [s.transpose((1,0,2)) for s in sdfs]
+                        sdfs = (activePreSDFs,activeChangeSDFs,activeNonChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs,passiveNonChangeSDFs)
+                        preChangeSDFs,changeSDFs,nonChangeSDFs = [s.transpose((1,0,2)) for s in sdfs]
                         
                         for i,unitSamp in enumerate(unitSamples):
                             # decode image change and identity for full respWin
@@ -1076,6 +1093,7 @@ for expInd,exp in enumerate(exps):
                             y = np.zeros(X.shape[0])
                             y[:int(X.shape[0]/2)] = 1
                             Xcatch = changeSDFs[:,unitSamp,respWin][catchTrials].reshape((catchTrials.sum(),-1))
+                            Xnonchange = nonChangeSDFs[:,unitSamp].reshape((nonChangeSDFs.shape[0],-1))
                             for model,name in zip(models,modelNames):
                                 cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
                                 changeScore[name].append(cv['test_score'].mean())

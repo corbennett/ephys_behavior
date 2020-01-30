@@ -53,9 +53,12 @@ mouseInfo = (
 
 windowDur = 0.15
 binSize = 0.005
-binStarts = np.arange(-windowDur,windowDur,binSize)
-baseWin = binStarts < 0
-respWin = binStarts >= 0
+binStarts = np.arange(-0.75-windowDur,windowDur,binSize)
+changeBaseWin = (binStarts >= -windowDur) & (binStarts<0)
+changeRespWin = (binStarts >= 0) & (binStarts < windowDur)
+preChangeBaseWin = binStarts < -0.75
+preChangeRespWin = (binStarts >= -0.75) & (binStarts < -0.75+windowDur)
+
 
 def getPSTH(spikes,startTimes,windowDur,binSize=0.005,avg=False):
     bins = np.arange(0,windowDur+binSize,binSize)
@@ -146,7 +149,6 @@ for expInd,exp in enumerate(exps):
     falseAlarm = response=='falseAlarm'
     changeTimes = data[exp]['behaviorChangeTimes'][:]
     flashTimes = data[exp]['behaviorFlashTimes'][:]
-    preChangeTimes = flashTimes[np.searchsorted(flashTimes,changeTimes)-1]
     engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
     changeTrials = engaged & (hit | (response=='miss'))
     catchTrials = engaged & (falseAlarm | (response=='correctReject'))
@@ -154,20 +156,25 @@ for expInd,exp in enumerate(exps):
     result[exp]['responseToCatch'] = falseAlarm[catchTrials]
     result[exp]['reactionTime'] = data[exp]['rewardTimes'][engaged & hit] - changeTimes[engaged & hit]
     
+    nonChangeFlashes = []
+    result[exp]['responseToNonChangeFlash'] = []
+    lickTimes = data[exp]['lickTimes'][:]
+    for i,t in enumerate(flashTimes):
+        if (len(nonChangeFlashes)<1) or (t>flashTimes[nonChangeFlashes[-1]]+4):
+            nearestChange = min(abs(changeTimes-t))
+            if (nearestChange>4) and (nearestChange<60):
+                nonChangeFlashes.append(i)
+                lickLat = lickTimes-t
+                result[exp]['responseToNonChangeFlash'].append(any((lickLat>0.15) & (lickLat<0.75)))
+    nonChangeFlashTimes = flashTimes[nonChangeFlashes]
+    print(len(flashTimes),len(nonChangeFlashes),sum(result[exp]['responseToNonChangeFlash']))
+    
+    
     if 'passive' in behavStates:
         passiveChangeTimes = data[exp]['passiveChangeTimes'][:]
         passiveFlashTimes = data[exp]['passiveFlashTimes'][:]
         passivePreChangeTimes = passiveFlashTimes[np.searchsorted(passiveFlashTimes,passiveChangeTimes)-1]
-    
-    result[exp]['responseToNonChangeFlash'] = []
-    nonChangeFlashTimes = []
-    lickTimes = data[exp]['lickTimes'][:]
-    for t in flashTimes:
-        nearestChange = min(abs(changeTimes-t))
-        if (nearestChange>5) and (nearestChange<60):
-            nonChangeFlashTimes.append(t)
-            lickLat = lickTimes-t
-            result[exp]['responseToNonChangeFlash'].append(any((lickLat>0.15) & (lickLat<0.75)))
+        passiveNonChangeFlashTimes = passiveFlashTimes[nonChangeFlashes]
     
     initialImage = data[exp]['initialImage'][changeTrials]
     changeImage = data[exp]['changeImage'][changeTrials]
@@ -187,7 +194,7 @@ for expInd,exp in enumerate(exps):
             if any(inRegion):
                 units = data[exp]['units'][probe][inRegion]
                 spikes = data[exp]['spikeTimes'][probe]
-                activePre,activeChange = [np.array([getPSTH(spikes[u],times-windowDur,windowDur*2,binSize) for u in units]) for times in (preChangeTimes,changeTimes)]
+                activePre,activeChange = np.array([getPSTH(spikes[u],times-windowDur,windowDur*2,binSize) for u in units]
                 hasSpikesActive,hasRespActive = findResponsiveUnits(activeChange[:,changeTrials],baseWin,respWin,thresh=5)
                 if 'passive' in behavStates:
                     passivePre,passiveChange = [np.array([getPSTH(spikes[u],times-windowDur,windowDur*2,binSize) for u in units]) for times in (passivePreChangeTimes,passiveChangeTimes)]
