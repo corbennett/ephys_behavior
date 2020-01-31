@@ -970,6 +970,8 @@ result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames
                                  'changeFeatureImportance':{model:[] for model in modelNames},
                                  'catchPredict':{model:[] for model in modelNames},
                                  'catchPredictProb':{model:[] for model in modelNames},
+                                 'nonChangePredict':{model:[] for model in modelNames},
+                                 'nonChangePredictProb':{model:[] for model in modelNames},
                                  'imageScore':{model:[] for model in modelNames},
                                  'imageFeatureImportance':{model:[] for model in modelNames},
                                  'changeScoreWindows':{model:[] for model in modelNames},
@@ -1000,12 +1002,11 @@ for expInd,exp in enumerate(exps):
     result[exp]['responseToNonChangeFlash'] = []
     lickTimes = data[exp]['lickTimes'][:]
     for i,t in enumerate(flashTimes):
-        if (len(nonChangeFlashes)<1) or (t>flashTimes[nonChangeFlashes[-1]]+4):
-            nearestChange = min(abs(changeTimes-t))
-            if (nearestChange>4) and (nearestChange<60):
-                nonChangeFlashes.append(i)
-                lickLat = lickTimes-t
-                result[exp]['responseToNonChangeFlash'].append(any((lickLat>0.15) & (lickLat<0.75)))
+        timeFromChange = changeTimes-t
+        timeFromLick = lickTimes-t
+        if min(abs(timeFromChange))<60 and (not any(timeFromChange<0) or max(timeFromChange[timeFromChange<0])<-4) and (not any(timeFromLick<0) or max(timeFromLick[timeFromLick<0])<-4):
+            nonChangeFlashes.append(i)
+            result[exp]['responseToNonChangeFlash'].append(any((timeFromLick>0.15) & (timeFromLick<0.75)))
     nonChangeFlashTimes = flashTimes[nonChangeFlashes]
     if 'passive' in behavStates:
         passiveNonChangeFlashTimes = data[exp]['passiveFlashTimes'][nonChangeFlashes]
@@ -1076,6 +1077,8 @@ for expInd,exp in enumerate(exps):
                         changeFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
                         catchPredict = {model: [] for model in modelNames}
                         catchPredictProb = {model: [] for model in modelNames}
+                        nonChangePredict = {model: [] for model in modelNames}
+                        nonChangePredictProb = {model: [] for model in modelNames}
                         imageScore = {model: [] for model in modelNames}
                         imageFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
                         changeScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
@@ -1099,10 +1102,12 @@ for expInd,exp in enumerate(exps):
                                 changeScore[name].append(cv['test_score'].mean())
                                 changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
                                 catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
+                                nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 if name=='randomForest':
                                     changePredictProb[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
                                     changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                                     catchPredictProb[name].append(np.mean([estimator.predict_proba(Xcatch)[:,1] for estimator in cv['estimator']],axis=0))
+                                    nonChangePredictProb[name].append(np.mean([estimator.predict_proba(Xnonchange)[:,1] for estimator in cv['estimator']],axis=0))
                             # image identity
 #                            imgSDFs = [changeSDFs[:,unitSamp,respWin][changeTrials & (changeImage==img)] for img in imageNames]
 #                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
@@ -1148,6 +1153,8 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['changeFeatureImportance'][model].append(np.nanmedian(changeFeatureImportance[model],axis=0))
                             result[exp][region][state]['catchPredict'][model].append(scipy.stats.mode(catchPredict[model],axis=0)[0].flatten())
                             result[exp][region][state]['catchPredictProb'][model].append(np.median(catchPredictProb[model],axis=0))
+                            result[exp][region][state]['nonChangePredict'][model].append(scipy.stats.mode(nonChangePredict[model],axis=0)[0].flatten())
+                            result[exp][region][state]['nonChangePredictProb'][model].append(np.median(nonChangePredictProb[model],axis=0))
                             result[exp][region][state]['imageScore'][model].append(np.median(imageScore[model],axis=0))
                             result[exp][region][state]['imageFeatureImportance'][model].append(np.nanmedian(imageFeatureImportance[model],axis=0))
                             result[exp][region][state]['changeScoreWindows'][model].append(np.median(changeScoreWindows[model],axis=0))
