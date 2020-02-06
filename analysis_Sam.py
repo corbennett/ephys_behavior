@@ -997,23 +997,33 @@ for expInd,exp in enumerate(exps):
     result[exp]['responseToCatch'] = falseAlarm[catchTrials]
     result[exp]['reactionTime'] = data[exp]['rewardTimes'][engaged & hit] - changeTimes[engaged & hit]
     
-    flashTimes = data[exp]['behaviorFlashTimes'][:]
-    nonChangeFlashes = []
-    result[exp]['responseToNonChangeFlash'] = []
-    lickTimes = data[exp]['lickTimes'][:]
-    for i,t in enumerate(flashTimes):
-        timeFromChange = changeTimes-t
-        timeFromLick = lickTimes-t
-        if min(abs(timeFromChange))<60 and (not any(timeFromChange<0) or max(timeFromChange[timeFromChange<0])<-4) and (not any(timeFromLick<0) or max(timeFromLick[timeFromLick<0])<-4):
-            nonChangeFlashes.append(i)
-            result[exp]['responseToNonChangeFlash'].append(any((timeFromLick>0.15) & (timeFromLick<0.75)))
-    nonChangeFlashTimes = flashTimes[nonChangeFlashes]
-    if 'passive' in behavStates:
-        passiveNonChangeFlashTimes = data[exp]['passiveFlashTimes'][nonChangeFlashes]
-    
     initialImage = data[exp]['initialImage'][changeTrials]
     changeImage = data[exp]['changeImage'][changeTrials]
     imageNames = np.unique(changeImage)
+    
+    flashImage = data[exp]['flashImage'][:]
+    flashTimes = data[exp]['behaviorFlashTimes'][:]
+    lickTimes = data[exp]['lickTimes'][:]
+    nonChangeFlashIndex = []
+    nonChangeImage = []
+    respToNonChange = []
+    for i,(t,img) in enumerate(zip(flashTimes,flashImage)):
+        timeFromChange = changeTimes-t
+        timeFromLick = lickTimes-t
+        if min(abs(timeFromChange))<60 and (not any(timeFromChange<0) or max(timeFromChange[timeFromChange<0])<-4) and (not any(timeFromLick<0) or max(timeFromLick[timeFromLick<0])<-4):
+            nonChangeImage.append(img)
+            nonChangeFlashIndex.append(i)
+            respToNonChange.append(any((timeFromLick>0.15) & (timeFromLick<0.75)))
+    nonChangeImage = np.array(nonChangeImage)
+    changeImgCount = np.unique(changeImage,return_counts=True)[1]
+    nonChangeSample = []
+    for img,count in zip(imageNames,changeImgCount):
+        nonChangeSample += list(np.random.choice(np.where(nonChangeImage==img)[0],count,replace=False))
+    nonChangeFlashIndex = np.array(nonChangeFlashIndex)[nonChangeSample]
+    nonChangeFlashTimes = flashTimes[nonChangeFlashIndex]
+    if 'passive' in behavStates:
+        passiveNonChangeFlashTimes = data[exp]['passiveFlashTimes'][nonChangeFlashIndex]
+    result[exp]['responseToNonChange'] = np.array(respToNonChange)[nonChangeSample]
     
     for region,regionCCFLabels,_ in regionsToUse:
         activePreSDFs = []
@@ -1039,14 +1049,14 @@ for expInd,exp in enumerate(exps):
                     passiveChangeSDFs.append(passiveChange[hasResp])
                 else:
                     hasResp = hasSpikesActive & hasRespActive
-                activePreSDFs.append(activePre[hasResp])
-                activeChangeSDFs.append(activeChange[hasResp])
-                
-                units = data[exp]['units'][probe][inRegion][hasResp]
-                spikes = data[exp]['spikeTimes'][probe]
-                activeNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],nonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
-                if 'passive' in behavStates:
-                    passiveNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],passiveNonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
+                if hasResp.any():
+                    activePreSDFs.append(activePre[hasResp])
+                    activeChangeSDFs.append(activeChange[hasResp])
+                    units = data[exp]['units'][probe][inRegion][hasResp]
+                    spikes = data[exp]['spikeTimes'][probe]
+                    activeNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],nonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
+                    if 'passive' in behavStates:
+                        passiveNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],passiveNonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
         if len(activePreSDFs)>0:
             activePreSDFs = np.concatenate(activePreSDFs)
             activeChangeSDFs = np.concatenate(activeChangeSDFs)
@@ -1310,7 +1320,7 @@ for model in modelNames:
                 for exp in result:
                     s = result[exp][region][state][score][model]
                     if len(s)>0:
-                        regionScore.append(s[0])
+                        regionScore.append(s[-1])
                 n = len(regionScore)
                 if n>0:
                     mean[i] = np.mean(regionScore)
@@ -1609,14 +1619,14 @@ ax = plt.subplot(1,1,1)
 xticks = np.arange(len(regionLabels))
 xlim = [-0.5,len(regionLabels)-0.5]
 ax.plot(xlim,[0,0],'--',color='0.5')
-for state,fill in zip(('active','passive'),(True,False)):
+for state,fill in zip(('active',),(True,)):
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
         regionData = []
         for exp in result:
-            behavior = result[exp]['responseToChange'][:].astype(float)
+            behavior = result[exp]['responseToNonChange'].astype(float)
             s = result[exp][region][state]['changePredictProb']['randomForest']
-            if len(s)>0 and any(behavior) and any(s[0]):
-                regionData.append(np.corrcoef(behavior,s[0])[0,1])
+            if len(s)>0 and any(behavior) and any(s[-1]):
+                regionData.append(np.corrcoef(behavior,s[-1])[0,1])
         n = len(regionData)
         if n>0:
             m = np.mean(regionData)
@@ -1646,7 +1656,7 @@ for state,fill in zip(('active',),(True,)):
     for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
         regionData = []
         for exp in result:
-            behavior = result[exp]['responseToChange'][:].astype(float)
+            behavior = result[exp]['responseToChange'].astype(float)
             s = result[exp][region][state]['changePredictProb']['randomForest']
             if len(s)>0 and any(behavior) and any(s[0]):
                 regionData.append(np.corrcoef(behavior,s[0])[0,1])
@@ -1754,6 +1764,8 @@ for model in ('randomForest',):
 
 
 ###### hit rate, lick time, and change mod correlation
+    
+    
                 
 Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im] for im in 'AB']
 regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
@@ -2138,6 +2150,7 @@ timeSinceChange = {event:[] for event in flashType}
 timeSinceLick = {event:[] for event in flashType}
 timeSinceReward = {event:[] for event in flashType}
 lickInWindow = {event:[] for event in flashType}
+lickLatency = {event:[] for event in flashType}
 hitRate = []
 falseAlarmRate = []
 for exp in exps:
@@ -2158,6 +2171,8 @@ for exp in exps:
         timeSinceReward[event].append(times-rewardTimes[np.searchsorted(rewardTimes,times)-1])
         timeToLick = lickTimes-times[:,None]
         lickInWindow[event].append(np.any((timeToLick>0.15) & (timeToLick<0.75),axis=1))
+        timeToLick[timeToLick<0] = np.nan
+        lickLatency[event].append(np.nanmin(timeToLick,axis=1))
     hitRate.append(np.sum(response[engagedChange]=='hit')/np.sum(changeTrials & engagedChange))
     falseAlarmRate.append(np.sum(response[engagedChange]=='falseAlarm')/np.sum(~changeTrials & engagedChange))
 
@@ -2254,6 +2269,29 @@ ax2.set_xlabel('Time since lick (s)')
 ax1.legend()
 plt.tight_layout()
 
+
+fig = plt.figure(facecolor='w')
+ax = fig.add_subplot(1,1,1)
+binsize = 0.05
+bins = np.arange(0,7,binsize)
+x = bins[:-1]+binsize/2
+for event,clr in zip(flashType[::-1],'gr'):
+    lickLat = []
+    for lick,lat,lastChange,lastLick in zip(lickInWindow[event],lickLatency[event],timeSinceChange[event],timeSinceLick[event]):
+        if event=='flash':
+            lat = lat[(lastChange>4) & (lastLick>4)]
+        lickLat.append(np.histogram(lat,bins)[0])
+    m = np.nanmean(lickLat,axis=0)
+    s = np.nanstd(lickLat,axis=0)/(len(exps)**0.5)
+    ax.plot(x,m,clr,label=event)
+    ax.fill_between(x,m+s,m-s,color=clr,alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+#ax2.set_xlabel('Time since lick (s)')
+#ax.set_ylabel('Lick Prob.')
+ax.legend()
+plt.tight_layout()
 
 
 
