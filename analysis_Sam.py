@@ -990,6 +990,7 @@ for expInd,exp in enumerate(exps):
     startTime = time.clock()
     
     response = data[exp]['response'][:]
+    lickTimes = data[exp]['lickTimes'][:]
     hit = response=='hit'
     falseAlarm = response=='falseAlarm'
     changeTimes = data[exp]['behaviorChangeTimes'][:]
@@ -998,7 +999,12 @@ for expInd,exp in enumerate(exps):
     catchTrials = engaged & (falseAlarm | (response=='correctReject'))
     result[exp]['responseToChange'] = hit[changeTrials]
     result[exp]['responseToCatch'] = falseAlarm[catchTrials]
-    result[exp]['reactionTime'] = data[exp]['rewardTimes'][engaged & hit] - changeTimes[engaged & hit]
+    result[exp]['changeReactionTime'] = data[exp]['rewardTimes'][changeTrials] - changeTimes[changeTrials]
+    
+    catchLickLat = np.full(catchTrials.sum(),np.nan)
+    firstLickInd = np.searchsorted(lickTimes,changeTimes[engaged & falseAlarm])
+    catchLickLat[falseAlarm[catchTrials]] = lickTimes[firstLickInd]-changeTimes[engaged & falseAlarm]
+    result[exp]['catchReactionTime'] = catchLickLat
     
     initialImage = data[exp]['initialImage'][changeTrials]
     changeImage = data[exp]['changeImage'][changeTrials]
@@ -1009,17 +1015,22 @@ for expInd,exp in enumerate(exps):
     
     flashImage = data[exp]['flashImage'][:]
     flashTimes = data[exp]['behaviorFlashTimes'][:]
-    lickTimes = data[exp]['lickTimes'][:]
     nonChangeFlashIndex = []
     nonChangeImage = []
     respToNonChange = []
+    nonChangeLickLat = []
     for i,(t,img) in enumerate(zip(flashTimes,flashImage)):
         timeFromChange = changeTimes-t
         timeFromLick = lickTimes-t
         if min(abs(timeFromChange))<60 and (not any(timeFromChange<0) or max(timeFromChange[timeFromChange<0])<-4) and (not any(timeFromLick<0) or max(timeFromLick[timeFromLick<0])<-4):
             nonChangeImage.append(img)
             nonChangeFlashIndex.append(i)
-            respToNonChange.append(any((timeFromLick>0.15) & (timeFromLick<0.75)))
+            if any((timeFromLick>0.15) & (timeFromLick<0.75)):
+                respToNonChange.append(True)
+                nonChangeLickLat.append(timeFromLick[timeFromLick>0.15].min())
+            else:
+                respToNonChange.append(False)
+                nonChangeLickLat.append(np.nan)
     nonChangeImage = np.array(nonChangeImage)
     minImgCount = np.unique(nonChangeImage,return_counts=True)[1].min()
     nonChangeSample = [i for a in [np.random.choice(np.where(nonChangeImage==img)[0],minImgCount,replace=False) for img in imageNames] for i in a]
@@ -1027,9 +1038,10 @@ for expInd,exp in enumerate(exps):
     nonChangeFlashTimes = flashTimes[nonChangeFlashIndex]
     if 'passive' in behavStates:
         passiveNonChangeFlashTimes = data[exp]['passiveFlashTimes'][nonChangeFlashIndex]
-    result[exp]['responseToNonChange'] = np.array(respToNonChange)[nonChangeSample]
     result[exp]['nonChangeImage'] = nonChangeImage[nonChangeSample]
-    
+    result[exp]['responseToNonChange'] = np.array(respToNonChange)[nonChangeSample]
+    result[exp]['nonChangeReactionTime'] = np.array(nonChangeLickLat)[nonChangeSample]
+   
     for region,regionCCFLabels,_ in regionsToUse:
         activePreSDFs = []
         activeChangeSDFs = []
@@ -1771,40 +1783,95 @@ for model in ('randomForest',):
 
 ## analysis of population sdfs
     
-# plot hit and false alarm rates by image
+# plot hit and false alarm rates and reaction times by image
 hitRate = []
 falseAlarmRate = []
-for exp in result:
-    if 'responseToChange' in result[exp]:
-        changeImage = result[exp]['changeImage']
-        respToChange = result[exp]['responseToChange']
-        nonChangeImage = result[exp]['nonChangeImage']
-        respToNonChange = result[exp]['responseToNonChange']
-        imageNames = np.unique(changeImage)
-        hr = []
-        far = []
-        for img in imageNames:
-            hit = respToChange[changeImage==img]
-            fa = respToNonChange[nonChangeImage==img]
-            hr.append(hit.sum()/hit.size)
-            far.append(fa.sum()/fa.size)
-        hitRate.append(hr)
-        falseAlarmRate.append(far)
+hitReactionTime = []
+falseAlarmReactionTime = []
+for exp in Aexps:
+    changeImage = result[exp]['changeImage']
+    respToChange = result[exp]['responseToChange']
+    changeReactionTime = result[exp]['changeReactionTime']
+    nonChangeImage = result[exp]['nonChangeImage']
+    respToNonChange = result[exp]['responseToNonChange']
+    nonChangeReactionTime = result[exp]['nonChangeReactionTime']
+    imageNames = np.unique(changeImage)
+    hitRate.append([])
+    falseAlarmRate.append([])
+    hitReactionTime.append([])
+    falseAlarmReactionTime.append([])
+    for img in imageNames:
+        hit = respToChange[changeImage==img]
+        fa = respToNonChange[nonChangeImage==img]
+        hitRate[-1].append(hit.sum()/hit.size)
+        falseAlarmRate[-1].append(fa.sum()/fa.size)
+        hitReactionTime[-1].append(np.median(changeReactionTime[(changeImage==img) & respToChange]))
+        falseAlarmReactionTime[-1].append(np.median(nonChangeReactionTime[(nonChangeImage==img) & respToNonChange]))
+
+plt.plot(np.mean(hitRate,axis=0),np.mean(falseAlarmRate,axis=0),'ko')
+
+plt.figure()
+plt.plot(np.mean(hitReactionTime,axis=0),np.mean(falseAlarmReactionTime,axis=0),'ko')
+
+plt.figure()
+plt.plot(np.mean(hitReactionTime,axis=0),np.mean(falseAlarmReactionTime,axis=0),'ko')
 
 # plot mean response by image on lick and no lick trials
+imgOrder = np.argsort(np.mean(hitRate,axis=0))
+change = []
+catch = []
+for region in regionLabels:
+    hitResp = []
+    missResp = []
+    falseAlarmResp = []
+    correctRejectResp = []
+    changeCorr = []
+    catchCorr = []
+    for exp in Aexps:
+        changeImage = result[exp]['changeImage']
+        respToChange = result[exp]['responseToChange']
+        changeReactionTime = result[exp]['changeReactionTime']
+        nonChangeImage = result[exp]['nonChangeImage']
+        respToNonChange = result[exp]['responseToNonChange']
+        nonChangeReactionTime = result[exp]['nonChangeReactionTime']
+        changeSDFs = result[exp][region]['active']['changeSDFs']
+        if changeSDFs is not None:
+            nonChangeSDFs = result[exp][region]['active']['nonChangeSDFs']
+#            changeSDFs = changeSDFs-changeSDFs[:,:10].mean(axis=1)[:,None]
+#            nonChangeSDFs = nonChangeSDFs-nonChangeSDFs[:,:10].mean(axis=1)[:,None]
+            hitResp.append([])
+            missResp.append([])
+            falseAlarmResp.append([])
+            correctRejectResp.append([])
+            changeCorr.append([])
+            catchCorr.append([])
+            for img in imageNames[imgOrder]:
+                hitResp[-1].append(changeSDFs[(changeImage==img) & respToChange].mean())
+                missResp[-1].append(changeSDFs[(changeImage==img) & (~respToChange)].mean())
+                falseAlarmResp[-1].append(nonChangeSDFs[(nonChangeImage==img) & respToNonChange].mean())
+                correctRejectResp[-1].append(nonChangeSDFs[(nonChangeImage==img) & (~respToNonChange)].mean())
+                changeCorr[-1].append(np.corrcoef(respToChange[changeImage==img],changeSDFs[changeImage==img].mean(axis=1))[0,1])
+                catchCorr[-1].append(np.corrcoef(respToNonChange[nonChangeImage==img],nonChangeSDFs[nonChangeImage==img].mean(axis=1))[0,1])
+    
+    change.append(np.nanmean(changeCorr,axis=0))
+    catch.append(np.nanmean(catchCorr,axis=0))
+    
+    plt.figure()
+    ax = plt.subplot(1,1,1)
+#    ax.plot(np.nanmean(hitResp,axis=0),'r')
+#    ax.plot(np.nanmean(missResp,axis=0),'b')
+#    ax.plot(np.nanmean(falseAlarmResp,axis=0),'r--')
+#    ax.plot(np.nanmean(correctRejectResp,axis=0),'b--')
+    ax.plot(np.nanmean(changeCorr,axis=0),'r')
+    ax.plot(np.nanmean(catchCorr,axis=0),'r')
+    ax.set_title(region)
+    
 
-
-
-
-
-
-
+plt.plot(np.mean(change,axis=1),'ko')
 
 
 ###### hit rate, lick time, and change mod correlation
-    
-    
-                
+                 
 Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im] for im in 'AB']
 regionLabels = ('VISp','VISl','VISal','VISrl','VISpm','VISam')
 
