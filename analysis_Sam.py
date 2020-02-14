@@ -924,6 +924,8 @@ ax.legend()
 
 ###### decoding analysis
 
+exps = data.keys()
+
 cortical_cmap = plt.cm.plasma
 subcortical_cmap = plt.cm.Reds
 regionsToUse = (('LGd',('LGd',),(0,0,0)),
@@ -940,7 +942,7 @@ regionsToUse = (('LGd',('LGd',),(0,0,0)),
                 ('MRN',('MRN',),subcortical_cmap(0.8)),
 #                ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
                 ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0)))
-regionsToUse = regionsToUse[:8]
+#regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
@@ -952,10 +954,10 @@ baseWin = slice(stimWin.start-150,stimWin.start)
 respWin = slice(stimWin.start,stimWin.start+150)
 
 decodeWindowSize = 10
-decodeWindows = []#np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
+decodeWindows = np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
-preImageDecodeWindows = []#np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
+preImageDecodeWindows = np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
 
 # models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4),LinearDiscriminantAnalysis(),SVC(kernel='linear',C=1.0,probability=True)))
 # modelNames = ('randomForest','supportVector','LDA')
@@ -1007,12 +1009,12 @@ for expInd,exp in enumerate(exps):
     catchLickLat[falseAlarm[catchTrials]] = lickTimes[firstLickInd]-changeTimes[engaged & falseAlarm]
     result[exp]['catchReactionTime'] = catchLickLat
     
-    initialImage = data[exp]['initialImage'][changeTrials]
-    changeImage = data[exp]['changeImage'][changeTrials]
+    initialImage = data[exp]['initialImage']
+    changeImage = data[exp]['changeImage']
     imageNames = np.unique(changeImage)
-    result[exp]['preChangeImage'] = initialImage
-    result[exp]['changeImage'] = changeImage
-    result[exp]['catchImage'] = data[exp]['changeImage'][catchTrials]
+    result[exp]['preChangeImage'] = initialImage[changeTrials]
+    result[exp]['changeImage'] = changeImage[changeTrials]
+    result[exp]['catchImage'] = changeImage[catchTrials]
     
     flashImage = data[exp]['flashImage'][:]
     flashTimes = data[exp]['behaviorFlashTimes'][:]
@@ -1109,93 +1111,93 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['nonChangeSDFs'] = nonChangeSDFs.mean(axis=1)
                             result[exp][region][state]['respLatency'] = findLatency(changeSDFs[changeTrials][:,:,respWin].mean(axis=(0,1))[None,:],baseWin,stimWin,method='abs',thresh=0.5)[0]
                         
-#                        changeScore = {model: [] for model in modelNames}
-#                        changePredict = {model: [] for model in modelNames}
-#                        changePredictProb = {model: [] for model in modelNames}
-#                        changeFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
-#                        catchPredict = {model: [] for model in modelNames}
-#                        catchPredictProb = {model: [] for model in modelNames}
-#                        nonChangePredict = {model: [] for model in modelNames}
-#                        nonChangePredictProb = {model: [] for model in modelNames}
-#                        imageScore = {model: [] for model in modelNames}
-#                        imageFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
-#                        changeScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
-#                        changePredictWindows = {model: np.zeros((nsamples,len(decodeWindows),changeTrials.sum())) for model in modelNames}
-#                        imageScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
-#                        preImageScoreWindows = {model: np.zeros((nsamples,len(preImageDecodeWindows))) for model in modelNames}
+                        changeScore = {model: [] for model in modelNames}
+                        changePredict = {model: [] for model in modelNames}
+                        changePredictProb = {model: [] for model in modelNames}
+                        changeFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
+                        catchPredict = {model: [] for model in modelNames}
+                        catchPredictProb = {model: [] for model in modelNames}
+                        nonChangePredict = {model: [] for model in modelNames}
+                        nonChangePredictProb = {model: [] for model in modelNames}
+                        imageScore = {model: [] for model in modelNames}
+                        imageFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
+                        changeScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
+                        changePredictWindows = {model: np.zeros((nsamples,len(decodeWindows),changeTrials.sum())) for model in modelNames}
+                        imageScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
+                        preImageScoreWindows = {model: np.zeros((nsamples,len(preImageDecodeWindows))) for model in modelNames}
                         
-#                        for i,unitSamp in enumerate(unitSamples):
-#                            # decode image change and identity for full respWin
-#                            # image change
-#                            X = np.concatenate([s[:,unitSamp,respWin][changeTrials].reshape((changeTrials.sum(),-1)) for s in (changeSDFs,preChangeSDFs)])
-#                            y = np.zeros(X.shape[0])
-#                            y[:int(X.shape[0]/2)] = 1
-#                            Xcatch = changeSDFs[:,unitSamp,respWin][catchTrials].reshape((catchTrials.sum(),-1))
-#                            Xnonchange = nonChangeSDFs[:,unitSamp].reshape((nonChangeSDFs.shape[0],-1))
-#                            for model,name in zip(models,modelNames):
-#                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-#                                changeScore[name].append(cv['test_score'].mean())
-#                                changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
-#                                catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
-#                                nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
-#                                if name=='randomForest':
-#                                    changePredictProb[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
-#                                    changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
-#                                    catchPredictProb[name].append(np.mean([estimator.predict_proba(Xcatch)[:,1] for estimator in cv['estimator']],axis=0))
-#                                    nonChangePredictProb[name].append(np.mean([estimator.predict_proba(Xnonchange)[:,1] for estimator in cv['estimator']],axis=0))
+                        for i,unitSamp in enumerate(unitSamples):
+                            # decode image change and identity for full respWin
+                            # image change
+                            X = np.concatenate([s[:,unitSamp,respWin][changeTrials].reshape((changeTrials.sum(),-1)) for s in (changeSDFs,preChangeSDFs)])
+                            y = np.zeros(X.shape[0])
+                            y[:int(X.shape[0]/2)] = 1
+                            Xcatch = changeSDFs[:,unitSamp,respWin][catchTrials].reshape((catchTrials.sum(),-1))
+                            Xnonchange = nonChangeSDFs[:,unitSamp].reshape((nonChangeSDFs.shape[0],-1))
+                            for model,name in zip(models,modelNames):
+                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+                                changeScore[name].append(cv['test_score'].mean())
+                                changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
+                                catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
+                                nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
+                                if name=='randomForest':
+                                    changePredictProb[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
+                                    changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+                                    catchPredictProb[name].append(np.mean([estimator.predict_proba(Xcatch)[:,1] for estimator in cv['estimator']],axis=0))
+                                    nonChangePredictProb[name].append(np.mean([estimator.predict_proba(Xnonchange)[:,1] for estimator in cv['estimator']],axis=0))
                             # image identity
-#                            imgSDFs = [changeSDFs[:,unitSamp,respWin][changeTrials & (changeImage==img)] for img in imageNames]
-#                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-#                            y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-#                            for model,name in zip(models,modelNames):
-#                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
-#                                imageScore[name].append(cv['test_score'].mean())
-#                                if name=='randomForest':
-#                                    imageFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+                            imgSDFs = [changeSDFs[:,unitSamp,respWin][changeTrials & (changeImage==img)] for img in imageNames]
+                            X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+                            y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+                            for model,name in zip(models,modelNames):
+                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+                                imageScore[name].append(cv['test_score'].mean())
+                                if name=='randomForest':
+                                    imageFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                             
                             # decode image change and identity for sliding windows
-#                            for j,winStart in enumerate(decodeWindows):
-#                                # image change
-#                                winSlice = slice(winStart,winStart+decodeWindowSize)
-#                                X = np.concatenate([s[:,unitSamp,winSlice][changeTrials].reshape((changeTrials.sum(),-1)) for s in (changeSDFs,preChangeSDFs)])
-#                                y = np.zeros(X.shape[0])
-#                                y[:int(X.shape[0]/2)] = 1
-#                                for model,name in zip(models,modelNames):
-#                                    changeScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
-#                                    if name=='randomForest':
-#                                        changePredictWindows[name][i,j] = cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1]
+                            for j,winStart in enumerate(decodeWindows):
+                                # image change
+                                winSlice = slice(winStart,winStart+decodeWindowSize)
+                                X = np.concatenate([s[:,unitSamp,winSlice][changeTrials].reshape((changeTrials.sum(),-1)) for s in (changeSDFs,preChangeSDFs)])
+                                y = np.zeros(X.shape[0])
+                                y[:int(X.shape[0]/2)] = 1
+                                for model,name in zip(models,modelNames):
+                                    changeScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                    if name=='randomForest':
+                                        changePredictWindows[name][i,j] = cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1]
                                 # image identity
-#                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeTrials & (changeImage==img)] for img in imageNames]
-#                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-#                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-#                                for model,name in zip(models,modelNames):
-#                                    imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeTrials & (changeImage==img)] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                                     
                             # decode pre-change image identity for sliding windows
-#                            for j,winStart in enumerate(preImageDecodeWindows):
-#                                winSlice = slice(winStart,winStart+preImageDecodeWindowSize)
-#                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][changeTrials & (initialImage==img)] for img in imageNames]
-#                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
-#                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
-#                                for model,name in zip(models,modelNames):
-#                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                            for j,winStart in enumerate(preImageDecodeWindows):
+                                winSlice = slice(winStart,winStart+preImageDecodeWindowSize)
+                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][changeTrials & (initialImage==img)] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                         
                         # average across unit samples
-#                        for model in modelNames:
-#                            result[exp][region][state]['changeScore'][model].append(np.median(changeScore[model],axis=0))
-#                            result[exp][region][state]['changePredict'][model].append(scipy.stats.mode(changePredict[model],axis=0)[0].flatten())
-#                            result[exp][region][state]['changePredictProb'][model].append(np.median(changePredictProb[model],axis=0))
-#                            result[exp][region][state]['changeFeatureImportance'][model].append(np.nanmedian(changeFeatureImportance[model],axis=0))
-#                            result[exp][region][state]['catchPredict'][model].append(scipy.stats.mode(catchPredict[model],axis=0)[0].flatten())
-#                            result[exp][region][state]['catchPredictProb'][model].append(np.median(catchPredictProb[model],axis=0))
-#                            result[exp][region][state]['nonChangePredict'][model].append(scipy.stats.mode(nonChangePredict[model],axis=0)[0].flatten())
-#                            result[exp][region][state]['nonChangePredictProb'][model].append(np.median(nonChangePredictProb[model],axis=0))
-#                            result[exp][region][state]['imageScore'][model].append(np.median(imageScore[model],axis=0))
-#                            result[exp][region][state]['imageFeatureImportance'][model].append(np.nanmedian(imageFeatureImportance[model],axis=0))
-#                            result[exp][region][state]['changeScoreWindows'][model].append(np.median(changeScoreWindows[model],axis=0))
-#                            result[exp][region][state]['changePredictWindows'][model].append(np.median(changePredictWindows[model],axis=0))
-#                            result[exp][region][state]['imageScoreWindows'][model].append(np.median(imageScoreWindows[model],axis=0))
-#                            result[exp][region][state]['preImageScoreWindows'][model].append(np.median(preImageScoreWindows[model],axis=0))
+                        for model in modelNames:
+                            result[exp][region][state]['changeScore'][model].append(np.median(changeScore[model],axis=0))
+                            result[exp][region][state]['changePredict'][model].append(scipy.stats.mode(changePredict[model],axis=0)[0].flatten())
+                            result[exp][region][state]['changePredictProb'][model].append(np.median(changePredictProb[model],axis=0))
+                            result[exp][region][state]['changeFeatureImportance'][model].append(np.nanmedian(changeFeatureImportance[model],axis=0))
+                            result[exp][region][state]['catchPredict'][model].append(scipy.stats.mode(catchPredict[model],axis=0)[0].flatten())
+                            result[exp][region][state]['catchPredictProb'][model].append(np.median(catchPredictProb[model],axis=0))
+                            result[exp][region][state]['nonChangePredict'][model].append(scipy.stats.mode(nonChangePredict[model],axis=0)[0].flatten())
+                            result[exp][region][state]['nonChangePredictProb'][model].append(np.median(nonChangePredictProb[model],axis=0))
+                            result[exp][region][state]['imageScore'][model].append(np.median(imageScore[model],axis=0))
+                            result[exp][region][state]['imageFeatureImportance'][model].append(np.nanmedian(imageFeatureImportance[model],axis=0))
+                            result[exp][region][state]['changeScoreWindows'][model].append(np.median(changeScoreWindows[model],axis=0))
+                            result[exp][region][state]['changePredictWindows'][model].append(np.median(changePredictWindows[model],axis=0))
+                            result[exp][region][state]['imageScoreWindows'][model].append(np.median(imageScoreWindows[model],axis=0))
+                            result[exp][region][state]['preImageScoreWindows'][model].append(np.median(preImageScoreWindows[model],axis=0))
     print(time.clock()-startTime)
 warnings.filterwarnings('default')
 
@@ -2254,10 +2256,10 @@ ax.legend(loc='lower left',fontsize=12)
 
 
 xlim = [-500,500]
-ylim = [-10,5]
-fig = plt.figure(facecolor='w')
+ylim = [-35,10]
+fig = plt.figure(facecolor='w',figsize=(6,8))
 ax = fig.add_subplot(2,1,1)
-for lickProb,clr,lbl in zip((hitLickProb,falseAlarmLickProb),'kg',('hit','false alarm')):
+for lickProb,clr,lbl in zip((hitLickProb,falseAlarmLickProb),'gm',('hit','false alarm')):
     m = np.nanmean(lickProb,axis=0)
     n = len(lickProb)
     s = np.std(lickProb,axis=0)/(n**0.5)
@@ -2265,15 +2267,17 @@ for lickProb,clr,lbl in zip((hitLickProb,falseAlarmLickProb),'kg',('hit','false 
     ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.1)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
 ax.set_xlim(xlim)
-ax.set_xlabel('Time from change/catch (ms)',fontsize=12)
-ax.set_ylabel('Lick Probability',fontsize=12)
+ax.set_ylim([0,0.075])
+ax.set_ylabel('Lick Probability',fontsize=14)
 
 ax = fig.add_subplot(2,1,2)
 #ax.plot([130]*2,ylim,'k:')
 #ax.text(130,5.1,'Reaction time\n~130 ms',horizontalalignment='center')
-for speed,clr,lbl in zip((hitRunSpeed['behavior'],missRunSpeed['behavior'],falseAlarmRunSpeed['behavior'],correctRejectRunSpeed['behavior']),'krgb',('hit','miss','false alarm','correct reject')):
+#for speed,clr,lbl in zip((hitRunSpeed['behavior'],falseAlarmRunSpeed['behavior']),'gm',('hit','false alarm')):
+for speed,clr,lbl in zip((hitRunSpeed['behavior'],falseAlarmRunSpeed['behavior'],correctRejectRunSpeed['behavior']),'gmk',('hit','false alarm','correct reject')):
+#for speed,clr,lbl in zip((hitRunSpeed['behavior'],missRunSpeed['behavior'],falseAlarmRunSpeed['behavior'],correctRejectRunSpeed['behavior']),'grmk',('hit','miss','false alarm','correct reject')):
     m = np.mean(speed,axis=0)
     n = len(speed)
     s = np.std(speed,axis=0)/(n**0.5)
@@ -2281,14 +2285,31 @@ for speed,clr,lbl in zip((hitRunSpeed['behavior'],missRunSpeed['behavior'],false
     ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.1)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=10)
-ax.set_yticks(np.arange(-10,10,5))
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.set_yticks(np.arange(-40,10,10))
 ax.set_xlim(xlim)
 ax.set_ylim(ylim)
-ax.set_xticklabels([])
-ax.set_xlabel('Time from change/catch (ms)',fontsize=12)
-ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=12)
-ax.legend(loc='lower left',fontsize=12)
+ax.set_xlabel('Time from change/catch (ms)',fontsize=14)
+ax.set_ylabel('$\Delta$ Run speed (cm/s)',fontsize=14)
+ax.legend(loc='lower left',fontsize=14)
+
+
+fig = plt.figure(facecolor='w')
+ax = fig.add_subplot(1,1,1)
+for lickProb,clr,lbl in zip((hitLickProb,falseAlarmLickProb),'gm',('Change','Non-change')):
+    m = np.nanmean(lickProb,axis=0)
+    n = len(lickProb)
+    s = np.std(lickProb,axis=0)/(n**0.5)
+    ax.plot(plotTime,m,clr,label=lbl)
+    ax.fill_between(plotTime,m+s,m-s,color=clr,alpha=0.1)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.set_xlim([0,500])
+ax.set_ylim([0,0.075])
+ax.set_xlabel('Time from image onset (ms)',fontsize=14)
+ax.set_ylabel('Lick Probability',fontsize=14)
+ax.legend(fontsize=14)
 
 
 xlim = [-500,500]
@@ -2315,6 +2336,7 @@ ax.legend(loc='lower left',fontsize=12)
 
 
 ###### lick prob for all changes and non-change flashes
+exps = data.keys()
 flashType = ('flash','change')
 timeSinceChange = {event:[] for event in flashType}
 timeSinceLick = {event:[] for event in flashType}
@@ -2347,7 +2369,8 @@ for exp in exps:
     falseAlarmRate.append(np.sum(response[engagedChange]=='falseAlarm')/np.sum(~changeTrials & engagedChange))
 
 bins = np.arange(0.375,61,0.75)   
-t = bins-0.375
+binTimes = bins-0.375
+
 for exp,_ in enumerate(exps):
     fig = plt.figure(facecolor='w',figsize=(6,8))
     ax1 = fig.add_subplot(2,1,1)
@@ -2362,8 +2385,8 @@ for exp,_ in enumerate(exps):
             ind = np.where(timeToBinIndex==i)[0]
             lick[i] = lickInWindow[event][exp][ind].sum()
             nolick[i] = len(ind)-lick[i]
-        ax1.plot(t,lick/(lick+nolick),clr,label=event)
-        ax2.plot(t,lick+nolick,clr)
+        ax1.plot(binTimes,lick/(lick+nolick),clr,label=event)
+        ax2.plot(binTimes,lick+nolick,clr)
     for ax in (ax1,ax2):
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
@@ -2373,71 +2396,41 @@ for exp,_ in enumerate(exps):
     ax2.set_xlabel('Time since change (s)')
     ax1.legend()
 
-fig = plt.figure(facecolor='w',figsize=(6,8))
-ax1 = fig.add_subplot(2,1,1)
-ax2 = fig.add_subplot(2,1,2)
-for d,clr,lbl in zip((hitRate,falseAlarmRate),'gr',('hit rate','false alarm rate')):
-    m = np.mean(d)
-    s = np.std(d)/(len(d)**0.5)
-    ax1.plot([0,60],[m,m],'--',color=clr,label=lbl)
-    ax.fill_between([0,60],[m+s]*2,[m-s]*2,color=clr,alpha=0.25)
-for event,clr in zip(flashType[::-1],'gr'):
-    lickProb = np.zeros((len(exps),len(bins)))
-    n = lickProb.copy()
-    for i,(times,licks) in enumerate(zip(timeSinceChange[event],lickInWindow[event])):
-        timeToBinIndex = np.searchsorted(bins,times)
-        for j in range(len(bins)):
-            ind = np.where(timeToBinIndex==j)[0]
-            lickProb[i,j] = licks[ind].sum()/len(ind)
-            n[i,j] = len(ind)
-    for d,ax in zip((lickProb,n),(ax1,ax2)):
-        m = np.nanmean(d,axis=0)
-        s = np.nanstd(d,axis=0)/(len(exps)**0.5)
-        ax.plot(t,m,clr,label=event)
-        ax.fill_between(t,m+s,m-s,color=clr,alpha=0.25)
-for ax in (ax1,ax2):
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-ax1.set_ylabel('Lick Prob.')
-ax2.set_ylabel('N')
-ax2.set_xlabel('Time since change (s)')
-ax1.legend()
-plt.tight_layout()
 
+for times,xmax,xlbl in zip((timeSinceChange,timeSinceLick),(55,25),('Time since change','Time since lick')):
+    fig = plt.figure(facecolor='w',figsize=(6,8))
+    ax1 = fig.add_subplot(2,1,1)
+    ax2 = fig.add_subplot(2,1,2)
+    for d,clr,lbl in zip((hitRate,falseAlarmRate),'kk',('hit rate','false alarm rate')):
+        m = np.mean(d)
+        s = np.std(d)/(len(d)**0.5)
+        ax1.plot([0,60],[m,m],'--',color=clr)
+        ax1.fill_between([0,60],[m+s]*2,[m-s]*2,color=clr,alpha=0.25)
+    for event,clr,lbl in zip(flashType[::-1],'gm',('Change','Non-change')):
+        lickProb = np.zeros((len(exps),len(bins)))
+        n = lickProb.copy()
+        for i,(t,licks) in enumerate(zip(times[event],lickInWindow[event])):
+            timeToBinIndex = np.searchsorted(bins,t)
+            for j in range(len(bins)):
+                ind = np.where(timeToBinIndex==j)[0]
+                lickProb[i,j] = licks[ind].sum()/len(ind)
+                n[i,j] = len(ind)
+        for d,ax in zip((lickProb,n),(ax1,ax2)):
+            m = np.nanmean(d,axis=0)
+            s = np.nanstd(d,axis=0)/(len(exps)**0.5)
+            ax.plot(binTimes,m,clr,label=lbl)
+            ax.fill_between(binTimes,m+s,m-s,color=clr,alpha=0.25)
+    for ax in (ax1,ax2):
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+        ax.set_xlim([0,xmax])
+    ax1.set_ylabel('Lick probability',fontsize=14)
+    ax2.set_ylabel('Number of events',fontsize=14)
+    ax2.set_xlabel(xlbl+' (s)',fontsize=14)
+    ax2.legend(fontsize=14)
+    plt.tight_layout()
 
-fig = plt.figure(facecolor='w',figsize=(6,8))
-ax1 = fig.add_subplot(2,1,1)
-ax2 = fig.add_subplot(2,1,2)
-for d,clr,lbl in zip((hitRate,falseAlarmRate),'gr',('hit rate','false alarm rate')):
-    m = np.mean(d)
-    s = np.std(d)/(len(d)**0.5)
-    ax1.plot([0,60],[m,m],'--',color=clr,label=lbl)
-    ax.fill_between([0,60],[m+s]*2,[m-s]*2,color=clr,alpha=0.25)
-for event,clr in zip(flashType[::-1],'gr'):
-    lickProb = np.zeros((len(exps),len(bins)))
-    n = lickProb.copy()
-    for i,(times,licks) in enumerate(zip(timeSinceLick[event],lickInWindow[event])):
-        timeToBinIndex = np.searchsorted(bins,times)
-        for j in range(len(bins)):
-            ind = np.where(timeToBinIndex==j)[0]
-            lickProb[i,j] = licks[ind].sum()/len(ind)
-            n[i,j] = len(ind)
-    for d,ax in zip((lickProb,n),(ax1,ax2)):
-        m = np.nanmean(d,axis=0)
-        s = np.nanstd(d,axis=0)/(len(exps)**0.5)
-        ax.plot(t,m,clr,label=event)
-        ax.fill_between(t,m+s,m-s,color=clr,alpha=0.25)
-for ax in (ax1,ax2):
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xlim([0,25])
-ax1.set_ylabel('Lick Prob.')
-ax2.set_ylabel('N')
-ax2.set_xlabel('Time since lick (s)')
-ax1.legend()
-plt.tight_layout()
 
 
 fig = plt.figure(facecolor='w')
