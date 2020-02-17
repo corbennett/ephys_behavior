@@ -963,7 +963,7 @@ for state in [behavStates[0]]:
     ax.set_yticks([0.5,0.6,0.7,0.8])
     ax.set_xlim([-0.5,len(regionLabels)-0.5])
     ax.set_ylim([0.5,0.8])
-    ax.set_ylabel('Adaptation (fraction of change reseponse)',fontsize=14)
+    ax.set_ylabel('Fraction of change reseponse',fontsize=14)
 #ax.legend(fontsize=12)
 plt.tight_layout()
 
@@ -1303,19 +1303,23 @@ for model in modelNames:
     fig = plt.figure(facecolor='w')
     ax = plt.subplot(1,1,1)
     for score,clr in zip(('changeScore','imageScore'),('k','0.5')):
-        ax.plot(unitSampleSize,np.nanmean(allScores[score],axis=0),color=clr,label=score[:score.find('S')])
+        allMean = np.nanmean(allScores[score],axis=0)
+        allSem = np.nanstd(allScores[score],axis=0)/(np.sum(~np.isnan(allScores[score]),axis=0)**0.5)
+        print(allScores[score])
+        ax.plot(unitSampleSize,allMean,'o-',color=clr,label=score[:score.find('S')])
+        for x,m,s in zip(unitSampleSize,allMean,allSem):
+            ax.plot([x,x],[m-s,m+s],color=clr)
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
     ax.set_xticks(np.arange(0,100,10))
     ax.set_yticks([0,0.25,0.5,0.75,1])
-    ax.set_yticklabels([0,'',0.5,'',1])
     ax.set_xlim([0,max(unitSampleSize)+5])
-    ax.set_ylim([0,1])
-    ax.set_xlabel('Number of Units')
-    ax.set_ylabel('Decoder Accuracy')
-    ax.set_title(model)
-    ax.legend()
+    ax.set_ylim([0.5,1])
+    ax.set_xlabel('Number of Cells',fontsize=14)
+    ax.set_ylabel('Decoder Accuracy',fontsize=14)
+#    ax.set_title(model)
+#    ax.legend()
     plt.tight_layout()
     
     xticks = np.arange(len(regionLabels))
@@ -1323,7 +1327,7 @@ for model in modelNames:
     for score,ymin in zip(('changeScore','imageScore'),(0.5,0.125)):
         fig = plt.figure(facecolor='w')
         ax = plt.subplot(1,1,1)
-        for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.jet(np.linspace(0,1,len(unitSampleSize))))):
+        for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.plasma(np.linspace(0,1,len(unitSampleSize))))):
             for j,region in enumerate(regionLabels):
                 regionData = []
                 for exp in result:
@@ -1338,20 +1342,20 @@ for model in modelNames:
                     ax.plot([j,j],[m-s,m+s],color=clr)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=12)
         ax.set_xlim(xlim)
         ax.set_xticks(xticks)
         ax.set_xticklabels(regionLabels)
         ax.set_ylim([ymin,1])
-        ax.set_ylabel('Decoder Accuracy')
-        ax.set_title(model+', '+score[:score.find('S')])
-        ax.legend()
+        ax.set_ylabel('Decoder Accuracy',fontsize=14)
+#        ax.set_title(model+', '+score[:score.find('S')])
+        ax.legend(loc='upper left',fontsize=12)
         plt.tight_layout()
         
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
 ax.plot(xlim,[0,0],'--',color='0.5')
-for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.jet(np.linspace(0,1,len(unitSampleSize))))):
+for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.plasma(np.linspace(0,1,len(unitSampleSize))))):
     for j,region in enumerate(regionLabels):
         regionData = []
         for exp in result:
@@ -1367,12 +1371,44 @@ for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.jet(np.linspace(0,1,len(uni
             ax.plot([j,j],[m-s,m+s],color=clr)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim(xlim)
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
 ax.set_xticks(xticks)
 ax.set_xticklabels(regionLabels)
-ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
-ax.legend()
+ax.set_xlim(xlim)
+ax.set_yticks([0,0.2,0.4,0.6,0.8])
+ax.set_ylim([-0.075,0.8])
+ax.set_ylabel('Pearson r',fontsize=14)
+ax.legend(fontsize=12)
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+ax.plot(xlim,[0,0],'--',color='0.5')
+for i,(n,clr) in enumerate(zip(unitSampleSize,plt.cm.plasma(np.linspace(0,1,len(unitSampleSize))))):
+    for j,region in enumerate(regionLabels):
+        regionData = []
+        for exp in result:
+            behavior = result[exp]['responseToChange'][:]
+            s = result[exp][region]['active']['changePredictProb']['randomForest']
+            if len(s)>i:
+                regionData.append(np.mean(s[i][behavior])-np.mean(s[i][~behavior]))
+        if len(regionData)>0:
+            m = np.mean(regionData)
+            s = np.std(regionData)/(len(regionData)**0.5)
+            lbl = str(n)+' cells' if j==0 else None
+            ax.plot(j,m,'o',mec=clr,mfc='none',label=lbl)
+            ax.plot([j,j],[m-s,m+s],color=clr)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.set_xticks(xticks)
+ax.set_xticklabels(regionLabels)
+ax.set_xlim(xlim)
+#ax.set_yticks([0,0.1,0.2,0.3,0.4])
+ax.set_yticks([0,0.05,0.1,0.15])
+ax.set_ylim([-0.015,0.16])
+ax.set_ylabel('$\Delta$ Change probability (hit - miss)',fontsize=14)
+ax.legend(loc='upper left',fontsize=12)
 plt.tight_layout()
 
     
@@ -1952,6 +1988,50 @@ for region in regionLabels:
     ax.plot(np.nanmean(changeCorr,axis=0),'r')
     ax.plot(np.nanmean(catchCorr,axis=0),'r')
     ax.set_title(region)
+    
+
+# overlay of decoder accuracy and sdf    
+fig = plt.figure(facecolor='w',figsize=(6,10))
+fig.text(0.55,1,'Decoder Accuracy'+' ('+state+')',fontsize=10,horizontalalignment='center',verticalalignment='top')
+gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
+for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+    ax = plt.subplot(gs[i,j])
+    regionScore = []
+    for exp in result:
+        s = result[exp][region]['active']['changeScoreWindows']['randomForest']
+        if len(s)>1:
+            regionScore.append(s[1])
+    n = len(regionScore)
+    if n>0:
+        m = np.mean(regionScore,axis=0)
+        s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+        ax.plot(decodeWindows+decodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
+        ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    if score=='changeScoreWindows':
+        yticks = [0.5,0.75]
+        ylim = [0.475,0.9]
+        title = 'Change'
+    else:
+        yticks = [0.1,0.75]
+        ylim = [0.1,0.9]
+        title = 'Image Identity'
+    ax.set_xticks([250,350,450,550,650,750])
+    ax.set_xticklabels([0,100,200,300,400,500])
+    ax.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
+    ax.set_yticks(yticks)
+    ax.set_ylim(ylim)
+    if i<len(regionLabels)-1:
+        ax.set_xticklabels([])
+    else:
+        ax.set_xlabel('Time (ms)',fontsize=10)
+    if j==0:
+        ax.set_ylabel(region,fontsize=10)
+    if i==0:
+        ax.set_title(title,fontsize=10)
+plt.tight_layout()
     
 
 
