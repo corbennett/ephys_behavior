@@ -898,8 +898,12 @@ for exp in exps:
                         changeTimes = behaviorChangeTimes if state=='active' else passiveChangeTimes
                         betweenChangeSdfs[region][state].append([analysis_utils.getSDF(spikes[u],changeTimes-0.25,0.25+nFlashes*0.75,sampInt=0.001,filt='exp',sigma=0.005,avg=True)[0] for u in units])
 
+
+popSdfChange = {state:[] for state in ('active','passive')}
+popSdfNonChange = {state:[] for state in ('active','passive')}
 adaptMean = {state:[] for state in ('active','passive')}
 adaptSem = {state:[] for state in ('active','passive')}
+adaptMatrix = {state:[] for state in ('active','passive')}
 t = np.arange(-0.25,nFlashes*0.75,0.001)
 flashTimes = np.arange(0,nFlashes*0.75,0.75)
 for state in behavStates:
@@ -918,6 +922,10 @@ for state in behavStates:
         ax[0].plot(t,m,color=clr,label=lbl)
         ax[0].fill_between(t,m+s,m-s,color='w',alpha=0.25)
         
+        popSdfChange[state].append(m[250:750])
+        lastNonChangeFlashStart = nFlashes*750-750+250
+        popSdfNonChange[state].append(m[lastNonChangeFlashStart:lastNonChangeFlashStart+500])
+        
         flashResp = []
         flashRespSem = []
         for i in np.arange(250,nFlashes*750,750):
@@ -929,10 +937,13 @@ for state in behavStates:
         ax[1].plot(flashTimes+0.05,flashResp,color=clr,marker='o')
         for x,m,s in zip(flashTimes+0.05,flashResp,flashRespSem):
             ax[1].plot([x,x],[m-s,m+s],color=clr)
-            
         adaptMean[state].append(flashResp[-1])
         adaptSem[state].append(flashRespSem[-1])
-    
+        
+        a = (sdfs[:,250:750]-sdfs[:,lastNonChangeFlashStart:lastNonChangeFlashStart+500]) / sdfs[:,250:500].max(axis=1)[:,None]
+        a[np.isinf(a)] = np.nan
+        adaptMatrix[state].append(np.nanmean(a,axis=0))
+        
     for a in ax:
         for side in ('right','top'):
             a.spines[side].set_visible(False)
@@ -948,7 +959,7 @@ for state in behavStates:
 
 fig = plt.figure(facecolor='w')
 ax = fig.subplots(1)
-for state in [behavStates[0]]:
+for state in behavStates:
     for x,(m,s,clr) in enumerate(zip(adaptMean[state],adaptSem[state],regionColors)):
         mfc = clr if state=='active' else 'none'
         lbl = state if x==0 else None
@@ -966,6 +977,33 @@ for state in [behavStates[0]]:
     ax.set_ylabel('Fraction of change reseponse',fontsize=14)
 #ax.legend(fontsize=12)
 plt.tight_layout()
+
+
+for state in behavStates:
+    popAdaptMatrix = np.array(popSdfChange[state])-np.array(popSdfNonChange[state])
+    fig = plt.figure(facecolor='w',figsize=(6,8))
+    for i,(d,lbl) in enumerate(zip((popSdfChange,popSdfNonChange,popAdaptMatrix,adaptMatrix),('Response to change','Response to non-change','Population adaptation','Mean adaptation'))):
+        ax = plt.subplot(4,1,i+1)
+        if i<2:
+            im = plt.imshow(np.array(d[state]),cmap='bwr',clim=(-1,1),aspect='auto')
+        elif i==2:
+            im = plt.imshow(d,cmap='magma',clim=(0,d.max()),aspect='auto')
+        else:
+            m = np.array(d[state])
+            im = plt.imshow(m,cmap='magma',clim=(0,m.max()),aspect='auto')
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.set_yticks(np.arange(len(regionLabels)))
+        ax.set_yticklabels(regionLabels)
+        ax.set_ylim([len(regionLabels)-0.5,-0.5])
+        if i==3:
+            ax.set_xlabel('Time since change (ms)',fontsize=10)
+        else:
+            ax.set_xticklabels([])
+        lbl += ' (spikes/s)' if i<2 else ' ((change-nonChange)/max(change))'
+        ax.set_title(lbl,fontsize=10)
+        cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+        cb.ax.tick_params(labelsize=8)
+    plt.tight_layout()
 
 
 
