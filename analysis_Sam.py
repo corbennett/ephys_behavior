@@ -2067,158 +2067,20 @@ fig = plt.figure(facecolor='w',figsize=(6,8))
 t = np.arange(150)
 for i,region in enumerate(('AM','MRN')):
     ax = plt.subplot(2,1,i+1)
-    lick = []
-    nolick = []
-    for exp in result:
-        sdfs = result[exp][region]['active']['changeSDFs']
-        if sdfs is not None:
-            behavior = result[exp]['responseToChange']
-            lick.append(sdfs[behavior].mean(axis=0))
-            nolick.append(sdfs[~behavior].mean(axis=0))
-    for d,lbl in zip((lick,nolick),('lick','no lick')):
-        if region=='AM':
-            clr = 'k' if lbl=='lick' else '0.5'
-        else:
-            clr = 'r' if lbl=='lick' else (1,0.5,0.5)
-        m = np.mean(d,axis=0)
-        ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
-    ax.set_xticks([0,50,100,150])
-    ax.set_xlim([0,150])
-    ax.set_ylim([-1.9,13])
-    ax.set_ylabel('Spikes/s',fontsize=14)
-    if i>0:
-        ax.set_xlabel('Time since change (ms)',fontsize=14)
-    ax.legend(loc='upper left',fontsize=12)
-plt.tight_layout()
-
-fig = plt.figure(facecolor='w',figsize=(6,8))
-t = np.arange(150)
-for i,region in enumerate(('AM','MRN')):
-    ax = plt.subplot(2,1,i+1)
-    lick = []
-    nolick = []
-    for exp in result:
-        sdfs = result[exp][region]['active']['nonChangeSDFs']
-        if sdfs is not None:
-            behavior = result[exp]['responseToNonChange']
-            lick.append(sdfs[behavior].mean(axis=0))
-            nolick.append(sdfs[~behavior].mean(axis=0))
-    for d,lbl in zip((lick,nolick),('lick','no lick')):
-        if region=='AM':
-            clr = 'k' if lbl=='lick' else '0.5'
-        else:
-            clr = 'r' if lbl=='lick' else (1,0.5,0.5)
-        m = np.mean(d,axis=0)
-        ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
-    ax.set_xticks([0,50,100,150])
-    ax.set_xlim([0,150])
-    ax.set_ylim([-1.9,13])
-    ax.set_ylabel('Spikes/s',fontsize=14)
-    if i>0:
-        ax.set_xlabel('Time since change (ms)',fontsize=14)
-    ax.legend(loc='upper left',fontsize=12)
-plt.tight_layout()
-
-
-fig = plt.figure(facecolor='w',figsize=(6,8))
-t = np.arange(150)
-for i,(region,clr) in enumerate(zip(('AM','MRN'),'kr')):
-    ax = plt.subplot(2,1,i+1)
-    s=[]
-    for exp in result:
-        sdfs = result[exp][region]['active']['changeSDFs']
-        if sdfs is not None:
-            s.append(sdfs.mean(axis=0))
-    m = np.mean(s,axis=0)
-    ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
-    ax.set_xticks([0,50,100,150])
-    ax.set_xlim([0,150])
-    ax.set_ylim([-1.9,13])
-    ax.set_ylabel('Spikes/s',fontsize=14)
-    if i>0:
-        ax.set_xlabel('Time since change (ms)',fontsize=14)
-plt.tight_layout()
-
-fig = plt.figure(facecolor='w',figsize=(6,8))
-t = np.arange(150)
-for i,(region,clr) in enumerate(zip(('AM','MRN'),'kr')):
-    ax = plt.subplot(2,1,i+1)
-    s=[]
-    for exp in result:
-        sdfs = result[exp][region]['active']['nonChangeSDFs']
-        if sdfs is not None:
-            s.append(sdfs.mean(axis=0))
-    m = np.mean(s,axis=0)
-    ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
-    ax.set_xticks([0,50,100,150])
-    ax.set_xlim([0,150])
-    ax.set_ylim([-1.9,13])
-    ax.set_ylabel('Spikes/s',fontsize=14)
-    if i>0:
-        ax.set_xlabel('Time since change (ms)',fontsize=14)
-plt.tight_layout()
-
-fig = plt.figure(facecolor='w',figsize=(6,8))
-t = np.arange(150)
-for i,region in enumerate(('AM','MRN')):
-    ax = plt.subplot(2,1,i+1)
-    change = []
-    nochange = []
-    for exp in result:
-        changeSdfs = result[exp][region]['active']['changeSDFs']
-        if changeSdfs is not None:
-            nonChangeSdfs = result[exp][region]['active']['nonChangeSDFs']
-            change.append(changeSdfs.mean(axis=0))
-            nochange.append(nonChangeSdfs.mean(axis=0))
-    for d,lbl in zip((change,nochange),('change','no change')):
-        if region=='AM':
-            clr = 'k' if lbl=='change' else '0.5'
-        else:
-            clr = 'r' if lbl=='change' else (1,0.5,0.5)
-        m = np.mean(d,axis=0)
-        ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
-    ax.set_xticks([0,50,100,150])
-    ax.set_xlim([0,150])
-    ax.set_ylim([-1.9,13])
-    ax.set_ylabel('Spikes/s',fontsize=14)
-    if i>0:
-        ax.set_xlabel('Time since change (ms)',fontsize=14)
-    ax.legend(loc='upper left',fontsize=12)
-plt.tight_layout()
-
-fig = plt.figure(facecolor='w',figsize=(6,8))
-t = np.arange(150)
-for i,region in enumerate(('AM','MRN')):
-    ax = plt.subplot(2,1,i+1)
     changeLick = []
     changeNoLick = []
     nonChangeLick = []
     nonChangeNoLick = []
     for exp in result:
-        sdfs = result[exp][region]['active']['changeSDFs']
-        if sdfs is not None:
+        changeSdfs = result[exp][region]['active']['changeSDFs']
+        if changeSdfs is not None:
             respToChange = result[exp]['responseToChange']
-            changeLick.append(sdfs[respToChange].mean(axis=0))
-            changeNoLick.append(sdfs[~respToChange].mean(axis=0))
-            sdfs = result[exp][region]['active']['nonChangeSDFs']
+            changeLick.append(changeSdfs[respToChange].mean(axis=0))
+            changeNoLick.append(changeSdfs[~respToChange].mean(axis=0))
+            nonChangeSdfs = result[exp][region]['active']['nonChangeSDFs']
             respToNonChange = result[exp]['responseToNonChange']
-            nonChangeLick.append(sdfs[respToNonChange].mean(axis=0))
-            nonChangeNoLick.append(sdfs[~respToNonChange].mean(axis=0))
+            nonChangeLick.append(nonChangeSdfs[respToNonChange].mean(axis=0))
+            nonChangeNoLick.append(nonChangeSdfs[~respToNonChange].mean(axis=0))
     for d,lbl in zip((changeLick,changeNoLick,nonChangeLick,nonChangeNoLick),('change (lick)','change (no lick)','no change (lick)','no change (no lick)')):
         if region=='AM':
             clr = '0.7' if 'no change' in lbl else 'k'
@@ -2239,7 +2101,8 @@ for i,region in enumerate(('AM','MRN')):
     ax.legend(loc='upper left',fontsize=10,frameon=False)
 plt.tight_layout()
 
-plt.plot(sdfs.mean(axis=0),lw=4)
+
+
 
 ###### hit rate, lick time, and change mod correlation
                  
