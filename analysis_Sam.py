@@ -1151,7 +1151,7 @@ for expInd,exp in enumerate(exps):
                     for state in behavStates:
                         sdfs = (activePreSDFs,activeChangeSDFs,activeNonChangeSDFs) if state=='active' else (passivePreSDFs,passiveChangeSDFs,passiveNonChangeSDFs)
                         preChangeSDFs,changeSDFs,nonChangeSDFs = [s.transpose((1,0,2)) for s in sdfs]
-                        if sampleSize==unitSampleSize[-1]:
+                        if sampleSize==unitSampleSize[0]:
                             meanSDF = activeChangeSDFs.mean(axis=1)
                             result[exp][region][state]['preChangeSDFs'] = preChangeSDFs[changeTrials][:,:,respWin].mean(axis=1) 
                             result[exp][region][state]['changeSDFs'] = changeSDFs[changeTrials][:,:,respWin].mean(axis=1)
@@ -1899,7 +1899,7 @@ imageNames[np.argsort(np.mean(hitRate,axis=0))]
 np.argsort(np.mean(hitReactionTime,axis=0))
 
 fig = plt.figure(facecolor='w')
-ax = fig.subplots(1)
+ax = fig.add_subplot(1,1,1)
 plt.plot(np.mean(hitRate,axis=0),np.mean(falseAlarmRate,axis=0),'ko',ms=8)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
@@ -1912,20 +1912,23 @@ plt.tight_layout()
 alim = [410,480]
 
 fig = plt.figure(facecolor='w')
-ax = fig.subplots(1)
-plt.plot(np.mean(hitRate,axis=0),np.mean(hitReactionTime,axis=0)*1000,'ko',ms=8)
+ax = fig.add_subplot(1,1,1)
+plt.plot(np.mean(hitRate,axis=0),np.mean(hitReactionTime,axis=0)*1000,'ko',ms=8,label='hit')
+plt.plot(np.mean(falseAlarmRate,axis=0),np.mean(falseAlarmReactionTime,axis=0)*1000,'ko',ms=8,mfc='none',label='false alarm')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.set_xlim([0,1])
 ax.set_ylim(alim)
-ax.set_xlabel('Hit rate',fontsize=14)
-ax.set_ylabel('Hit lick latency (ms)',fontsize=14)
+ax.set_xlabel('Lick probability',fontsize=14)
+ax.set_ylabel('Lick latency (ms)',fontsize=14)
+ax.legend(loc='upper left',fontsize=12)
 plt.tight_layout()
 
 fig = plt.figure(facecolor='w')
-ax = fig.subplots(1)
+ax = fig.add_subplot(1,1,1)
 ax.plot(alim,alim,'--',color='0.5')
-plt.plot(np.mean(hitReactionTime,axis=0)*1000,np.mean(falseAlarmReactionTime,axis=0)*1000,'ko',ms=8)
+plt.plot(np.nanmean(hitReactionTime,axis=0)*1000,np.nanmean(falseAlarmReactionTime,axis=0)*1000,'ko',ms=8)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False,labelsize=12)
@@ -1991,51 +1994,252 @@ for region in regionLabels:
     
 
 # overlay of decoder accuracy and sdf    
-fig = plt.figure(facecolor='w',figsize=(6,10))
-fig.text(0.55,1,'Decoder Accuracy'+' ('+state+')',fontsize=10,horizontalalignment='center',verticalalignment='top')
-gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
-for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
-    ax = plt.subplot(gs[i,j])
+fig = plt.figure(facecolor='w',figsize=(3,10))
+popScore = []
+popSdf = []
+for i,region in enumerate(regionLabels):
+    ax1 = plt.subplot(len(regionLabels),1,i+1)
+    ax2 = ax1.twinx()
     regionScore = []
+    sdfs = []
     for exp in result:
         s = result[exp][region]['active']['changeScoreWindows']['randomForest']
-        if len(s)>1:
-            regionScore.append(s[1])
+        if len(s)>2:
+            regionScore.append(s[2])
+#            behavior = result[exp]['responseToChange']
+#            regionScore.append([np.corrcoef(behavior,p)[0,1] for p in s[2]])
+#            regionScore.append(s[2].mean(axis=1))
+            sdfs.append(result[exp][region]['active']['changeSDFs'].mean(axis=0))
     n = len(regionScore)
     if n>0:
-        m = np.mean(regionScore,axis=0)
-        s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
-        ax.plot(decodeWindows+decodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
-        ax.fill_between(decodeWindows+decodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-    if score=='changeScoreWindows':
-        yticks = [0.5,0.75]
-        ylim = [0.475,0.9]
-        title = 'Change'
-    else:
-        yticks = [0.1,0.75]
-        ylim = [0.1,0.9]
-        title = 'Image Identity'
-    ax.set_xticks([250,350,450,550,650,750])
-    ax.set_xticklabels([0,100,200,300,400,500])
-    ax.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
-    ax.set_yticks(yticks)
-    ax.set_ylim(ylim)
+        for pop,ax,clr,d,t in zip((popSdf,popScore),(ax1,ax2),'kr',(sdfs,regionScore),(np.arange(respWin.start,respWin.stop),decodeWindows+decodeWindowSize/2)):
+            m = np.mean(d,axis=0)
+            pop.append(m)
+            s = np.std(d,axis=0)/(n**0.5)
+            ax.plot(t,m,color=clr,label=score[:score.find('S')])
+            ax.fill_between(t,m+s,m-s,color=clr,alpha=0.25)
+    for ax in (ax1,ax2):
+        ax.spines['top'].set_visible(False)
+        ax.tick_params(direction='out',top=False,labelsize=8)
+    ax1.set_xticks([250,300,350,400])
+    ax1.set_xticklabels([0,50,100,150])
+    ax1.set_xlim([decodeWindows[0],decodeWindows[-1]+decodeWindowSize])
     if i<len(regionLabels)-1:
-        ax.set_xticklabels([])
+        ax1.set_xticklabels([])
     else:
-        ax.set_xlabel('Time (ms)',fontsize=10)
-    if j==0:
-        ax.set_ylabel(region,fontsize=10)
-    if i==0:
-        ax.set_title(title,fontsize=10)
+        ax1.set_xlabel('Time (ms)',fontsize=10)
 plt.tight_layout()
     
 
+fig = plt.figure(facecolor='w',figsize=(6,8))
+ax = fig.add_subplot(2,1,1)
+for r,clr in zip(('AM','MRN'),'kr'):
+    s = popSdf[regionLabels.index(r)]
+    plt.plot(np.arange(respWin.start,respWin.stop),s-s[:20].mean(),clr,label=r)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.set_xticks([250,300,350,400])
+ax.set_xticklabels([0,50,100,150])
+ax.set_xlim([respWin.start,respWin.stop])
+ax.set_ylim([-1.9,13])
+ax.set_ylabel('Spikes/s',fontsize=14)
+ax.legend(loc='upper right',fontsize=12)
+plt.tight_layout()
+
+ax = fig.add_subplot(2,1,2)
+for r,clr in zip(('AM','MRN'),'kr'):
+    plt.plot(decodeWindows+decodeWindowSize/2,popScore[regionLabels.index(r)],clr,label=r)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.set_xticks([250,300,350,400])
+ax.set_xticklabels([0,50,100,150])
+ax.set_xlim([respWin.start,respWin.stop])
+ax.set_yticks([0.5,0.6,0.7,0.8,0.9])
+ax.set_ylim([0.475,0.9])
+ax.set_xlabel('Time since change (ms)',fontsize=14)
+ax.set_ylabel('Decoder accuracy',fontsize=14)
+plt.tight_layout()
 
 
+fig = plt.figure(facecolor='w',figsize=(6,8))
+t = np.arange(150)
+for i,region in enumerate(('AM','MRN')):
+    ax = plt.subplot(2,1,i+1)
+    lick = []
+    nolick = []
+    for exp in result:
+        sdfs = result[exp][region]['active']['changeSDFs']
+        if sdfs is not None:
+            behavior = result[exp]['responseToChange']
+            lick.append(sdfs[behavior].mean(axis=0))
+            nolick.append(sdfs[~behavior].mean(axis=0))
+    for d,lbl in zip((lick,nolick),('lick','no lick')):
+        if region=='AM':
+            clr = 'k' if lbl=='lick' else '0.5'
+        else:
+            clr = 'r' if lbl=='lick' else (1,0.5,0.5)
+        m = np.mean(d,axis=0)
+        ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.set_xticks([0,50,100,150])
+    ax.set_xlim([0,150])
+    ax.set_ylim([-1.9,13])
+    ax.set_ylabel('Spikes/s',fontsize=14)
+    if i>0:
+        ax.set_xlabel('Time since change (ms)',fontsize=14)
+    ax.legend(loc='upper left',fontsize=12)
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w',figsize=(6,8))
+t = np.arange(150)
+for i,region in enumerate(('AM','MRN')):
+    ax = plt.subplot(2,1,i+1)
+    lick = []
+    nolick = []
+    for exp in result:
+        sdfs = result[exp][region]['active']['nonChangeSDFs']
+        if sdfs is not None:
+            behavior = result[exp]['responseToNonChange']
+            lick.append(sdfs[behavior].mean(axis=0))
+            nolick.append(sdfs[~behavior].mean(axis=0))
+    for d,lbl in zip((lick,nolick),('lick','no lick')):
+        if region=='AM':
+            clr = 'k' if lbl=='lick' else '0.5'
+        else:
+            clr = 'r' if lbl=='lick' else (1,0.5,0.5)
+        m = np.mean(d,axis=0)
+        ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.set_xticks([0,50,100,150])
+    ax.set_xlim([0,150])
+    ax.set_ylim([-1.9,13])
+    ax.set_ylabel('Spikes/s',fontsize=14)
+    if i>0:
+        ax.set_xlabel('Time since change (ms)',fontsize=14)
+    ax.legend(loc='upper left',fontsize=12)
+plt.tight_layout()
+
+
+fig = plt.figure(facecolor='w',figsize=(6,8))
+t = np.arange(150)
+for i,(region,clr) in enumerate(zip(('AM','MRN'),'kr')):
+    ax = plt.subplot(2,1,i+1)
+    s=[]
+    for exp in result:
+        sdfs = result[exp][region]['active']['changeSDFs']
+        if sdfs is not None:
+            s.append(sdfs.mean(axis=0))
+    m = np.mean(s,axis=0)
+    ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.set_xticks([0,50,100,150])
+    ax.set_xlim([0,150])
+    ax.set_ylim([-1.9,13])
+    ax.set_ylabel('Spikes/s',fontsize=14)
+    if i>0:
+        ax.set_xlabel('Time since change (ms)',fontsize=14)
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w',figsize=(6,8))
+t = np.arange(150)
+for i,(region,clr) in enumerate(zip(('AM','MRN'),'kr')):
+    ax = plt.subplot(2,1,i+1)
+    s=[]
+    for exp in result:
+        sdfs = result[exp][region]['active']['nonChangeSDFs']
+        if sdfs is not None:
+            s.append(sdfs.mean(axis=0))
+    m = np.mean(s,axis=0)
+    ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.set_xticks([0,50,100,150])
+    ax.set_xlim([0,150])
+    ax.set_ylim([-1.9,13])
+    ax.set_ylabel('Spikes/s',fontsize=14)
+    if i>0:
+        ax.set_xlabel('Time since change (ms)',fontsize=14)
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w',figsize=(6,8))
+t = np.arange(150)
+for i,region in enumerate(('AM','MRN')):
+    ax = plt.subplot(2,1,i+1)
+    change = []
+    nochange = []
+    for exp in result:
+        changeSdfs = result[exp][region]['active']['changeSDFs']
+        if changeSdfs is not None:
+            nonChangeSdfs = result[exp][region]['active']['nonChangeSDFs']
+            change.append(changeSdfs.mean(axis=0))
+            nochange.append(nonChangeSdfs.mean(axis=0))
+    for d,lbl in zip((change,nochange),('change','no change')):
+        if region=='AM':
+            clr = 'k' if lbl=='change' else '0.5'
+        else:
+            clr = 'r' if lbl=='change' else (1,0.5,0.5)
+        m = np.mean(d,axis=0)
+        ax.plot(t,m-m[:20].mean(),color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.set_xticks([0,50,100,150])
+    ax.set_xlim([0,150])
+    ax.set_ylim([-1.9,13])
+    ax.set_ylabel('Spikes/s',fontsize=14)
+    if i>0:
+        ax.set_xlabel('Time since change (ms)',fontsize=14)
+    ax.legend(loc='upper left',fontsize=12)
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w',figsize=(6,8))
+t = np.arange(150)
+for i,region in enumerate(('AM','MRN')):
+    ax = plt.subplot(2,1,i+1)
+    changeLick = []
+    changeNoLick = []
+    nonChangeLick = []
+    nonChangeNoLick = []
+    for exp in result:
+        sdfs = result[exp][region]['active']['changeSDFs']
+        if sdfs is not None:
+            respToChange = result[exp]['responseToChange']
+            changeLick.append(sdfs[respToChange].mean(axis=0))
+            changeNoLick.append(sdfs[~respToChange].mean(axis=0))
+            sdfs = result[exp][region]['active']['nonChangeSDFs']
+            respToNonChange = result[exp]['responseToNonChange']
+            nonChangeLick.append(sdfs[respToNonChange].mean(axis=0))
+            nonChangeNoLick.append(sdfs[~respToNonChange].mean(axis=0))
+    for d,lbl in zip((changeLick,changeNoLick,nonChangeLick,nonChangeNoLick),('change (lick)','change (no lick)','no change (lick)','no change (no lick)')):
+        if region=='AM':
+            clr = '0.7' if 'no change' in lbl else 'k'
+        else:
+            clr = (1,0.7,0.7) if 'no change' in lbl else 'r'
+        line = ':' if 'no lick' in lbl else '-'
+        m = np.mean(d,axis=0)
+        ax.plot(t,m-m[:20].mean(),line,color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+    ax.set_xticks([0,50,100,150])
+    ax.set_xlim([0,150])
+    ax.set_ylim([-1.9,13])
+    ax.set_ylabel('Spikes/s',fontsize=14)
+    if i>0:
+        ax.set_xlabel('Time since change (ms)',fontsize=14)
+    ax.legend(loc='upper left',fontsize=10,frameon=False)
+plt.tight_layout()
+
+plt.plot(sdfs.mean(axis=0),lw=4)
 
 ###### hit rate, lick time, and change mod correlation
                  
