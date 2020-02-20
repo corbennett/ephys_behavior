@@ -940,7 +940,9 @@ for state in behavStates:
         adaptMean[state].append(flashResp[-1])
         adaptSem[state].append(flashRespSem[-1])
         
-        a = (sdfs[:,250:750]-sdfs[:,lastNonChangeFlashStart:lastNonChangeFlashStart+500]) / sdfs[:,250:500].max(axis=1)[:,None]
+        binsize = 1
+        chng,nonchng = [s.reshape((s.shape[0],int(s.shape[1]/binsize),-1)).mean(axis=2) for s in (sdfs[:,250:750],sdfs[:,lastNonChangeFlashStart:lastNonChangeFlashStart+500])]
+        a = (chng-nonchng)/chng.max(axis=1)[:,None]
         a[np.isinf(a)] = np.nan
         adaptMatrix[state].append(np.nanmean(a,axis=0))
         
@@ -974,7 +976,7 @@ for state in behavStates:
     ax.set_yticks([0.5,0.6,0.7,0.8])
     ax.set_xlim([-0.5,len(regionLabels)-0.5])
     ax.set_ylim([0.5,0.8])
-    ax.set_ylabel('Fraction of change reseponse',fontsize=14)
+    ax.set_ylabel('Fraction of change response',fontsize=14)
 #ax.legend(fontsize=12)
 plt.tight_layout()
 
@@ -1028,19 +1030,20 @@ regionsToUse = (('LGd',('LGd',),(0,0,0)),
 #                ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
 #                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0))
                )
-#regionsToUse = regionsToUse[:8]
+regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
-unitSampleSize = [5,10,20,40]
+unitSampleSize = [20]
 
 nCrossVal = 5
 
 baseWin = slice(stimWin.start-150,stimWin.start)
 respWin = slice(stimWin.start,stimWin.start+150)
+respWinDur = respWin.stop-respWin.start
 
 decodeWindowSize = 10
-decodeWindows = np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
+decodeWindows = [] #np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
 
 preImageDecodeWindowSize = 50
 preImageDecodeWindows = [] #np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
@@ -1054,8 +1057,12 @@ behavStates = ('active',)
 
 # add catchScore, catchPrediction, reactionScore
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
+                                 'changeScoreTrain':{model:[] for model in modelNames},
+                                 'changeScoreShuffle':{model:[] for model in modelNames},
                                  'changePredict':{model:[] for model in modelNames},
                                  'changePredictProb':{model:[] for model in modelNames},
+                                 'changePredictShuffle':{model:[] for model in modelNames},
+                                 'changePredictProbShuffle':{model:[] for model in modelNames},
                                  'changeFeatureImportance':{model:[] for model in modelNames},
                                  'catchPredict':{model:[] for model in modelNames},
                                  'catchPredictProb':{model:[] for model in modelNames},
@@ -1198,15 +1205,19 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['respLatency'] = findLatency(changeSDFs[changeTrials][:,:,respWin].mean(axis=(0,1))[None,:],baseWin,stimWin,method='abs',thresh=0.5)[0]
                         
                         changeScore = {model: [] for model in modelNames}
+                        changeScoreTrain = {model: [] for model in modelNames}
+                        changeScoreShuffle = {model: [] for model in modelNames}
                         changePredict = {model: [] for model in modelNames}
                         changePredictProb = {model: [] for model in modelNames}
-                        changeFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
+                        changePredictShuffle = {model: [] for model in modelNames}
+                        changePredictProbShuffle = {model: [] for model in modelNames}
+                        changeFeatureImportance = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
                         catchPredict = {model: [] for model in modelNames}
                         catchPredictProb = {model: [] for model in modelNames}
                         nonChangePredict = {model: [] for model in modelNames}
                         nonChangePredictProb = {model: [] for model in modelNames}
                         imageScore = {model: [] for model in modelNames}
-                        imageFeatureImportance = {model: np.full((nsamples,nUnits,respWin.stop-respWin.start),np.nan) for model in modelNames}
+                        imageFeatureImportance = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
                         changeScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
                         changePredictWindows = {model: np.zeros((nsamples,len(decodeWindows),changeTrials.sum())) for model in modelNames}
                         imageScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
@@ -1218,16 +1229,25 @@ for expInd,exp in enumerate(exps):
                             X = np.concatenate([s[:,unitSamp,respWin][changeTrials].reshape((changeTrials.sum(),-1)) for s in (changeSDFs,preChangeSDFs)])
                             y = np.zeros(X.shape[0])
                             y[:int(X.shape[0]/2)] = 1
+                            Xshuffle = X.copy()
+                            for u in range(len(unitSamp)):
+                                uslice = slice(u*respWinDur,u*respWinDur+respWinDur)
+                                np.random.shuffle(Xshuffle[:int(X.shape[0]/2),uslice])
+                                np.random.shuffle(Xshuffle[int(X.shape[0]/2):,uslice])
                             Xcatch = changeSDFs[:,unitSamp,respWin][catchTrials].reshape((catchTrials.sum(),-1))
                             Xnonchange = nonChangeSDFs[:,unitSamp].reshape((nonChangeSDFs.shape[0],-1))
                             for model,name in zip(models,modelNames):
-                                cv = cross_validate(model,X,y,cv=nCrossVal,return_estimator=True)
+                                cv = cross_validate(model,X,y,cv=nCrossVal,return_train_score=True,return_estimator=True)
                                 changeScore[name].append(cv['test_score'].mean())
+                                changeScoreTrain[name].append(cv['train_score'].mean())
+                                changeScoreShuffle[name].append(cross_val_score(model,Xshuffle,y,cv=nCrossVal).mean())
                                 changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
+                                changePredictShuffle[name].append(cross_val_predict(model,Xshuffle,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
                                 catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 if name=='randomForest':
                                     changePredictProb[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
+                                    changePredictProbShuffle[name].append(cross_val_predict(model,Xshuffle,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
                                     changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                                     catchPredictProb[name].append(np.mean([estimator.predict_proba(Xcatch)[:,1] for estimator in cv['estimator']],axis=0))
                                     nonChangePredictProb[name].append(np.mean([estimator.predict_proba(Xnonchange)[:,1] for estimator in cv['estimator']],axis=0))
@@ -1252,27 +1272,31 @@ for expInd,exp in enumerate(exps):
                                     changeScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                                     if name=='randomForest':
                                         changePredictWindows[name][i,j] = cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1]
-#                                # image identity
-#                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeTrials & (changeImage==img)] for img in imageNames]
-#                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
-#                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
-#                                for model,name in zip(models,modelNames):
-#                                    imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
-#                                    
-#                            # decode pre-change image identity for sliding windows
-#                            for j,winStart in enumerate(preImageDecodeWindows):
-#                                winSlice = slice(winStart,winStart+preImageDecodeWindowSize)
-#                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][changeTrials & (initialImage==img)] for img in imageNames]
-#                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
-#                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
-#                                for model,name in zip(models,modelNames):
-#                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                # image identity
+                                imgSDFs = [changeSDFs[:,unitSamp,winSlice][changeTrials & (changeImage==img)] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in imgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(imgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    imageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
+                                    
+                            # decode pre-change image identity for sliding windows
+                            for j,winStart in enumerate(preImageDecodeWindows):
+                                winSlice = slice(winStart,winStart+preImageDecodeWindowSize)
+                                preImgSDFs = [preChangeSDFs[:,unitSamp,winSlice][changeTrials & (initialImage==img)] for img in imageNames]
+                                X = np.concatenate([s.reshape((s.shape[0],-1)) for s in preImgSDFs])
+                                y = np.concatenate([np.zeros(s.shape[0])+imgNum for imgNum,s in enumerate(preImgSDFs)])
+                                for model,name in zip(models,modelNames):
+                                    preImageScoreWindows[name][i,j] = cross_val_score(model,X,y,cv=nCrossVal).mean()
                         
                         # average across unit samples
                         for model in modelNames:
                             result[exp][region][state]['changeScore'][model].append(np.median(changeScore[model],axis=0))
+                            result[exp][region][state]['changeScoreTrain'][model].append(np.median(changeScoreTrain[model],axis=0))
+                            result[exp][region][state]['changeScoreShuffle'][model].append(np.median(changeScoreShuffle[model],axis=0))
                             result[exp][region][state]['changePredict'][model].append(scipy.stats.mode(changePredict[model],axis=0)[0].flatten())
                             result[exp][region][state]['changePredictProb'][model].append(np.median(changePredictProb[model],axis=0))
+                            result[exp][region][state]['changePredictShuffle'][model].append(scipy.stats.mode(changePredictShuffle[model],axis=0)[0].flatten())
+                            result[exp][region][state]['changePredictProbShuffle'][model].append(np.median(changePredictProbShuffle[model],axis=0))
                             result[exp][region][state]['changeFeatureImportance'][model].append(np.nanmedian(changeFeatureImportance[model],axis=0))
                             result[exp][region][state]['catchPredict'][model].append(scipy.stats.mode(catchPredict[model],axis=0)[0].flatten())
                             result[exp][region][state]['catchPredictProb'][model].append(np.median(catchPredictProb[model],axis=0))
