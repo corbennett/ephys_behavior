@@ -218,7 +218,7 @@ def getLFPData(dataDir, pid, syncDataset, probePXIDict, probeGen = '3b', num_cha
         baseString = os.path.basename(dataDir)
         probeBase = os.path.join(dataDir, baseString + '_probe' + pid + '_sorted')
         lfp_data_dir = os.path.join(probeBase, r'continuous\\\Neuropix-PXI-100.1')
-        events_dir = os.path.join(probeBase, r'events\\Neuropix-PXI-100.0\\TTL_l')
+        events_dir = os.path.join(probeBase, r'events\\Neuropix-PXI-100.0\\TTL_1')
         
     lfp_data_file = os.path.join(lfp_data_dir, 'continuous.dat') 
         
