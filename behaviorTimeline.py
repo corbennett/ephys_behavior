@@ -107,6 +107,7 @@ mouseInfo = (('390339',('09192018','09202018','09212018')),
              ('461027',('09122019','09132019')),
             )
 
+
 unloadablePklFiles = []
 trainingDay = []
 isImages = []
@@ -122,6 +123,7 @@ trainingDate = []
 changeTriggeredRunning = []
 flashTriggeredRunning = []
 imageHitRateEngaged = []
+
 mouseIDs = [mouse[0] for mouse in mouseInfo]
 ephysDays = [[datetime.datetime.strptime(d,'%m%d%Y') for d in mouse[1]] for mouse in mouseInfo]
 
@@ -147,6 +149,7 @@ data['weight'] = []
 unloadablePkl = []
 for mouseInd,mouseID in enumerate(mouseIDs): 
     print('loading mouse '+mouseID)
+
     ephysDateTimes = [datetime.datetime.strptime(d,'%m%d%Y') for d in ephysDates] if ephysDates is not None else (None,)
     rigID = []
     trainingDate.append([])
@@ -160,6 +163,7 @@ for mouseInd,mouseID in enumerate(mouseIDs):
     imageHitRate.append([])
     imageHitRateEngaged.append([])
     unloadablePklFiles.append([])
+
     
     for pklFile in glob.glob(os.path.join(pickleDir,mouseID,'*.pkl')):
         try:
@@ -224,6 +228,7 @@ for mouseInd,mouseID in enumerate(mouseIDs):
     isImages.append(np.array(['images' in s for s in trainingStage]))
     isRig.append(np.array([r=='NP3' for r in rigID]))
     isEphys.append(np.array([d in ephysDateTimes for d in trainingDate[-1]]))        
+
     
     df = mouseWeights[(mouseWeights['MID']==int(mouseID)) & (mouseWeights['dayofweek'].isin((5,6)))]
     data['weighDate'].append(df['date_time'].dt.to_pydatetime())
