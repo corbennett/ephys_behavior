@@ -35,11 +35,22 @@ class behaviorEphys():
         
         if probeGen=='pipeline':
             sync_file = glob.glob(os.path.join(self.dataDir,'*.sync'))
-            
         else:
             sync_file = glob.glob(os.path.join(self.dataDir,'*'+('[0-9]'*18)+'.h5'))
             
-        self.sync_file = sync_file[0] if len(sync_file)>0 else None
+        if len(sync_file)>0:
+            if len(sync_file)>1:
+                # get the last generated syncfile (assuming earlier were false starts)
+                ftime = []
+                for f in sync_file:
+                    i = f.find('.')
+                    ftime.append(datetime.datetime.strptime(f[i-6:i],'%H%M%S'))
+                self.sync_file = sync_file[ftime.index(max(ftime))]
+            else:
+                self.sync_file = sync_file[0] 
+        else: 
+            self.sync_file =None
+        
         self.syncDataset = sync.Dataset(self.sync_file) if self.sync_file is not None else None
         if probes is None:
             self.probes_to_analyze = probeIDs
@@ -114,7 +125,7 @@ class behaviorEphys():
                 self.probeCCF[pid]['shift'] = shift
                 self.probeCCF[pid]['stretch'] = stretch
                 self.probeCCF[pid]['entryChannel'] = entryChannel
-                self.probeCCF[pid]['ISIRegion'] = entry[6] if isinstance(entry[6],basestring) else None
+                self.probeCCF[pid]['ISIRegion'] = entry[6] if isinstance(entry[6],str) else None
                 for u in self.units[pid]:
                     distFromTip = tipLength+self.units[pid][u]['position'][1]
                     distFromEntry = probeLength-distFromTip
@@ -159,7 +170,7 @@ class behaviorEphys():
             r = np.array([self.units[pid][u]['peakMeanVisualResponse'] for u in probeSync.getOrderedUnits(self.units[pid])]).astype(float)
             if appendEntry:
                 r = np.append(r,np.median(r)).astype(float) # add probe entry point
-            np.save(rf, r)      
+            np.save(rf, r)
 
                 
     def getFrameTimes(self):
@@ -184,8 +195,9 @@ class behaviorEphys():
         if not hasattr(self, 'vsyncTimes'):
             self.getFrameTimes()
             
-        if self.probeGen == 'pipeline':
-            self.pkl_file = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))[0]
+        pkl = glob.glob(os.path.join(self.dataDir, '*replay-session*behavior*.pkl'))
+        if len(pkl)>0:
+            self.pkl_file = pkl[0]
         else:
             self.pkl_file = glob.glob(os.path.join(self.dataDir,'*[0-9].pkl'))[0]
         behaviordata = pd.read_pickle(self.pkl_file)
@@ -208,7 +220,7 @@ class behaviorEphys():
         self.images = self.core_data['image_set']['images']
         newSize = tuple(int(s/10) for s in self.images[0].shape[::-1])
         self.imagesDownsampled = [cv2.resize(img,newSize,interpolation=cv2.INTER_AREA) for img in self.images]
-        self.imageNames = [i['image_name'] for i in self.core_data['image_set']['image_attributes']]
+        self.imageNames = [str(i['image_name'],'utf-8') for i in self.core_data['image_set']['image_attributes']]
         
         candidateOmittedFlashFrames = behaviordata['items']['behavior']['stimuli']['images']['flashes_omitted']
         drawlog = behaviordata['items']['behavior']['stimuli']['images']['draw_log']
@@ -279,15 +291,14 @@ class behaviorEphys():
     
     def getRFandFlashStimInfo(self):
         
-        if self.probeGen == 'pipeline':
-            rf_pickle = glob.glob(os.path.join(self.dataDir, '*replay-session*mapping*.pkl'))
-        else:
-            rf_pickle = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
+        pkl = glob.glob(os.path.join(self.dataDir, '*replay-session*mapping*.pkl'))
+        if len(pkl)<1:
+            pkl = glob.glob(os.path.join(self.dataDir, '*brain_observatory_stimulus.pkl'))
         
-        if len(rf_pickle)==0:
+        if len(pkl)<1:
             self.rf_pickle_file = None
         else:
-            self.rf_pickle_file = rf_pickle[0]
+            self.rf_pickle_file = pkl[0]
             self.rfFlashStimDict = pd.read_pickle(self.rf_pickle_file)
             self.monSizePix = self.rfFlashStimDict['monitor']['sizepix']
             self.monHeightCm = self.monSizePix[1]/self.monSizePix[0]*self.rfFlashStimDict['monitor']['widthcm']
@@ -307,26 +318,25 @@ class behaviorEphys():
         
     def getPassiveStimInfo(self):
         
-        if self.probeGen == 'pipeline':
-            passivePklFiles = glob.glob(os.path.join(self.dataDir, '*replay-session*replay*.pkl'))
-        else:
-            passivePklFiles = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
+        pkl = glob.glob(os.path.join(self.dataDir, '*replay-session*replay*.pkl'))
+        if len(pkl)<1:
+            pkl = glob.glob(os.path.join(self.dataDir, '*-replay-script*.pkl'))
         
-        if len(passivePklFiles)==0:
+        if len(pkl)<1:
             self.passive_pickle_file = None
         else:
-            if len(passivePklFiles)>1:
-                vsynccount = [pd.read_pickle(f)['vsynccount'] for f in passivePklFiles]
+            if len(pkl)>1:
+                vsynccount = [pd.read_pickle(f)['vsynccount'] for f in pkl]
                 goodPklInd = np.argmax(vsynccount)
-                self.passive_pickle_file = passivePklFiles[goodPklInd]
+                self.passive_pickle_file = pkl[goodPklInd]
                 abortedVsyncs = sum(vsynccount)-vsynccount[goodPklInd]
             else:
-                self.passive_pickle_file = passivePklFiles[0]
+                self.passive_pickle_file = pkl[0]
                 abortedVsyncs = 0
             self.passiveStimDict = pd.read_pickle(self.passive_pickle_file)
             self.passiveStimParams = self.passiveStimDict['stimuli'][0]
             self.passiveFrameImages = np.array(self.passiveStimParams['sweep_params']['ReplaceImage'][0])
-            passiveImageNames = [img for img in np.unique(self.passiveFrameImages) if img is not None]
+            passiveImageNames = np.unique([img for img in self.passiveFrameImages if img is not None])
             nonGrayFrames = np.in1d(self.passiveFrameImages,passiveImageNames)
             self.passiveImageOnsetFrames = np.where(np.diff(nonGrayFrames.astype(int))>0)[0]+1
             self.passiveChangeFrames = np.array([frame for i,frame in enumerate(self.passiveImageOnsetFrames[1:]) if self.passiveFrameImages[frame]!=self.passiveFrameImages[self.passiveImageOnsetFrames[i]]])

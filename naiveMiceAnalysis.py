@@ -10,6 +10,7 @@ import os
 from collections import OrderedDict
 import h5py
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import fileIO
 import analysis_utils
@@ -192,5 +193,58 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
 
 np.savez(os.path.join(dirPath,'naiveMiceChangeMod.npz'),cmiNaive=cmi,cmiNaiveCI=cmiCI)
 
+
+# run speed
+frameRate = 60
+preTime = 7500
+postTime = 7500
+sampInt = 10
+plotTime = np.arange(-preTime,postTime+sampInt,sampInt)
+
+changeRunSpeed = []
+runningRunSpeed = []
+
+for exp in data:
+    print(exp)
+    runSpeed = data[exp]['runSpeed'][:]
+    medianRunSpeed = np.median(runSpeed)
+    print(medianRunSpeed)
+#        runSpeed -= medianRunSpeed
+    runTime = data[exp]['runTime'][:]
+    flashTimes = data[exp]['flashTimes'][:]
+    changeTimes = data[exp]['changeTimes'][:]
+    runningTrials = [np.median(runSpeed[(runTime>t-3) & (runTime<t)])>5 for t in changeTimes]
+    for ind,(speed,times) in enumerate(((changeRunSpeed,changeTimes),
+                                        (runningRunSpeed,changeTimes[runningTrials])
+                                      )):
+        trialSpeed = []
+        for t in times:
+            i = (runTime>=t-preTime) & (runTime<=t+postTime)
+            trialSpeed.append(np.interp(plotTime,1000*(runTime[i]-t),runSpeed[i]))
+        speed.append(np.mean(trialSpeed,axis=0))
+
+xlim = [-2.75,2.75]
+ylim = [0,15]
+plotFlashTimes = np.concatenate((np.arange(-750,-preTime,-750),np.arange(0,postTime,750)))
+fig = plt.figure(facecolor='w')
+ax = fig.add_subplot(1,1,1)
+for t in plotFlashTimes:
+    clr = '0.8' if t<0 else '0.4'
+    ax.add_patch(matplotlib.patches.Rectangle([t/1000,ylim[0]],width=0.25,height=ylim[1]-ylim[0],color=clr,alpha=0.2,zorder=0))
+for speed,clr,lbl in zip((changeRunSpeed,runningRunSpeed),'km',('all changes','running trials')):
+    m = np.mean(speed,axis=0)
+    n = len(speed)
+    s = np.std(speed,axis=0)/(n**0.5)
+    ax.plot(plotTime/1000,m,clr,label=lbl)
+    ax.fill_between(plotTime/1000,m+s,m-s,color=clr,alpha=0.1)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+ax.set_yticks(np.arange(0,60,5))
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
+ax.set_xlabel('Time from change (s)',fontsize=12)
+ax.set_ylabel('Run speed (cm/s)',fontsize=12)
+ax.legend(loc='lower left',fontsize=12)
 
 

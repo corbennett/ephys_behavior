@@ -56,12 +56,10 @@ def makePSTH(spikes,startTimes,windowDur,binSize=0.01, avg=True):
     counts = np.zeros((len(startTimes),bins.size-1))    
     for i,start in enumerate(startTimes):
         counts[i] = np.histogram(spikes[(spikes>=start) & (spikes<=start+windowDur)]-start,bins)[0]
-
     if avg:
-        return counts.mean(axis=0)/binSize
-
-    else:
-        return np.array(counts)/binSize
+        counts = counts.mean(axis=0)
+    counts /= binSize
+    return counts
 
     
 
