@@ -1476,7 +1476,7 @@ plt.tight_layout()
     
 # compare scores for full response window
 for model in modelNames:
-    for score,ymin,title in zip(('changeScore','imageScore'),(0.5,0.125),('Change','Image Identity')):
+    for score,ymin in zip(('changeScore','imageScore'),(0.5,0.125)):
         fig = plt.figure(facecolor='w')
         xticks = np.arange(len(regionLabels))
         xlim = [xticks[0]-0.5,xticks[-1]+0.5]
@@ -1494,6 +1494,7 @@ for model in modelNames:
                 if n>0:
                     mean[i] = np.mean(regionScore)
                     sem[i] = np.std(regionScore)/(n**0.5)
+                print(region,score,mean)
             for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
                 mfc = clr if state=='active' else 'none'
                 lbl = state if i==0 else None
@@ -1508,7 +1509,7 @@ for model in modelNames:
         ax.set_yticks([ymin,0.25,0.5,0.75,1])
         ax.set_ylim([ymin,1])
         ax.set_ylabel('Decoder Accuracy')
-        ax.set_title(title)
+        ax.set_title(score)
         ax.legend()
         plt.tight_layout()
 
@@ -1782,18 +1783,52 @@ for model in ('randomForest',):#modelNames:
                 ax.set_title(state)
 
 
-# plot correlation of model prediction and mouse behavior        
+# plot correlation of model prediction and mouse behavior
 fig = plt.figure(facecolor='w',figsize=(6,4))
 ax = plt.subplot(1,1,1)
 xticks = np.arange(len(regionLabels))
 xlim = [-0.5,len(regionLabels)-0.5]
 ax.plot(xlim,[0,0],'--',color='0.5')
-for state,fill in zip(('active',),(True,)):
+for score,mrk,fill,lbl in zip(('changeScore','changeScoreShuffle'),('o','d'),(True,False),('','shuffle neurons')):
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
         regionData = []
         for exp in result:
-            behavior = result[exp]['responseToChange'].astype(float)
-            s = result[exp][region][state]['changePredictProb']['randomForest']
+            s = result[exp][region]['active'][score]['randomForest']
+            if len(s)>0:
+                regionData.append(s[-1])
+        n = len(regionData)
+        if n>0:
+            m = np.mean(regionData)
+            s = np.std(regionData)/(n**0.5)
+            mfc = clr if fill else 'none'
+            lbl = lbl if i==0 else None
+            ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
+            ax.plot([i,i],[m-s,m+s],color=clr)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim(xlim)
+ax.set_xticks(xticks)
+ax.set_xticklabels(regionLabels)
+ax.set_ylim([0.5,1])
+ax.set_ylabel('Decoder accuracy')
+ax.legend()
+plt.tight_layout()
+
+
+fig = plt.figure(facecolor='w',figsize=(6,4))
+ax = plt.subplot(1,1,1)
+xticks = np.arange(len(regionLabels))
+xlim = [-0.5,len(regionLabels)-0.5]
+ax.plot(xlim,[0,0],'--',color='0.5')
+for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictProb','changePredictProbShuffle'),(False,True,False),('o','s','d'),(True,False,False),('','shuffle behavior','shuffle neurons')):
+    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+        regionData = []
+        for exp in result:
+            behavior = result[exp]['responseToChange']
+            if shuffleBehav:
+                behavior = np.random.permutation(behavior)
+            s = result[exp][region]['active'][score]['randomForest']
             if len(s)>0 and any(behavior) and any(s[-1]):
                 regionData.append(np.corrcoef(behavior,s[-1])[0,1])
         n = len(regionData)
@@ -1801,8 +1836,8 @@ for state,fill in zip(('active',),(True,)):
             m = np.mean(regionData)
             s = np.std(regionData)/(n**0.5)
             mfc = clr if fill else 'none'
-            lbl = state if i==0 else None
-            ax.plot(i,m,'o',mec=clr,mfc=mfc,label=lbl)
+            lbl = lbl if i==0 else None
+            ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
             ax.plot([i,i],[m-s,m+s],color=clr)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
