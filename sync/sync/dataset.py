@@ -14,10 +14,10 @@ numpy  http://www.numpy.org/
 h5py   http://www.h5py.org/
 
 """
-import collections
-import datetime
-import pprint
-from ctypes import c_ulong
+#import collections
+#import datetime
+#import pprint
+#from ctypes import c_ulong
 
 import h5py as h5
 import numpy as np
@@ -610,123 +610,123 @@ class Dataset(object):
         if auto_show:
             plt.show()
 
-    def plot_bits(self,
-                  bits,
-                  start_time=0.0,
-                  end_time=None,
-                  auto_show=True,
-                  ):
-        """
-        Plots a list of bits.
-        """
-        import matplotlib.pyplot as plt
-
-        subplots = len(bits)
-        f, axes = plt.subplots(subplots, sharex=True, sharey=True)
-        if not isinstance(axes, collections.Iterable):
-            axes = [axes]
-
-        for bit, ax in zip(bits, axes):
-            self.plot_bit(bit,
-                          start_time,
-                          end_time,
-                          auto_show=False,
-                          axes=ax)
-        #f.set_size_inches(18, 10, forward=True)
-        f.subplots_adjust(hspace=0)
-
-        if auto_show:
-            plt.show()
-
-    def plot_bit(self,
-                 bit,
-                 start_time=0.0,
-                 end_time=None,
-                 auto_show=True,
-                 axes=None,
-                 name="",
-                 ):
-        """
-        Plots a specific bit at a specific time period.
-        """
-        import matplotlib.pyplot as plt
-
-        times = self.get_all_times(units='sec')
-        if not end_time:
-            end_time = 2**32
-
-        window = (times < end_time) & (times > start_time)
-
-        if axes:
-            ax = axes
-        else:
-            ax = plt
-
-        if not name:
-            name = self._bit_to_line(bit)
-        if not name:
-            name = str(bit)
-
-        bit = self.get_bit(bit)
-        ax.step(times[window], bit[window], where='post')
-        if hasattr(ax, "set_ylim"):
-            ax.set_ylim(-0.1, 1.1)
-        else:
-            axes_obj = plt.gca()
-            axes_obj.set_ylim(-0.1, 1.1)
-        #ax.set_ylabel('Logic State')
-        ax.yaxis.set_ticks_position('none')
-        plt.setp(ax.get_yticklabels(), visible=False)
-        ax.set_xlabel('time (seconds)')
-        ax.legend([name])
-
-        if auto_show:
-            plt.show()
-
-        return plt.gcf()
-
-    def plot_line(self,
-                  line,
-                  start_time=0.0,
-                  end_time=None,
-                  auto_show=True,
-                  ):
-        """
-        Plots a specific line at a specific time period.
-        """
-        import matplotlib.pyplot as plt
-        bit = self._line_to_bit(line)
-        self.plot_bit(bit, start_time, end_time, auto_show=False)
-
-        #plt.legend([line])
-        if auto_show:
-            plt.show()
-
-        return plt.gcf()
-
-    def plot_lines(self,
-                   lines,
-                   start_time=0.0,
-                   end_time=None,
-                   auto_show=True,
-                   ):
-        """
-        Plots specific lines at a specific time period.
-        """
-        import matplotlib.pyplot as plt
-        bits = []
-        for line in lines:
-            bits.append(self._line_to_bit(line))
-        self.plot_bits(bits,
-                       start_time,
-                       end_time,
-                       auto_show=False,)
-
-        plt.subplots_adjust(left=0.025, right=0.975, bottom=0.05, top=0.95)
-        if auto_show:
-            plt.show()
-
-        return plt.gcf()
+#    def plot_bits(self,
+#                  bits,
+#                  start_time=0.0,
+#                  end_time=None,
+#                  auto_show=True,
+#                  ):
+#        """
+#        Plots a list of bits.
+#        """
+#        import matplotlib.pyplot as plt
+#
+#        subplots = len(bits)
+#        f, axes = plt.subplots(subplots, sharex=True, sharey=True)
+#        if not isinstance(axes, collections.Iterable):
+#            axes = [axes]
+#
+#        for bit, ax in zip(bits, axes):
+#            self.plot_bit(bit,
+#                          start_time,
+#                          end_time,
+#                          auto_show=False,
+#                          axes=ax)
+#        #f.set_size_inches(18, 10, forward=True)
+#        f.subplots_adjust(hspace=0)
+#
+#        if auto_show:
+#            plt.show()
+#
+#    def plot_bit(self,
+#                 bit,
+#                 start_time=0.0,
+#                 end_time=None,
+#                 auto_show=True,
+#                 axes=None,
+#                 name="",
+#                 ):
+#        """
+#        Plots a specific bit at a specific time period.
+#        """
+#        import matplotlib.pyplot as plt
+#
+#        times = self.get_all_times(units='sec')
+#        if not end_time:
+#            end_time = 2**32
+#
+#        window = (times < end_time) & (times > start_time)
+#
+#        if axes:
+#            ax = axes
+#        else:
+#            ax = plt
+#
+#        if not name:
+#            name = self._bit_to_line(bit)
+#        if not name:
+#            name = str(bit)
+#
+#        bit = self.get_bit(bit)
+#        ax.step(times[window], bit[window], where='post')
+#        if hasattr(ax, "set_ylim"):
+#            ax.set_ylim(-0.1, 1.1)
+#        else:
+#            axes_obj = plt.gca()
+#            axes_obj.set_ylim(-0.1, 1.1)
+#        #ax.set_ylabel('Logic State')
+#        ax.yaxis.set_ticks_position('none')
+#        plt.setp(ax.get_yticklabels(), visible=False)
+#        ax.set_xlabel('time (seconds)')
+#        ax.legend([name])
+#
+#        if auto_show:
+#            plt.show()
+#
+#        return plt.gcf()
+#
+#    def plot_line(self,
+#                  line,
+#                  start_time=0.0,
+#                  end_time=None,
+#                  auto_show=True,
+#                  ):
+#        """
+#        Plots a specific line at a specific time period.
+#        """
+#        import matplotlib.pyplot as plt
+#        bit = self._line_to_bit(line)
+#        self.plot_bit(bit, start_time, end_time, auto_show=False)
+#
+#        #plt.legend([line])
+#        if auto_show:
+#            plt.show()
+#
+#        return plt.gcf()
+#
+#    def plot_lines(self,
+#                   lines,
+#                   start_time=0.0,
+#                   end_time=None,
+#                   auto_show=True,
+#                   ):
+#        """
+#        Plots specific lines at a specific time period.
+#        """
+#        import matplotlib.pyplot as plt
+#        bits = []
+#        for line in lines:
+#            bits.append(self._line_to_bit(line))
+#        self.plot_bits(bits,
+#                       start_time,
+#                       end_time,
+#                       auto_show=False,)
+#
+#        plt.subplots_adjust(left=0.025, right=0.975, bottom=0.05, top=0.95)
+#        if auto_show:
+#            plt.show()
+#
+#        return plt.gcf()
 
     def close(self):
         """

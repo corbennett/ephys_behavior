@@ -85,11 +85,13 @@ for pSN in np.unique(pdf.probeID.values):
         ax.plot(end, insertiondf.iloc[-1, 3], 'ro')
     
     print(pSN + ': ' + pid)
+    print('Insertion start time: ' + str(insertiondf.index[0]))
+    print('Insertion end time: ' + str(insertiondf.index[-1]))
     print('Insertion start coords: ' + str(insertiondf.iloc[0, 0:4]))
     print('Insertion end coords: ' + str(insertiondf.iloc[-1, 0:4]))
     print('\n\n')
     
-    pcoordsDict[pid] = [insertiondf.iloc[0, 1:4].values, insertiondf.iloc[-1, 1:4].values]
+    pcoordsDict[pid] = [insertiondf.iloc[0, 1:4].values, insertiondf.iloc[-1, 1:4].values, insertiondf.index[0], insertiondf.index[-1]]
 
 
 #save coords

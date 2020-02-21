@@ -634,4 +634,54 @@ def plotLFPNoise(obj,agarChRange=None,timeRange=[0,10]):
         ax.set_ylabel('Noise')
         
         
-
+def lickTriggeredLFP(obj, agarChRange=None, timeRange=[0,2000], windowBefore=0.5, windowAfter=0.5, min_inter_lick_time = 0.5): 
+    first_lick_times = obj.lickTimes[np.insert(np.diff(obj.lickTimes)>=min_inter_lick_time, 0, True)]
+    first_lick_times = first_lick_times[(first_lick_times>=timeRange[0])&(first_lick_times<=timeRange[1])]
+    
+    
+    for pid in obj.probes_to_analyze:
+        t = obj.lfp[pid]['time']
+        d = obj.lfp[pid]['data']
+        
+        last_lick_ind = np.where(t<=first_lick_times[-1])[0][-1]
+        d = d[:last_lick_ind]
+        
+        probeSampleRate = 1./np.median(np.diff(t))
+        samplesBefore = int(round(windowBefore * probeSampleRate))
+        samplesAfter = int(round(windowAfter * probeSampleRate))
+        if agarChRange is not None:
+            agar = np.median(d[:,agarChRange[0]:agarChRange[1]],axis=1)
+            d = d-agar[:,None]
+        
+        lickTriggeredAv = np.full([first_lick_times.size, samplesBefore+samplesAfter, d.shape[1]])
+        for il, l in enumerate(first_lick_times):
+            lfp_lick_ind = np.where(t<=l)[0][-1]
+            lta = d[lfp_lick_ind-samplesBefore:lfp_lick_ind+samplesAfter]
+            lickTriggeredAv[il, :, :] = lta
+            
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
