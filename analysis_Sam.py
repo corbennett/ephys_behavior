@@ -142,11 +142,13 @@ def getSDFs(obj,probes='all',behaviorStates=('active','passive'),epochs=('change
     return sdfs
 
 
-def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5):
+def findResponsiveUnits(sdfs,baseWin,respWin,thresh=5,posRespOnly=False):
     unitMeanSDFs = sdfs.mean(axis=1) if len(sdfs.shape)>2 else sdfs.copy()
     hasSpikes = unitMeanSDFs.mean(axis=1)>0.1
     unitMeanSDFs -= unitMeanSDFs[:,baseWin].mean(axis=1)[:,None]
     hasResp = unitMeanSDFs[:,respWin].max(axis=1) > thresh*unitMeanSDFs[:,baseWin].std(axis=1)
+    if posRespOnly:
+        hasResp = hasResp & (unitMeanSDFs[:,respWin].mean(axis=1)>0)
     return hasSpikes,hasResp
 
     
@@ -212,6 +214,7 @@ mouseInfo = (
              ('423750',('08132019','08142019'),('AF','AF'),'AA',(True,True)),
              ('459521',('09052019','09062019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('461027',('09122019','09132019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
+             ('479219',('11262019',),('BCD',),'A',(True,)),
             )
 
 
@@ -232,7 +235,7 @@ getPopData(objToHDF5=True,popDataToHDF5=True)
 getPopData(objToHDF5=False,popDataToHDF5=True)
 
 # append existing hdf5s to existing popData.hdf5
-getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('461027',))
+getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('479219',))
 
 
 
@@ -331,6 +334,11 @@ ax.set_ylabel('Median Passive Run Speed (cm/s)')
 
 ###### change mod and latency analysis
 
+exps = Aexps+Bexps
+
+baseWin = slice(stimWin.start-250,stimWin.start)
+respWin = slice(stimWin.start,stimWin.start+250)
+
 behavStates = ('active','passive')
 
 regionNames = (
@@ -383,10 +391,10 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
             inRegion = np.in1d(ccf,regionCCFLabels)
             if any(inRegion):
                 activePre,activeChange = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trials].mean(axis=1) for epoch in ('preChange','change')]
-                hasSpikesActive,hasRespActive = findResponsiveUnits(activeChange,baseWin,respWin,thresh=5)
+                hasSpikesActive,hasRespActive = findResponsiveUnits(activeChange,baseWin,respWin,thresh=5,posRespOnly=True)
                 if 'passive' in behavStates:
                     passivePre,passiveChange = [data[exp]['sdfs'][probe]['passive'][epoch][inRegion,:][:,trials].mean(axis=1) for epoch in ('preChange','change')]
-                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChange,baseWin,respWin,thresh=5)
+                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChange,baseWin,respWin,thresh=5,posRespOnly=True)
                     hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
                 else:
                     hasResp = hasSpikesActive & hasRespActive
@@ -749,35 +757,50 @@ df.to_hdf(f,'table')
 
 # plot parameters vs hierarchy score
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionLabels for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
+hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
     
 hier = hierScore_8regions
 
 paramLabels = ('Change Modulation Index','Time to first spike after image change (ms)','Baseline Rate (spikes/s)','Pre-change Response (spikes/s)','Change Response (spikes/s)')
-for param,lbl in zip((changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive),paramLabels):
-    fig = plt.figure(facecolor='w',figsize=(8,6))
+for param,ylbl in zip((changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive),paramLabels):
+    fig = plt.figure(facecolor='w',figsize=(6,6))
     ax = plt.subplot(1,1,1)
-    m = [np.nanmean(reg) for reg in param]
-    ci = [np.percentile([np.nanmean(np.random.choice(reg,len(reg),replace=True)) for _ in range(5000)],(2.5,97.5)) for reg in param]
-    ax.plot(hier,m,'ko',ms=6)
-    for h,c in zip(hier,ci):
-        ax.plot([h,h],c,'k')
-    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
-    x = np.array([min(hier),max(hier)])
-    ax.plot(x,slope*x+yint,'0.5')
+    title = ''
+    prms = (param,changeModPassive) if ylbl=='Change Modulation Index' else (param,)
+    for prm in prms:
+        m = [np.nanmean(reg) for reg in prm]
+        ci = [np.percentile([np.nanmean(np.random.choice(reg,len(reg),replace=True)) for _ in range(5000)],(2.5,97.5)) for reg in prm]
+        if prm is changeModPassive:
+            clr = '0.5'
+            mfc = 'none'
+            lbl = 'passive'
+        else:
+            clr = 'k'
+            mfc = clr
+            lbl = 'active'
+        ax.plot(hier,m,'o',mec=clr,mfc=mfc,ms=6,label=lbl)
+        for h,c in zip(hier,ci):
+            ax.plot([h,h],c,clr)
+        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+        x = np.array([min(hier),max(hier)])
+        ax.plot(x,slope*x+yint,'--',color=clr)
+        r,p = scipy.stats.pearsonr(hier,m)
+        if len(title)>0:
+            title += '\n'
+        title += 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+        r,p = scipy.stats.spearmanr(hier,m)
+        title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False,labelsize=8)
     ax.set_xticks(hier)
     ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
     ax.set_xlabel('Hierarchy Score',fontsize=10)
-    ax.set_ylabel(lbl,fontsize=10)
-    r,p = scipy.stats.pearsonr(hier,m)
-    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    r,p = scipy.stats.spearmanr(hier,m)
-    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    ax.set_ylabel(ylbl,fontsize=10)
     ax.set_title(title,fontsize=8)
+    ax.legend(loc='upper left')
     plt.tight_layout()
+    assert(False)
     
 # distributions of parameter values
 regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
@@ -1034,7 +1057,7 @@ regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
-unitSampleSize = [20]
+unitSampleSize = [5,10,20,40]
 
 nCrossVal = 5
 
@@ -1375,7 +1398,7 @@ for model in modelNames:
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False,labelsize=12)
     ax.set_xticks(np.arange(0,100,10))
-    ax.set_yticks([0,0.25,0.5,0.75,1])
+#    ax.set_yticks([0,0.25,0.5,0.75,1])
     ax.set_xlim([0,max(unitSampleSize)+5])
     ax.set_ylim([0.5,1])
     ax.set_xlabel('Number of Cells',fontsize=14)
@@ -1521,7 +1544,7 @@ for model in ('randomForest',):
     fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
     gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
     for i,region in enumerate(regionLabels):
-        for j,state in enumerate(('active','passive')):
+        for j,state in enumerate(behavStates):
             ax = plt.subplot(gs[i,j])
             for score,clr in zip(('imageFeatureImportance','changeFeatureImportance'),('0.5','k')):
                 regionScore = []
@@ -1676,6 +1699,7 @@ for model in ('randomForest',):
     fig.text(0.55,1,'Decoder Accuracy, Pre-change Image Identity',fontsize=10,horizontalalignment='center',verticalalignment='top')
     gs = matplotlib.gridspec.GridSpec(len(regionLabels),1)
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+        clr = 'k'
         ax = plt.subplot(gs[i,0])
         ax.plot([preImageDecodeWindows[0],preImageDecodeWindows[-1]+preImageDecodeWindowSize],[0.125,0.125],'--',color='0.5')
         regionScore = []
@@ -1703,6 +1727,33 @@ for model in ('randomForest',):
             ax.set_xlabel('Time from pre-change flash onset (ms)',fontsize=10)
         ax.set_ylabel(region,fontsize=10)
     plt.tight_layout()
+    
+fig = plt.figure(facecolor='w')
+region = 'V1'
+clr = 'k'
+ax = plt.subplot(1,1,1)
+ax.plot([preImageDecodeWindows[0],preImageDecodeWindows[-1]+preImageDecodeWindowSize],[0.125,0.125],'--',color='0.5')
+regionScore = []
+for exp in result:
+    s = result[exp][region]['active']['preImageScoreWindows'][model]
+    if len(s)>0:
+        regionScore.append(s[0])
+n = len(regionScore)
+if n>0:
+    m = np.mean(regionScore,axis=0)
+    s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+    ax.plot(preImageDecodeWindows+preImageDecodeWindowSize/2,m,color=clr,label=score[:score.find('S')])
+    ax.fill_between(preImageDecodeWindows+preImageDecodeWindowSize/2,m+s,m-s,color=clr,alpha=0.25)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xticks([250,500,750,1000])
+ax.set_xticklabels([0,250,500,750])
+ax.set_xlim([preImageDecodeWindows[0],preImageDecodeWindows[-1]+preImageDecodeWindowSize])
+ax.set_ylim([0.1,0.8])
+ax.set_xlabel('Time from pre-change flash onset (ms)')
+ax.set_ylabel('Decoder accuracy')
+plt.tight_layout()
 
 
 # plot visual response, change decoding, and image decoding latencies
@@ -1812,7 +1863,7 @@ ax.set_xticks(xticks)
 ax.set_xticklabels(regionLabels)
 ax.set_ylim([0.5,1])
 ax.set_ylabel('Decoder accuracy')
-ax.legend()
+ax.legend(loc='upper left')
 plt.tight_layout()
 
 
@@ -1826,11 +1877,12 @@ for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictPr
         regionData = []
         for exp in result:
             behavior = result[exp]['responseToChange']
-            if shuffleBehav:
-                behavior = np.random.permutation(behavior)
             s = result[exp][region]['active'][score]['randomForest']
             if len(s)>0 and any(behavior) and any(s[-1]):
-                regionData.append(np.corrcoef(behavior,s[-1])[0,1])
+                if shuffleBehav:
+                    regionData.append(np.mean([np.corrcoef(np.random.permutation(behavior),s[-1])[0,1] for _ in range(10)]))
+                else:
+                    regionData.append(np.corrcoef(behavior,s[-1])[0,1])
         n = len(regionData)
         if n>0:
             m = np.mean(regionData)
@@ -1845,86 +1897,8 @@ ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim(xlim)
 ax.set_xticks(xticks)
 ax.set_xticklabels(regionLabels)
-ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
+ax.set_ylabel('Correlation of decoder prediction and behavior')
 ax.legend()
-plt.tight_layout()
-
-anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionsToUse for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')] 
-hier = hierScore_8regions
-
-fig = plt.figure(facecolor='w',figsize=(6,4))
-ax = plt.subplot(1,1,1)
-for state,fill in zip(('active',),(True,)):
-    meanRegionData = []
-    for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
-        regionData = []
-        for exp in result:
-            behavior = result[exp]['responseToChange'].astype(float)
-            s = result[exp][region][state]['changePredictProb']['randomForest']
-            if len(s)>0 and any(behavior) and any(s[0]):
-                regionData.append(np.corrcoef(behavior,s[0])[0,1])
-        n = len(regionData)
-        if n>0:
-            m = np.mean(regionData)
-            s = np.std(regionData)/(n**0.5)
-            mfc = clr if fill else 'none'
-            lbl = state if i==0 else None
-            ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
-            ax.plot([h,h],[m-s,m+s],color=clr)
-            meanRegionData.append(m)
-        else:
-            meanRegionData.append(np.nan)
-    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
-    x = np.array([min(hier),max(hier)])
-    ax.plot(x,slope*x+yint,'0.5')
-    r,p = scipy.stats.pearsonr(hier,meanRegionData)
-    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    r,p = scipy.stats.spearmanr(hier,meanRegionData)
-    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    ax.set_title(title,fontsize=8)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlabel('Hierarchy score')
-ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
-plt.tight_layout()
-
-fig = plt.figure(facecolor='w',figsize=(6,4))
-ax = plt.subplot(1,1,1)
-for state,fill in zip(('active',),(True,)):
-    meanRegionData = []
-    for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
-        regionData = []
-        for exp in result:
-            s = result[exp][region][state]['changeScore']['randomForest']
-            if len(s)>0:
-                regionData.append(s[0])
-        n = len(regionData)
-        if n>0:
-            m = np.mean(regionData)
-            s = np.std(regionData)/(n**0.5)
-            mfc = clr if fill else 'none'
-            lbl = state if i==0 else None
-            ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
-            ax.plot([h,h],[m-s,m+s],color=clr)
-            meanRegionData.append(m)
-        else:
-            meanRegionData.append(np.nan)
-    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
-    x = np.array([min(hier),max(hier)])
-    ax.plot(x,slope*x+yint,'0.5')
-    r,p = scipy.stats.pearsonr(hier,meanRegionData)
-    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    r,p = scipy.stats.spearmanr(hier,meanRegionData)
-    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    ax.set_title(title,fontsize=8)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_ylim([0.5,1])
-ax.set_xlabel('Hierarchy score')
-ax.set_ylabel('Decoder accuracy')
 plt.tight_layout()
 
 
@@ -1933,13 +1907,13 @@ for model in ('randomForest',):
     fig.text(0.5,1,'Correlation of decoder prediction and mouse behavior',fontsize=10,horizontalalignment='center',verticalalignment='top')
     gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
     for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
-        for j,state in enumerate(('active','passive')):
+        for j,state in enumerate(behavStates):
             ax = plt.subplot(gs[i,j])
             regionData = []
             for exp in result:
-                behavior = result[exp]['behaviorResponse'][:].astype(float)
+                behavior = result[exp]['responseToChange'][:]
                 s = result[exp][region][state]['changePredictWindows'][model]
-                if len(s)>0:
+                if len(s)>2:
                     regionData.append([np.corrcoef(behavior,p)[0,1] for p in s[-1]])
             n = len(regionData)
             if n>0:
@@ -1963,6 +1937,93 @@ for model in ('randomForest',):
             if i==0:
                 ax.set_title(state,fontsize=10)
     plt.tight_layout()
+
+
+anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
+hierScore_8regions,hierScore_allRegions = [[h for r in regionsToUse for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')] 
+hier = hierScore_8regions
+
+fig = plt.figure(facecolor='w',figsize=(4,4))
+ax = plt.subplot(1,1,1)
+for state,fill in zip(('active',),(True,)):
+    meanRegionData = []
+    for shuffleBehav in (False,True):
+        for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
+            regionData = []
+            for exp in result:
+                behavior = result[exp]['responseToChange']
+                if shuffleBehav:
+                    behavior = np.random.permutation(behavior)
+                s = result[exp][region][state]['changePredictProb']['randomForest']
+                if len(s)>0 and any(behavior) and any(s[0]):
+                    regionData.append(np.corrcoef(behavior,s[0])[0,1])
+            n = len(regionData)
+            if n>0:
+                m = np.mean(regionData)
+                s = np.std(regionData)/(n**0.5)
+                mfc = clr if fill and not shuffleBehav else 'none'
+                lbl = 'shuffle behavior' if i==0 and shuffleBehav else ''
+                ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
+                ax.plot([h,h],[m-s,m+s],color=clr)   
+            if not shuffleBehav:
+                if n>0:
+                    meanRegionData.append(m)
+                else:
+                    meanRegionData.append(np.nan)
+    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
+    x = np.array([min(hier),max(hier)])
+    ax.plot(x,slope*x+yint,'--',color='0.5')
+    r,p = scipy.stats.pearsonr(hier,meanRegionData)
+    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    r,p = scipy.stats.spearmanr(hier,meanRegionData)
+    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    ax.set_title(title,fontsize=8)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlabel('Hierarchy score')
+ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
+ax.legend()
+plt.tight_layout()
+
+fig = plt.figure(facecolor='w',figsize=(4,4))
+ax = plt.subplot(1,1,1)
+for state,fill in zip(('active',),(True,)):
+    meanRegionData = []
+    for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
+        regionData = []
+        for exp in result:
+            s = result[exp][region][state]['changeScore']['randomForest']
+            if len(s)>0:
+                regionData.append(s[0])
+        n = len(regionData)
+        if n>0:
+            m = np.mean(regionData)
+            s = np.std(regionData)/(n**0.5)
+            mfc = clr if fill else 'none'
+            lbl = state if i==0 else None
+            ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
+            ax.plot([h,h],[m-s,m+s],color=clr)
+            meanRegionData.append(m)
+        else:
+            meanRegionData.append(np.nan)
+    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
+    x = np.array([min(hier),max(hier)])
+    ax.plot(x,slope*x+yint,'--',color='0.5')
+    r,p = scipy.stats.pearsonr(hier,meanRegionData)
+    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    r,p = scipy.stats.spearmanr(hier,meanRegionData)
+    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    ax.set_title(title,fontsize=8)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([0.5,1])
+ax.set_xlabel('Hierarchy score')
+ax.set_ylabel('Decoder accuracy')
+plt.tight_layout()
+
+
 
 
 ## analysis of population sdfs
@@ -2105,7 +2166,6 @@ for i,region in enumerate(regionLabels):
             regionScore.append(s[2])
 #            behavior = result[exp]['responseToChange']
 #            regionScore.append([np.corrcoef(behavior,p)[0,1] for p in s[2]])
-#            regionScore.append(s[2].mean(axis=1))
             sdfs.append(result[exp][region]['active']['changeSDFs'].mean(axis=0))
     n = len(regionScore)
     if n>0:
