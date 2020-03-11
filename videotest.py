@@ -47,25 +47,29 @@ for f in filePaths:
     label.append(f[[s.start() for s in re.finditer('_',f)][-1]+1:-4])
     v = cv2.VideoCapture(f)
     frames = []
+    count = 0
     while True:
         isImage,image = v.read()
-        if not isImage:
+        if not isImage or count>600:
             break
         frames.append(cv2.cvtColor(image,cv2.COLOR_BGR2GRAY))
+        count += 1
     v.release()
-    meanFrame.append(np.mean(frames[15:],axis=0))
-    exampleFrame.append(frames[15])
-    hist.append(np.histogram(frames[15:],bins)[0])
+    d = np.array(frames[15:])
+    meanFrame.append(np.mean(d,axis=0))
+    exampleFrame.append(d[0])
+    hist.append(np.histogram(d,bins)[0]/d.size)
 
+clrs = plt.cm.jet(np.linspace(0,1,len(filePaths)))
 plt.figure()
 ax = plt.subplot(1,1,1)
-for h,lbl,clr in zip(hist,label,('0.5','r','g','b','k')):
-    ax.plot(bins[:-1],h,clr,label=lbl)
+for h,lbl,clr in zip(hist,label,clrs):
+    ax.plot(bins[:-1],h,color=clr,label=lbl)
 ax.tick_params(direction='out',top=False,right=False,labelsize=12)
 ax.set_yscale('log')
 ax.set_xlim([-1,256])
 ax.set_xlabel('pixel intensity',fontsize=14)
-ax.set_ylabel('count',fontsize=14)
+ax.set_ylabel('fraction of pixels',fontsize=14)
 ax.legend(fontsize=14)
 plt.tight_layout()
 

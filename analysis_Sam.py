@@ -47,7 +47,7 @@ def makeSummaryPlots(miceToAnalyze='all'):
             summaryPlots.all_unit_summary(obj,probes)
 
 
-def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams={}):
+def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',makeSDFs=True,sdfParams={}):
     if popDataToHDF5:
         popHDF5Path = os.path.join(localDir,'popData.hdf5')
     for mouseID,ephysDates,probeIDs,imageSet,passiveSession in mouseInfo:
@@ -88,7 +88,6 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                     for u in units:
                         data[expName]['spikeTimes'][probe][str(u)] = obj.units[probe][u]['times']
                 data[expName]['isiRegion'] = {probe: obj.probeCCF[probe]['ISIRegion'] for probe in probes}
-                data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
                 data[expName]['flashImage'] = obj.flashImage
                 data[expName]['omitFlashImage'] = obj.omittedFlashImage
                 data[expName]['initialImage'] = obj.initialImage[trials]
@@ -107,6 +106,8 @@ def getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze='all',sdfParams=
                     data[expName]['passiveChangeTimes'] = obj.passiveFrameAppearTimes[obj.changeFrames[trials]]
                     data[expName]['passiveRunTime'] = obj.passiveRunTime
                     data[expName]['passiveRunSpeed'] = obj.passiveRunSpeed
+                if makeSDFs:
+                    data[expName]['sdfs'] = getSDFs(obj,probes=probes,**sdfParams)
 
                 fileIO.objToHDF5(obj=None,saveDict=data,filePath=popHDF5Path)
 
@@ -214,7 +215,7 @@ mouseInfo = (
              ('423750',('08132019','08142019'),('AF','AF'),'AA',(True,True)),
              ('459521',('09052019','09062019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('461027',('09122019','09132019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
-             ('479219',('11262019',),('BCD',),'A',(True,)),
+             ('479219',('11262019',),('CD',),'A',(True,)),
             )
 
 
@@ -232,7 +233,7 @@ getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('461027',))
 getPopData(objToHDF5=True,popDataToHDF5=True)
 
 # make popData.hdf5 from existing experiment hdf5s
-getPopData(objToHDF5=False,popDataToHDF5=True)
+getPopData(objToHDF5=False,popDataToHDF5=True,makeSDFs=False)
 
 # append existing hdf5s to existing popData.hdf5
 getPopData(objToHDF5=False,popDataToHDF5=True,miceToAnalyze=('479219',))
