@@ -34,9 +34,38 @@ camFrameTimes = np.sort(np.concatenate((camFramesRising,camFramesFalling)))
 camFramesWithLicks = np.searchsorted(camFrameTimes,lickTimes)
 
 
+channels = (8,27,29)
+channelNames = ('sync','transmission','exposure')
+
+rising = [probeSync.get_sync_line_data(syncDataset, channel=ch)[0] for ch in channels]
+falling = [probeSync.get_sync_line_data(syncDataset, channel=ch)[1] for ch in channels] 
+
+
+plt.figure()
+ax = plt.subplot(1,1,1)
+nrise = []
+nfall = []
+for i,(rise,fall,name) in enumerate(zip(rising,falling,channelNames)):
+    ax.vlines(rise,i-0.4,i+0.4,colors='k')
+    ax.vlines(fall,i-0.4,i+0.4,colors='0.5')
+    nrise.append(len(rise))
+    nfall.append(len(fall))
+ax.set_yticks(np.arange(len(channels)))
+ax.set_yticklabels([ch+'\n'+str(nr)+' rise,'+str(nf)+' fall' for ch,nr,nf in zip(channelNames,nrise,nfall)])
+ax.set_xlabel('time (s)')
+plt.tight_layout()
+
+ax.set_xlim([sync[0]-0.05,sync[10]])
+ax.set_xlim([sync[-10],sync[-1]+0.05])
+ax.set_xlim([5.222,5.255])
 
 
 filePaths = fileIO.getFiles('choose video files',dataDir,'*.avi *.mp4')
+
+filePaths.append(fileIO.getFiles('choose bitmaps',dataDir,'*.bmp'))
+
+skipFrames = 15
+maxFrames = 600
 
 bins = np.arange(0,257)
 hist = []
@@ -44,27 +73,35 @@ meanFrame = []
 exampleFrame = []
 label = []
 for f in filePaths:
-    label.append(f[[s.start() for s in re.finditer('_',f)][-1]+1:-4])
-    v = cv2.VideoCapture(f)
-    frames = []
-    count = 0
-    while True:
-        isImage,image = v.read()
-        if not isImage or count>600:
-            break
-        frames.append(cv2.cvtColor(image,cv2.COLOR_BGR2GRAY))
-        count += 1
-    v.release()
-    d = np.array(frames[15:])
+    if isinstance(f,list):
+        label.append('bmp')
+        frames = [cv2.cvtColor(cv2.imread(b),cv2.COLOR_BGR2GRAY) for b in f]
+    else:
+        label.append('avi')
+#        label.append(f[[s.start() for s in re.finditer('_',f)][-1]+1:-4]) 
+        v = cv2.VideoCapture(f)
+        count = 0
+        frames = []
+        while True:
+            isImage,image = v.read()
+            if not isImage or count>maxFrames:
+                break
+            if count>0:
+                frames.append(cv2.cvtColor(image,cv2.COLOR_BGR2GRAY))
+            count += 1
+        v.release()
+    d = np.array(frames[skipFrames:])
     meanFrame.append(np.mean(d,axis=0))
     exampleFrame.append(d[0])
     hist.append(np.histogram(d,bins)[0]/d.size)
 
 clrs = plt.cm.jet(np.linspace(0,1,len(filePaths)))
+clrs = 'gm'
 plt.figure()
 ax = plt.subplot(1,1,1)
-for h,lbl,clr in zip(hist,label,clrs):
-    ax.plot(bins[:-1],h,color=clr,label=lbl)
+for i,(h,lbl,clr) in enumerate(zip(hist,label,clrs)):
+    lw,alpha = (1,1) if i>0 else (4,0.5)
+    ax.plot(bins[:-1],h,color=clr,linewidth=lw,alpha=alpha,label=lbl)
 ax.tick_params(direction='out',top=False,right=False,labelsize=12)
 ax.set_yscale('log')
 ax.set_xlim([-1,256])
@@ -76,9 +113,9 @@ plt.tight_layout()
 ax.set_xlim([-1,10])
 ax.set_xlim([245,256])
 
-plt.figure()
+plt.figure(facecolor='0.5')
 for i,(img,lbl) in enumerate(zip(exampleFrame,label)):
-    ax = plt.subplot(2,2,i+1)
+    ax = plt.subplot(1,len(filePaths),i+1)
     ax.imshow(img,cmap='gray',clim=[0,255])
     ax.set_xticks([])
     ax.set_yticks([])
@@ -87,9 +124,9 @@ plt.tight_layout()
 
 
 
+cv2.imwrite(os.path.join(os.path.dirname(filePaths[0]),'avi.tif'),exampleFrame[0])
 
-
-
+cv2.imwrite(os.path.join(os.path.dirname(filePaths[0]),'bmp.tif'),exampleFrame[1])
 
 
 
