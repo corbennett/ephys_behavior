@@ -62,7 +62,7 @@ ax.set_xlim([5.222,5.255])
 
 filePaths = fileIO.getFiles('choose video files',dataDir,'*.avi *.mp4')
 
-filePaths.append(fileIO.getFiles('choose bitmaps',dataDir,'*.bmp'))
+#filePaths.append(fileIO.getFiles('choose bitmaps',dataDir,'*.bmp'))
 
 skipFrames = 15
 maxFrames = 600
@@ -77,8 +77,7 @@ for f in filePaths:
         label.append('bmp')
         frames = [cv2.cvtColor(cv2.imread(b),cv2.COLOR_BGR2GRAY) for b in f]
     else:
-        label.append('avi')
-#        label.append(f[[s.start() for s in re.finditer('_',f)][-1]+1:-4]) 
+        label.append(f[[s.start() for s in re.finditer('_',f)][-1]+1:-4]) 
         v = cv2.VideoCapture(f)
         count = 0
         frames = []
@@ -95,13 +94,12 @@ for f in filePaths:
     exampleFrame.append(d[0])
     hist.append(np.histogram(d,bins)[0]/d.size)
 
+label = ['opencv','raw', 'yuv420 crf0', 'yuv420 crf 17', 'yuv420 crf23', 'gray crf17']
 clrs = plt.cm.jet(np.linspace(0,1,len(filePaths)))
-clrs = 'gm'
 plt.figure()
 ax = plt.subplot(1,1,1)
 for i,(h,lbl,clr) in enumerate(zip(hist,label,clrs)):
-    lw,alpha = (1,1) if i>0 else (4,0.5)
-    ax.plot(bins[:-1],h,color=clr,linewidth=lw,alpha=alpha,label=lbl)
+    ax.plot(bins[:-1],h,color=clr,label=lbl)
 ax.tick_params(direction='out',top=False,right=False,labelsize=12)
 ax.set_yscale('log')
 ax.set_xlim([-1,256])
