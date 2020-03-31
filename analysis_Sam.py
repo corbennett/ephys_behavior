@@ -215,24 +215,26 @@ mouseInfo = (
              ('423750',('08132019','08142019'),('AF','AF'),'AA',(True,True)),
              ('459521',('09052019','09062019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('461027',('09122019','09132019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
-             ('479219',('11262019',),('CD',),'A',(True,)),
+             ('479219',('11262019',),('BCD',),'A',(True,)),
+             ('484106',('12122019','12132019'),('BCDEF','BCDEF'),'AA',(True,True)),
+             ('474732',('12192019','12202019'),('ABCDEF','ABCDE'),'AA',(True,True)),
             )
 
 
 #
-makeSummaryPlots(miceToAnalyze=('421323','422856','423749'))
+makeSummaryPlots(miceToAnalyze=('484106','474732'))
 
 
 # make new experiment hdf5s without updating popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=False,miceToAnalyze=('479219',))
 
 # make new experiment hdf5s and add to existing popData.hdf5
-getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('461027',))
+getPopData(objToHDF5=True,popDataToHDF5=True,miceToAnalyze=('484106','474732'))
 
 # make new experiment hdf5s and popData.hdf5
 getPopData(objToHDF5=True,popDataToHDF5=True)
 
-# make popData.hdf5 from existing experiment hdf5s
+# make popData.hdf5 from existing experiment hdf5s without SDFs
 getPopData(objToHDF5=False,popDataToHDF5=True,makeSDFs=False)
 
 # append existing hdf5s to existing popData.hdf5
@@ -367,23 +369,33 @@ regionNames = (
 regionNames = regionNames[:8]
 regionLabels = [r[0] for r in regionNames]
 
-mouseIDs = [[] for r in regionNames]
-expDates =  [[] for r in regionNames]
-unitCount = [[] for r in regionNames]
-activeChangeSdfs = [[] for r in regionNames]
-activePreSdfs = [[] for r in regionNames]
-passiveChangeSdfs = [[] for r in regionNames]
-passivePreSdfs = [[] for r in regionNames]
-activeFirstSpikeLat = [[] for r in regionNames]
-for ind,(region,regionCCFLabels) in enumerate(regionNames):
+result = {region: {'mouseIDs': [],
+                   'expDates': [],
+                   'unitCount': [],
+                   'sdfs': {state: {epoch: [] for epoch in ('preChange','change')} for state in behavStates},
+                   'base': {state: {epoch: [] for epoch in ('preChange','change')} for state in behavStates},
+                   'resp': {state: {epoch: [] for epoch in ('preChange','change')} for state in behavStates},
+                   'changeMod': {state: [] for state in behavStates},
+                   'changeModHit': {state: [] for state in behavStates},
+                   'changeModMiss': {state: [] for state in behavStates},
+                   'changeModImage': {state: [] for state in behavStates},
+                   'firstSpikeLat': []} for region in regionLabels}
+
+for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
     print(region)
     for exp in exps:
         print(exp)
         response = data[exp]['response'][:]
         hit = response=='hit'
+        miss = response=='miss'
         changeTimes = data[exp]['behaviorChangeTimes'][:]
         engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
-        trials = engaged & (hit | (response=='miss'))
+        changeTrials = engaged & (hit | miss)
+        hitTrials = engaged & hit
+        missTrials = engaged & miss
+        initialImage = data[exp]['initialImage'][:]
+        changeImage = data[exp]['changeImage'][:]
+        imageNames = np.unique(changeImage)
         for probe in data[exp]['sdfs']:
             ccf = data[exp]['ccfRegion'][probe][:]
             isi = data[exp]['isiRegion'][probe][()]
@@ -391,23 +403,48 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
                 ccf[data[exp]['inCortex'][probe][:]] = isi
             inRegion = np.in1d(ccf,regionCCFLabels)
             if any(inRegion):
-                activePre,activeChange = [data[exp]['sdfs'][probe]['active'][epoch][inRegion,:][:,trials].mean(axis=1) for epoch in ('preChange','change')]
-                hasSpikesActive,hasRespActive = findResponsiveUnits(activeChange,baseWin,respWin,thresh=5,posRespOnly=True)
+                sdfs = {}
+                for state in behavStates:
+                    sdfs[state] = {}
+                    for epoch in ('preChange','change'):
+                        sdfs[state][epoch] = data[exp]['sdfs'][probe][state][epoch][:][inRegion]
+                hasSpikesActive,hasRespActive = findResponsiveUnits(sdfs['active']['change'][:,changeTrials].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
                 if 'passive' in behavStates:
-                    passivePre,passiveChange = [data[exp]['sdfs'][probe]['passive'][epoch][inRegion,:][:,trials].mean(axis=1) for epoch in ('preChange','change')]
-                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(passiveChange,baseWin,respWin,thresh=5,posRespOnly=True)
+                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(sdfs['passive']['change'][:,changeTrials].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
                     hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
                 else:
                     hasResp = hasSpikesActive & hasRespActive
                 if hasResp.sum()>0:
-                    mouseIDs[ind].append(exp[-6:])
-                    expDates[ind].append(exp[:8])
-                    unitCount[ind].append(hasResp.sum())
-                    activePreSdfs[ind].append(activePre[hasResp])
-                    activeChangeSdfs[ind].append(activeChange[hasResp])
-                    if 'passive' in behavStates:
-                        passivePreSdfs[ind].append(passivePre[hasResp])
-                        passiveChangeSdfs[ind].append(passiveChange[hasResp])
+                    result[region]['mouseIDs'].append(exp[-6:])
+                    result[region]['expDates'].append(exp[:8])
+                    result[region]['unitCount'].append(hasResp.sum())
+                    
+                    resp = {}
+                    for state in behavStates:
+                        resp[state] = {}
+                        for epoch in ('preChange','change'):
+                            base = sdfs[state][epoch][:,:,baseWin].mean(axis=(1,2))
+                            sdfs[state][epoch] -= base[:,None,None]
+                            resp[state][epoch] = sdfs[state][epoch][hasResp,:,respWin].mean(axis=2)
+                            result[region]['base'][state][epoch].append(base[hasResp])
+                            result[region]['sdfs'][state][epoch].append(sdfs[state][epoch][hasResp][:,changeTrials].mean(axis=1))
+                            result[region]['resp'][state][epoch].append(resp[state][epoch][:,changeTrials].mean(axis=1))
+                        
+                    for state in behavStates:
+                        for trials,key in zip((changeTrials,hitTrials,missTrials),('changeMod','changeModHit','changeModMiss')):
+                            pre,change = [resp[state][epoch][:,trials].mean(axis=1) for epoch in ('preChange','change')]
+                            result[region][key][state].append(np.clip((change-pre)/(change+pre),-1,1))
+                        
+                        imgChangeResp = np.zeros((len(imageNames),hasResp.sum()))
+                        imgChangeMod = imgChangeResp.copy()
+                        for i,img in enumerate(imageNames):
+                            pre = resp[state]['preChange'][:,changeTrials & (initialImage==img)].mean(axis=1)
+                            change = resp[state]['change'][:,changeTrials & (changeImage==img)].mean(axis=1)
+                            imgChangeResp[i] = change
+                            imgChangeMod[i] = np.clip((change-pre)/(change+pre),-1,1)
+                        result[region]['changeModImage'][state].append(imgChangeMod[np.unravel_index(np.argmax(imgChangeResp,axis=0),imgChangeResp.shape)])
+                    
+                    # first spike latency
                     for u in data[exp]['units'][probe][inRegion][hasResp]:
                         spikeTimes = data[exp]['spikeTimes'][probe][str(u)][:,0]
                         lat = []
@@ -417,8 +454,74 @@ for ind,(region,regionCCFLabels) in enumerate(regionNames):
                                 lat.append(spikeTimes[firstSpike[0]]-t)
                             else:
                                 lat.append(np.nan)
-                        activeFirstSpikeLat[ind].append(np.nanmedian(lat))
+                        result[region]['firstSpikeLat'].append(np.nanmedian(lat))
 
+                       
+# save result to pkl file
+pkl = fileIO.saveFile(fileType='*.pkl')
+pickle.dump(result,open(pkl,'wb'))
+
+# get result from pkl file
+pkl = fileIO.getFile(fileType='*.pkl')
+result = pickle.load(open(pkl,'rb'))
+    
+
+for region in result:
+    for key in result[region].keys():
+        if isinstance(result[region][key],list):
+            if isinstance(result[region][key][0],np.ndarray):
+                result[region][key] = np.concatenate(result[region][key])
+        else:
+            for state in behavStates:
+                if isinstance(result[region][key][state],list):
+                    result[region][key][state] = np.concatenate(result[region][key][state])
+                else:
+                    for epoch in ('preChange','change'):
+                        result[region][key][state][epoch] = np.concatenate(result[region][key][state][epoch])
+
+
+nMice = [len(set(result[region]['mouseIDs'])) for region in result]
+nExps = [len(set(result[region]['expDates'])) for region in result]
+nUnits = [sum(result[region]['unitCount']) for region in result]
+
+anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
+hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
+    
+hier = hierScore_8regions
+
+for param in ('changeMod','changeModHit','changeModMiss','changeModImage'):
+    fig = plt.figure(facecolor='w',figsize=(6,6))
+    ax = plt.subplot(1,1,1)
+    title = ''
+    for state,clr in zip(behavStates,('k','0.5')):
+        m = [np.nanmean(result[region][param][state]) for region in result]
+        ci = [np.percentile([np.nanmean(np.random.choice(result[region][param][state],len(result[region][param][state]),replace=True)) for _ in range(5000)],(2.5,97.5)) for region in result]
+        ax.plot(hier,m,'o',mec=clr,mfc='none',ms=6,label=state)
+        for h,c in zip(hier,ci):
+            ax.plot([h,h],c,clr)
+        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+        x = np.array([min(hier),max(hier)])
+        ax.plot(x,slope*x+yint,'--',color=clr)
+        r,p = scipy.stats.pearsonr(hier,m)
+        if len(title)>0:
+            title += '\n'
+        title += 'Pearson ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+        r,p = scipy.stats.spearmanr(hier,m)
+        title += '\nSpearman ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.set_xticks(hier)
+    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+    ax.set_xlabel('Hierarchy Score',fontsize=10)
+    ax.set_ylabel(param,fontsize=10)
+    ax.set_title(title,fontsize=8)
+    ax.legend(loc='upper left')
+    plt.tight_layout()
+
+
+
+# old
 nMice = np.array([len(set(m)) for m in mouseIDs])
 nExps = np.array([len(set(d)) for d in expDates])
 nUnits = np.array([sum(n) for n in unitCount])
@@ -1050,7 +1153,7 @@ regionsToUse = (('LGd',('LGd',),(0,0,0)),
 #                ('APN',('APN',),subcortical_cmap(0.5)),
 #                ('SCd',('SCig','SCig-a','SCig-b'),subcortical_cmap(0.6)),
 #                ('MB',('MB',),subcortical_cmap(0.7)),
-                ('MRN',('MRN',),subcortical_cmap(0.8)),
+#                ('MRN',('MRN',),subcortical_cmap(0.8)),
 #                ('SUB',('SUB','PRE','POST'),subcortical_cmap(0.9)),
 #                ('hipp',('CA1','CA3','DG-mo','DG-po','DG-sg','HPF'),subcortical_cmap(1.0))
                )
@@ -1058,7 +1161,7 @@ regionsToUse = regionsToUse[:8]
 regionLabels = [r[0] for r in regionsToUse]
 regionColors = [r[2] for r in regionsToUse]
     
-unitSampleSize = [5,10,20,40]
+unitSampleSize = [20]
 
 nCrossVal = 5
 
