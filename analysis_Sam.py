@@ -342,8 +342,6 @@ exps = Aexps+Bexps
 baseWin = slice(stimWin.start-250,stimWin.start)
 respWin = slice(stimWin.start,stimWin.start+250)
 
-behavStates = ('active','passive')
-
 regionNames = (
                ('LGd',('LGd',)),
                ('V1',('VISp',)),
@@ -369,16 +367,17 @@ regionNames = (
 regionNames = regionNames[:8]
 regionLabels = [r[0] for r in regionNames]
 
+behavStates = ('active','passive')
+epochLabels = ('preChange','change')
+trialLabels = ('change','hit','miss','allImages','prefImage')
+
 result = {region: {'mouseIDs': [],
                    'expDates': [],
                    'unitCount': [],
-                   'sdfs': {state: {epoch: [] for epoch in ('preChange','change')} for state in behavStates},
-                   'base': {state: {epoch: [] for epoch in ('preChange','change')} for state in behavStates},
-                   'resp': {state: {epoch: [] for epoch in ('preChange','change')} for state in behavStates},
-                   'changeMod': {state: [] for state in behavStates},
-                   'changeModHit': {state: [] for state in behavStates},
-                   'changeModMiss': {state: [] for state in behavStates},
-                   'changeModImage': {state: [] for state in behavStates},
+                   'base': {state: {epoch: [] for epoch in epochLabels} for state in behavStates},
+                   'sdfs': {state: {epoch: {trials: [] for trials in trialLabels} for epoch in epochLabels} for state in behavStates},
+                   'resp': {state: {epoch: {trials: [] for trials in trialLabels} for epoch in epochLabels} for state in behavStates},
+                   'changeMod': {state: {trials: [] for trials in trialLabels} for state in behavStates},
                    'firstSpikeLat': []} for region in regionLabels}
 
 for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
@@ -390,9 +389,9 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
         miss = response=='miss'
         changeTimes = data[exp]['behaviorChangeTimes'][:]
         engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
-        changeTrials = engaged & (hit | miss)
-        hitTrials = engaged & hit
-        missTrials = engaged & miss
+        trials = {'change': engaged & (hit | miss),
+                  'hit': engaged & hit,
+                  'miss': engaged & miss}
         initialImage = data[exp]['initialImage'][:]
         changeImage = data[exp]['changeImage'][:]
         imageNames = np.unique(changeImage)
@@ -406,11 +405,11 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
                 sdfs = {}
                 for state in behavStates:
                     sdfs[state] = {}
-                    for epoch in ('preChange','change'):
+                    for epoch in epochLabels:
                         sdfs[state][epoch] = data[exp]['sdfs'][probe][state][epoch][:][inRegion]
-                hasSpikesActive,hasRespActive = findResponsiveUnits(sdfs['active']['change'][:,changeTrials].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
+                hasSpikesActive,hasRespActive = findResponsiveUnits(sdfs['active']['change'][:,trials['change']].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
                 if 'passive' in behavStates:
-                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(sdfs['passive']['change'][:,changeTrials].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
+                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(sdfs['passive']['change'][:,trials['change']].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
                     hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
                 else:
                     hasResp = hasSpikesActive & hasRespActive
@@ -422,27 +421,42 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
                     resp = {}
                     for state in behavStates:
                         resp[state] = {}
-                        for epoch in ('preChange','change'):
+                        for epoch in epochLabels:
                             base = sdfs[state][epoch][:,:,baseWin].mean(axis=(1,2))
                             sdfs[state][epoch] -= base[:,None,None]
-                            resp[state][epoch] = sdfs[state][epoch][hasResp,:,respWin].mean(axis=2)
                             result[region]['base'][state][epoch].append(base[hasResp])
-                            result[region]['sdfs'][state][epoch].append(sdfs[state][epoch][hasResp][:,changeTrials].mean(axis=1))
-                            result[region]['resp'][state][epoch].append(resp[state][epoch][:,changeTrials].mean(axis=1))
-                        
+                            for key in trials:
+                                result[region]['sdfs'][state][epoch][key].append(sdfs[state][epoch][hasResp][:,trials[key]].mean(axis=1))
+                                result[region]['resp'][state][epoch][key].append(sdfs[state][epoch][hasResp][:,trials[key],respWin].mean(axis=(1,2)))
+                     
                     for state in behavStates:
-                        for trials,key in zip((changeTrials,hitTrials,missTrials),('changeMod','changeModHit','changeModMiss')):
-                            pre,change = [resp[state][epoch][:,trials].mean(axis=1) for epoch in ('preChange','change')]
-                            result[region][key][state].append(np.clip((change-pre)/(change+pre),-1,1))
+                        for key in trials:
+                            pre,change = [result[region]['resp'][state][epoch][key][-1] for epoch in epochLabels]
+                            result[region]['changeMod'][state][key].append(np.clip((change-pre)/(change+pre),-1,1))
                         
-                        imgChangeResp = np.zeros((len(imageNames),hasResp.sum()))
-                        imgChangeMod = imgChangeResp.copy()
-                        for i,img in enumerate(imageNames):
-                            pre = resp[state]['preChange'][:,changeTrials & (initialImage==img)].mean(axis=1)
-                            change = resp[state]['change'][:,changeTrials & (changeImage==img)].mean(axis=1)
-                            imgChangeResp[i] = change
-                            imgChangeMod[i] = np.clip((change-pre)/(change+pre),-1,1)
-                        result[region]['changeModImage'][state].append(imgChangeMod[np.unravel_index(np.argmax(imgChangeResp,axis=0),imgChangeResp.shape)])
+                        imgPreSdfs = np.zeros((len(imageNames),hasResp.sum(),sdfs['active']['change'].shape[2]))
+                        imgChangeSdfs = imgPreSdfs.copy()
+                        imgPreResp = np.zeros((len(imageNames),hasResp.sum()))
+                        imgChangeResp = imgPreResp.copy()
+                        for i,img in enumerate(imageNames):                            
+                            imgPreSdfs[i] = sdfs[state]['preChange'][hasResp][:,trials['change'] & (initialImage==img)].mean(axis=1)
+                            imgChangeSdfs[i] = sdfs[state]['change'][hasResp][:,trials['change'] & (changeImage==img)].mean(axis=1)
+                            imgPreResp[i] = imgPreSdfs[i][:,respWin].mean(axis=1)
+                            imgChangeResp[i] = imgChangeSdfs[i][:,respWin].mean(axis=1)
+                        imgChangeMod = np.clip((imgChangeResp-imgPreResp)/(imgChangeResp+imgPreResp),-1,1)
+                        
+                        result[region]['sdfs'][state]['preChange']['allImages'].append(imgPreSdfs.mean(axis=0))
+                        result[region]['sdfs'][state]['change']['allImages'].append(imgChangeSdfs.mean(axis=0))
+                        result[region]['resp'][state]['preChange']['allImages'].append(imgPreResp.mean(axis=0))
+                        result[region]['resp'][state]['change']['allImages'].append(imgChangeResp.mean(axis=0))
+                        result[region]['changeMod'][state]['allImages'].append(np.nanmean(imgChangeMod,axis=0))
+                        
+                        prefImgIndex = np.s_[np.argmax(imgChangeResp,axis=0),np.arange(hasResp.sum())]
+                        result[region]['sdfs'][state]['preChange']['prefImage'].append(imgPreSdfs[prefImgIndex])
+                        result[region]['sdfs'][state]['change']['prefImage'].append(imgChangeSdfs[prefImgIndex])
+                        result[region]['resp'][state]['preChange']['prefImage'].append(imgPreResp[prefImgIndex])
+                        result[region]['resp'][state]['change']['prefImage'].append(imgChangeResp[prefImgIndex])
+                        result[region]['changeMod'][state]['prefImage'].append(imgChangeMod[prefImgIndex])
                     
                     # first spike latency
                     for u in data[exp]['units'][probe][inRegion][hasResp]:
@@ -456,6 +470,16 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
                                 lat.append(np.nan)
                         result[region]['firstSpikeLat'].append(np.nanmedian(lat))
 
+def concatDictArrays(d):
+    for key in d:
+        if isinstance(d[key],list):
+            if isinstance(d[key][0],np.ndarray):
+                d[key] = np.concatenate(d[key])
+        elif isinstance(d[key],dict):
+            concatDictArrays(d[key])
+
+concatDictArrays(result)
+
                        
 # save result to pkl file
 pkl = fileIO.saveFile(fileType='*.pkl')
@@ -464,20 +488,6 @@ pickle.dump(result,open(pkl,'wb'))
 # get result from pkl file
 pkl = fileIO.getFile(fileType='*.pkl')
 result = pickle.load(open(pkl,'rb'))
-    
-
-for region in result:
-    for key in result[region].keys():
-        if isinstance(result[region][key],list):
-            if isinstance(result[region][key][0],np.ndarray):
-                result[region][key] = np.concatenate(result[region][key])
-        else:
-            for state in behavStates:
-                if isinstance(result[region][key][state],list):
-                    result[region][key][state] = np.concatenate(result[region][key][state])
-                else:
-                    for epoch in ('preChange','change'):
-                        result[region][key][state][epoch] = np.concatenate(result[region][key][state][epoch])
 
 
 nMice = [len(set(result[region]['mouseIDs'])) for region in result]
@@ -485,17 +495,17 @@ nExps = [len(set(result[region]['expDates'])) for region in result]
 nUnits = [sum(result[region]['unitCount']) for region in result]
 
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
-    
+hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]    
 hier = hierScore_8regions
 
-for param in ('changeMod','changeModHit','changeModMiss','changeModImage'):
+for key in trialLabels:
     fig = plt.figure(facecolor='w',figsize=(6,6))
     ax = plt.subplot(1,1,1)
     title = ''
     for state,clr in zip(behavStates,('k','0.5')):
-        m = [np.nanmean(result[region][param][state]) for region in result]
-        ci = [np.percentile([np.nanmean(np.random.choice(result[region][param][state],len(result[region][param][state]),replace=True)) for _ in range(5000)],(2.5,97.5)) for region in result]
+        d = [result[region]['changeMod'][state][key]for region in result]
+        m = [np.nanmean(regionData) for regionData in d]
+        ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
         ax.plot(hier,m,'o',mec=clr,mfc='none',ms=6,label=state)
         for h,c in zip(hier,ci):
             ax.plot([h,h],c,clr)
@@ -514,11 +524,10 @@ for param in ('changeMod','changeModHit','changeModMiss','changeModImage'):
     ax.set_xticks(hier)
     ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
     ax.set_xlabel('Hierarchy Score',fontsize=10)
-    ax.set_ylabel(param,fontsize=10)
+    ax.set_ylabel('Change Modulation Index ('+key+')',fontsize=10)
     ax.set_title(title,fontsize=8)
     ax.legend(loc='upper left')
     plt.tight_layout()
-
 
 
 # old
