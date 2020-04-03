@@ -216,7 +216,7 @@ mouseInfo = (
              ('459521',('09052019','09062019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('461027',('09122019','09132019'),('ABCDEF','ABCDEF'),'AA',(True,True)),
              ('479219',('11262019',),('BCD',),'A',(True,)),
-             ('484106',('12122019','12132019'),('BCDEF','BCDEF'),'AA',(True,True)),
+             ('484106',('12132019',),('BCDEF',),'A',(True,)),
              ('474732',('12192019','12202019'),('ABCDEF','ABCDE'),'AA',(True,True)),
             )
 
@@ -255,7 +255,9 @@ stimWin = slice(250,500)
 
 
 ###### behavior analysis
+
 exps = data.keys()
+
 hitRate = []
 falseAlarmRate = []
 dprime = []
@@ -1977,6 +1979,37 @@ ax.set_xticklabels(regionLabels)
 ax.set_ylim([0.5,1])
 ax.set_ylabel('Decoder accuracy')
 ax.legend(loc='upper left')
+plt.tight_layout()
+
+# plot individual experiments
+fig = plt.figure(facecolor='w',figsize=(6,4))
+ax = plt.subplot(1,1,1)
+xticks = np.arange(len(regionLabels))
+xlim = [-0.5,len(regionLabels)-0.5]
+ax.plot(xlim,[0,0],'--',color='0.5')
+allRegionData = []
+allRegionExps = []
+for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+    regionData = []
+    regionExps = []
+    for exp in result:
+        behavior = result[exp]['responseToChange']
+        s = result[exp][region]['active']['changePredictProb']['randomForest']
+        if len(s)>0 and any(behavior) and any(s[-1]):
+            regionData.append(np.corrcoef(behavior,s[-1])[0,1])
+            regionExps.append(exp)
+    n = len(regionData)
+    if n>0:
+        ax.plot(i+np.zeros(n),regionData,'o',mec='k',mfc='none')
+    allRegionData.append(regionData)
+    allRegionExps.append(regionExps)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim(xlim)
+ax.set_xticks(xticks)
+ax.set_xticklabels(regionLabels)
+ax.set_ylabel('Correlation of decoder prediction and behavior')
 plt.tight_layout()
 
 
