@@ -256,7 +256,7 @@ stimWin = slice(250,500)
 
 ###### behavior analysis
 
-exps = data.keys()
+exps = Aexps+Bexps
 
 hitRate = []
 falseAlarmRate = []
@@ -300,7 +300,7 @@ ax.set_xticklabels(['Change','Catch'])
 ax.set_xlim([-0.25,1.25])
 ax.set_ylim([0,1])
 ax.set_ylabel('Response Probability',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice,\n'+str(len(exps))+' ephys recording sessions',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice,\n'+str(len(exps))+' experiments',fontsize=16)
 
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
@@ -315,7 +315,7 @@ ax.tick_params(direction='out',top=False,right=False,labelsize=16)
 ax.set_xticks([])
 ax.set_ylim([0,3.5])
 ax.set_ylabel('d prime',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' days',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' experiments',fontsize=16)
 
 
 # compare active and passive running
@@ -371,15 +371,16 @@ regionLabels = [r[0] for r in regionNames]
 
 behavStates = ('active','passive')
 epochLabels = ('preChange','change')
-trialLabels = ('change','hit','miss','allImages','prefImage')
+changeModMethods = ('allImages','eachImage','prefImage')
+trialLabels = ('change','hit','miss')
 
 result = {region: {'mouseIDs': [],
                    'expDates': [],
                    'unitCount': [],
                    'base': {state: {epoch: [] for epoch in epochLabels} for state in behavStates},
-                   'sdfs': {state: {epoch: {trials: [] for trials in trialLabels} for epoch in epochLabels} for state in behavStates},
-                   'resp': {state: {epoch: {trials: [] for trials in trialLabels} for epoch in epochLabels} for state in behavStates},
-                   'changeMod': {state: {trials: [] for trials in trialLabels} for state in behavStates},
+                   'sdfs': {state: {epoch: {method: {trials: [] for trials in trialLabels} for method in changeModMethods} for epoch in epochLabels} for state in behavStates},
+                   'resp': {state: {epoch: {method: {trials: [] for trials in trialLabels} for method in changeModMethods} for epoch in epochLabels} for state in behavStates},
+                   'changeMod': {state: {method: {trials: [] for trials in trialLabels} for method in changeModMethods} for state in behavStates},
                    'firstSpikeLat': []} for region in regionLabels}
 
 for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
@@ -391,9 +392,9 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
         miss = response=='miss'
         changeTimes = data[exp]['behaviorChangeTimes'][:]
         engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
-        trials = {'change': engaged & (hit | miss),
-                  'hit': engaged & hit,
-                  'miss': engaged & miss}
+        trialIndex = {'change': engaged & (hit | miss),
+                      'hit': engaged & hit,
+                      'miss': engaged & miss}
         initialImage = data[exp]['initialImage'][:]
         changeImage = data[exp]['changeImage'][:]
         imageNames = np.unique(changeImage)
@@ -409,9 +410,9 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
                     sdfs[state] = {}
                     for epoch in epochLabels:
                         sdfs[state][epoch] = data[exp]['sdfs'][probe][state][epoch][:][inRegion]
-                hasSpikesActive,hasRespActive = findResponsiveUnits(sdfs['active']['change'][:,trials['change']].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
+                hasSpikesActive,hasRespActive = findResponsiveUnits(sdfs['active']['change'][:,trialIndex['change']].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
                 if 'passive' in behavStates:
-                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(sdfs['passive']['change'][:,trials['change']].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
+                    hasSpikesPassive,hasRespPassive = findResponsiveUnits(sdfs['passive']['change'][:,trialIndex['change']].mean(axis=1),baseWin,respWin,thresh=5,posRespOnly=False)
                     hasResp = hasSpikesActive & hasSpikesPassive & (hasRespActive | hasRespPassive)
                 else:
                     hasResp = hasSpikesActive & hasRespActive
@@ -427,38 +428,42 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
                             base = sdfs[state][epoch][:,:,baseWin].mean(axis=(1,2))
                             sdfs[state][epoch] -= base[:,None,None]
                             result[region]['base'][state][epoch].append(base[hasResp])
-                            for key in trials:
-                                result[region]['sdfs'][state][epoch][key].append(sdfs[state][epoch][hasResp][:,trials[key]].mean(axis=1))
-                                result[region]['resp'][state][epoch][key].append(sdfs[state][epoch][hasResp][:,trials[key],respWin].mean(axis=(1,2)))
+                            for trials in trialLabels:
+                                result[region]['sdfs'][state][epoch]['allImages'][trials].append(sdfs[state][epoch][hasResp][:,trialIndex[trials]].mean(axis=1))
+                                result[region]['resp'][state][epoch]['allImages'][trials].append(sdfs[state][epoch][hasResp][:,trialIndex[trials],respWin].mean(axis=(1,2)))
                      
                     for state in behavStates:
-                        for key in trials:
-                            pre,change = [result[region]['resp'][state][epoch][key][-1] for epoch in epochLabels]
-                            result[region]['changeMod'][state][key].append(np.clip((change-pre)/(change+pre),-1,1))
+                        for trials in trialLabels:
+                            pre,change = [result[region]['resp'][state][epoch]['allImages'][trials][-1] for epoch in epochLabels]
+                            result[region]['changeMod'][state]['allImages'][trials].append(np.clip((change-pre)/(change+pre),-1,1))
                         
-                        imgPreSdfs = np.zeros((len(imageNames),hasResp.sum(),sdfs['active']['change'].shape[2]))
-                        imgChangeSdfs = imgPreSdfs.copy()
-                        imgPreResp = np.zeros((len(imageNames),hasResp.sum()))
-                        imgChangeResp = imgPreResp.copy()
-                        for i,img in enumerate(imageNames):                            
-                            imgPreSdfs[i] = sdfs[state]['preChange'][hasResp][:,trials['change'] & (initialImage==img)].mean(axis=1)
-                            imgChangeSdfs[i] = sdfs[state]['change'][hasResp][:,trials['change'] & (changeImage==img)].mean(axis=1)
-                            imgPreResp[i] = imgPreSdfs[i][:,respWin].mean(axis=1)
-                            imgChangeResp[i] = imgChangeSdfs[i][:,respWin].mean(axis=1)
-                        imgChangeMod = np.clip((imgChangeResp-imgPreResp)/(imgChangeResp+imgPreResp),-1,1)
-                        
-                        result[region]['sdfs'][state]['preChange']['allImages'].append(imgPreSdfs.mean(axis=0))
-                        result[region]['sdfs'][state]['change']['allImages'].append(imgChangeSdfs.mean(axis=0))
-                        result[region]['resp'][state]['preChange']['allImages'].append(imgPreResp.mean(axis=0))
-                        result[region]['resp'][state]['change']['allImages'].append(imgChangeResp.mean(axis=0))
-                        result[region]['changeMod'][state]['allImages'].append(np.nanmean(imgChangeMod,axis=0))
-                        
-                        prefImgIndex = np.s_[np.argmax(imgChangeResp,axis=0),np.arange(hasResp.sum())]
-                        result[region]['sdfs'][state]['preChange']['prefImage'].append(imgPreSdfs[prefImgIndex])
-                        result[region]['sdfs'][state]['change']['prefImage'].append(imgChangeSdfs[prefImgIndex])
-                        result[region]['resp'][state]['preChange']['prefImage'].append(imgPreResp[prefImgIndex])
-                        result[region]['resp'][state]['change']['prefImage'].append(imgChangeResp[prefImgIndex])
-                        result[region]['changeMod'][state]['prefImage'].append(imgChangeMod[prefImgIndex])
+                            imgPreSdfs = np.full((len(imageNames),hasResp.sum(),sdfs['active']['change'].shape[2]),np.nan)
+                            imgChangeSdfs = imgPreSdfs.copy()
+                            imgPreResp = np.full((len(imageNames),hasResp.sum()),np.nan)
+                            imgChangeResp = imgPreResp.copy()
+                            for i,img in enumerate(imageNames):  
+                                preChangeIndex = trialIndex[trials] & (initialImage==img)
+                                changeIndex = trialIndex[trials] & (changeImage==img)
+                                if any(preChangeIndex) and any(changeIndex):
+                                    imgPreSdfs[i] = sdfs[state]['preChange'][hasResp][:,preChangeIndex].mean(axis=1)
+                                    imgChangeSdfs[i] = sdfs[state]['change'][hasResp][:,changeIndex].mean(axis=1)
+                                    imgPreResp[i] = imgPreSdfs[i][:,respWin].mean(axis=1)
+                                    imgChangeResp[i] = imgChangeSdfs[i][:,respWin].mean(axis=1)
+                            
+                            if not np.all(np.isnan(imgChangeResp)):
+                                imgChangeMod = np.clip((imgChangeResp-imgPreResp)/(imgChangeResp+imgPreResp),-1,1)
+                                result[region]['sdfs'][state]['preChange']['eachImage'][trials].append(np.nanmean(imgPreSdfs,axis=0))
+                                result[region]['sdfs'][state]['change']['eachImage'][trials].append(np.nanmean(imgChangeSdfs,axis=0))
+                                result[region]['resp'][state]['preChange']['eachImage'][trials].append(np.nanmean(imgPreResp,axis=0))
+                                result[region]['resp'][state]['change']['eachImage'][trials].append(np.nanmean(imgChangeResp,axis=0))
+                                result[region]['changeMod'][state]['eachImage'][trials].append(np.nanmean(imgChangeMod,axis=0))
+                                
+                                prefImgIndex = np.s_[np.nanargmax(imgChangeResp,axis=0),np.arange(hasResp.sum())]
+                                result[region]['sdfs'][state]['preChange']['prefImage'][trials].append(imgPreSdfs[prefImgIndex])
+                                result[region]['sdfs'][state]['change']['prefImage'][trials].append(imgChangeSdfs[prefImgIndex])
+                                result[region]['resp'][state]['preChange']['prefImage'][trials].append(imgPreResp[prefImgIndex])
+                                result[region]['resp'][state]['change']['prefImage'][trials].append(imgChangeResp[prefImgIndex])
+                                result[region]['changeMod'][state]['prefImage'][trials].append(imgChangeMod[prefImgIndex])
                     
                     # first spike latency
                     for u in data[exp]['units'][probe][inRegion][hasResp]:
@@ -474,7 +479,7 @@ for regionInd,(region,regionCCFLabels) in enumerate(regionNames):
 
 def concatDictArrays(d):
     for key in d:
-        if isinstance(d[key],list):
+        if isinstance(d[key],list) and len(d[key])>0:
             if isinstance(d[key][0],np.ndarray):
                 d[key] = np.concatenate(d[key])
         elif isinstance(d[key],dict):
@@ -500,36 +505,35 @@ anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xls
 hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]    
 hier = hierScore_8regions
 
-for key in trialLabels:
-    fig = plt.figure(facecolor='w',figsize=(6,6))
-    ax = plt.subplot(1,1,1)
-    title = ''
-    for state,clr in zip(behavStates,('k','0.5')):
-        d = [result[region]['changeMod'][state][key]for region in result]
-        m = [np.nanmean(regionData) for regionData in d]
-        ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
-        ax.plot(hier,m,'o',mec=clr,mfc='none',ms=6,label=state)
-        for h,c in zip(hier,ci):
-            ax.plot([h,h],c,clr)
-        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
-        x = np.array([min(hier),max(hier)])
-        ax.plot(x,slope*x+yint,'--',color=clr)
-        r,p = scipy.stats.pearsonr(hier,m)
-        if len(title)>0:
-            title += '\n'
-        title += 'Pearson ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
-        r,p = scipy.stats.spearmanr(hier,m)
-        title += '\nSpearman ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-    ax.set_xticks(hier)
-    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
-    ax.set_xlabel('Hierarchy Score',fontsize=10)
-    ax.set_ylabel('Change Modulation Index ('+key+')',fontsize=10)
-    ax.set_title(title,fontsize=8)
-    ax.legend(loc='upper left')
-    plt.tight_layout()
+for method in changeModMethods:
+    for trials in trialLabels:
+        fig = plt.figure(facecolor='w',figsize=(6,6))
+        ax = plt.subplot(1,1,1)
+        title = method+' '+trials
+        for state,clr in zip(behavStates,('k','0.5')):
+            d = [result[region]['changeMod'][state][method][trials]for region in result]
+            m = [np.nanmean(regionData) for regionData in d]
+            ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
+            ax.plot(hier,m,'o',mec=clr,mfc='none',ms=6,label=state)
+            for h,c in zip(hier,ci):
+                ax.plot([h,h],c,clr)
+            slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+            x = np.array([min(hier),max(hier)])
+            ax.plot(x,slope*x+yint,'--',color=clr)
+            r,p = scipy.stats.pearsonr(hier,m)
+            title += '\nPearson ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+            r,p = scipy.stats.spearmanr(hier,m)
+            title += '\nSpearman ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.set_xticks(hier)
+        ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+        ax.set_xlabel('Hierarchy Score',fontsize=10)
+        ax.set_ylabel('Change Modulation Index',fontsize=10)
+        ax.set_title(title,fontsize=8)
+        ax.legend(loc='upper left')
+        plt.tight_layout()
 
 
 # old
@@ -1505,7 +1509,6 @@ for model in modelNames:
     for score,clr in zip(('changeScore','imageScore'),('k','0.5')):
         allMean = np.nanmean(allScores[score],axis=0)
         allSem = np.nanstd(allScores[score],axis=0)/(np.sum(~np.isnan(allScores[score]),axis=0)**0.5)
-        print(allScores[score])
         ax.plot(unitSampleSize,allMean,'o-',color=clr,label=score[:score.find('S')])
         for x,m,s in zip(unitSampleSize,allMean,allSem):
             ax.plot([x,x],[m-s,m+s],color=clr)
@@ -2093,6 +2096,7 @@ fig = plt.figure(facecolor='w',figsize=(4,4))
 ax = plt.subplot(1,1,1)
 for state,fill in zip(('active',),(True,)):
     meanRegionData = []
+    regionN = []
     for shuffleBehav in (False,True):
         for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
             regionData = []
@@ -2114,8 +2118,10 @@ for state,fill in zip(('active',),(True,)):
             if not shuffleBehav:
                 if n>0:
                     meanRegionData.append(m)
+                    regionN.append(n)
                 else:
                     meanRegionData.append(np.nan)
+                    regionData.append(0)
     slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
     x = np.array([min(hier),max(hier)])
     ax.plot(x,slope*x+yint,'--',color='0.5')
