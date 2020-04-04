@@ -505,7 +505,10 @@ anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xls
 hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]    
 hier = hierScore_8regions
 
-for method in changeModMethods:
+figSaveDir = r'\\allen\programs\braintv\workgroups\nc-ophys\corbettb\changeMod figure for npx platform paper'
+
+# change mod
+for method,ylim in zip(changeModMethods,([0,0.44],[0,0.36],[0.25,0.6])):
     for trials in trialLabels:
         fig = plt.figure(facecolor='w',figsize=(6,6))
         ax = plt.subplot(1,1,1)
@@ -527,6 +530,7 @@ for method in changeModMethods:
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
         ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.set_ylim(ylim)
         ax.set_xticks(hier)
         ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
         ax.set_xlabel('Hierarchy Score',fontsize=10)
@@ -534,6 +538,60 @@ for method in changeModMethods:
         ax.set_title(title,fontsize=8)
         ax.legend(loc='upper left')
         plt.tight_layout()
+        
+# time to first spike
+fig = plt.figure(facecolor='w',figsize=(6,6))
+ax = plt.subplot(1,1,1)
+d = [np.array(result[region]['firstSpikeLat'])*1000 for region in result]
+m = [np.nanmean(regionData) for regionData in d]
+ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
+ax.plot(hier,m,'o',mec='k',mfc='k',ms=6)
+for h,c in zip(hier,ci):
+    ax.plot([h,h],c,'k')
+slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+x = np.array([min(hier),max(hier)])
+ax.plot(x,slope*x+yint,'--',color='k')
+r,p = scipy.stats.pearsonr(hier,m)
+title = '\nPearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+r,p = scipy.stats.spearmanr(hier,m)
+title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+ax.set_xticks(hier)
+ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+ax.set_xlabel('Hierarchy Score',fontsize=10)
+ax.set_ylabel('Time to first spike (ms)',fontsize=10)
+ax.set_title(title,fontsize=8)
+plt.tight_layout()
+
+# population sdfs
+xlim = [0,350]
+for region in ('LGd','V1','AM'):#result:
+    for state in ('active',):#behavStates:
+        for method in ('eachImage',):#changeModMethods:
+            for trials in ('change',):#trialLabels:
+                fig = plt.figure()
+                ax = fig.add_subplot(1,1,1)
+                for epoch,clr in zip(epochLabels,('0.5','k')):
+                    sdfs = result[region]['sdfs'][state][epoch][method][trials][:,stimWin.start+xlim[0]:stimWin.start+xlim[1]]
+                    m = sdfs.mean(axis=0)
+                    s = sdfs.std(axis=0)/(len(sdfs)**0.5)
+                    ax.plot(m,color=clr,label=epoch)
+                    ax.fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25) 
+                for side in ('right','top'):
+                    ax.spines[side].set_visible(False)
+                ax.tick_params(direction='out',top=False,right=False)
+                ax.set_xticks([0,100,200,300])
+                ax.set_xlim(xlim)
+                ax.set_ylabel('Spikes/s')
+                ax.set_title(region+' '+state+' '+method+' '+trials)
+                ax.legend(loc='upper right')
+                plt.tight_layout()
+                for ext in ('.png','.pdf'):
+                    plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs',region+'_'+state+'_'+method+'_'+trials+ext))
+                plt.close(fig)
+    
 
 
 # old
