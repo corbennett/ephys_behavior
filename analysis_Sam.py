@@ -622,6 +622,26 @@ for region in ('LGd','V1','AM'):#result:
                 for ext in ('.png','.pdf'):
                     plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs',region+'_'+state+'_'+method+'_'+trials+ext))
                 plt.close(fig)
+                
+# sdfs for schematic
+xlim = [0,150]
+for region,clr,ylim in zip(('V1','AM'),'br',([-1.5,15],[-1.2,12])):#result:
+    for i,(state,method,trials) in enumerate((('active','allImages','change'),('passive','allImages','change'),('active','eachImage','miss'))):
+                for epoch in epochLabels:
+                    fig = plt.figure()
+                    ax = fig.add_subplot(1,1,1)
+                    sdfs = result[region]['sdfs'][state][epoch][method][trials][:,stimWin.start+xlim[0]:stimWin.start+xlim[1]]
+                    ax.plot(sdfs.mean(axis=0),color=clr,lw=20)
+                    for side in ('right','top','left','bottom'):
+                        ax.spines[side].set_visible(False)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_xlim(xlim)
+                    ax.set_ylim(ylim)
+                    plt.tight_layout()
+                    for ext in ('.pdf',):
+                        plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs','forSchematic',region+'_'+str(i+1)+'_'+epoch+ext))
+                    plt.close(fig)
 
 
 # old
@@ -1270,6 +1290,7 @@ nCrossVal = 5
 
 baseWin = slice(stimWin.start-150,stimWin.start)
 respWin = slice(stimWin.start,stimWin.start+150)
+respWinOffset = respWin.start-stimWin.start
 respWinDur = respWin.stop-respWin.start
 
 decodeWindowSize = 10
@@ -1397,9 +1418,9 @@ for expInd,exp in enumerate(exps):
                     activeChangeSDFs.append(activeChange[hasResp])
                     units = data[exp]['units'][probe][inRegion][hasResp]
                     spikes = data[exp]['spikeTimes'][probe]
-                    activeNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],nonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
+                    activeNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],nonChangeFlashTimes+respWinOffset,respWinDur*0.001,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
                     if 'passive' in behavStates:
-                        passiveNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],passiveNonChangeFlashTimes,0.15,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
+                        passiveNonChangeSDFs.append([analysis_utils.getSDF(spikes[u],passiveNonChangeFlashTimes+respWinOffset,respWinDur*0.001,sampInt=0.001,filt='exp',sigma=0.005,avg=False)[0] for u in units])
         if len(activePreSDFs)>0:
             activePreSDFs = np.concatenate(activePreSDFs)
             activeChangeSDFs = np.concatenate(activeChangeSDFs)
