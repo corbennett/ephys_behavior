@@ -531,6 +531,7 @@ for method,ylim in zip(changeModMethods,([0,0.44],[0,0.36],[0.25,0.6])):
             ax.spines[side].set_visible(False)
         ax.tick_params(direction='out',top=False,right=False,labelsize=8)
         ax.set_ylim(ylim)
+#        ax.set_xticks([-0.4,-0.2,0,0.2,0.4])
         ax.set_xticks(hier)
         ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
         ax.set_xlabel('Hierarchy Score',fontsize=10)
