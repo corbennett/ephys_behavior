@@ -505,97 +505,228 @@ anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xls
 hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]    
 hier = hierScore_8regions
 
+hierColors = np.array([[217,141,194], # LGd
+                       [129,116,177], # V1
+                       [78,115,174], # LM
+                       [101,178,201], # RL
+                       [88,167,106], #LP
+                       [202,183,120], # AL
+                       [219,132,87], # PM
+                       [194,79,84]] # AM
+                     ).astype(float)
+hierColors /= 255
+
 figSaveDir = r'\\allen\programs\braintv\workgroups\nc-ophys\corbettb\changeMod figure for npx platform paper'
 
 # change mod active vs passive
-for method,ylim in zip(changeModMethods,([0,0.44],[0,0.36],[0.25,0.6])):
-    for trials in trialLabels:
+#for method,ylim in zip(changeModMethods,([0,0.44],[0,0.36],[0.25,0.6])):
+for method,ylim in zip(('eachImage',),([0,0.36],)):
+    for trials in ('change',):#trialLabels:
         fig = plt.figure(facecolor='w',figsize=(6,6))
         ax = plt.subplot(1,1,1)
-        title = method+' '+trials
-        for state,clr in zip(behavStates,('k','0.5')):
+        for state,fill,fitClr in zip(behavStates,(True,False),('k','0.5')):
             d = [result[region]['changeMod'][state][method][trials]for region in result]
-            m = [np.nanmean(regionData) for regionData in d]
+            mn = [np.nanmean(regionData) for regionData in d]
             ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
-            ax.plot(hier,m,'o',mec=clr,mfc='none',ms=6,label=state)
-            for h,c in zip(hier,ci):
-                ax.plot([h,h],c,clr)
-            slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+            slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,mn)
             x = np.array([min(hier),max(hier)])
-            ax.plot(x,slope*x+yint,'--',color=clr)
-            r,p = scipy.stats.pearsonr(hier,m)
-            title += '\nPearson ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
-            r,p = scipy.stats.spearmanr(hier,m)
+            ax.plot(x,slope*x+yint,'--',color=fitClr)
+            r,p = scipy.stats.pearsonr(hier,mn)
+            if state=='active':
+                title = ''
+            else:
+                title +='\n'
+            title += 'Pearson ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+            r,p = scipy.stats.spearmanr(hier,mn)
             title += '\nSpearman ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+            for i,(h,m,c,clr) in enumerate(zip(hier,mn,ci,hierColors)):
+                mfc = clr if fill else 'none'
+                lbl = state if i==0 else None
+                ax.plot(h,m,'o',mec=clr,mfc=mfc,ms=6,label=lbl)
+                ax.plot([h,h],c,color=clr)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=10)
         ax.set_ylim(ylim)
-#        ax.set_xticks([-0.4,-0.2,0,0.2,0.4])
-        ax.set_xticks(hier)
-        ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
-        ax.set_xlabel('Hierarchy Score',fontsize=10)
-        ax.set_ylabel('Change Modulation Index',fontsize=10)
+        ax.set_xticks([-0.4,-0.2,0,0.2,0.4])
+#        ax.set_xticks(hier)
+#        ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+        ax.set_xlabel('Hierarchy Score',fontsize=12)
+        ax.set_ylabel('Change Modulation Index',fontsize=12)
         ax.set_title(title,fontsize=8)
         ax.legend(loc='upper left')
         plt.tight_layout()
         
 # change mod hit vs miss
-for method,ylim in zip(changeModMethods,([0,0.44],[0,0.36],[0.25,0.6])):
+#for method,ylim in zip(changeModMethods,([0,0.44],[0,0.36],[0.25,0.6])):
+for method,ylim in zip(('eachImage',),([0,0.36],)):
     fig = plt.figure(facecolor='w',figsize=(6,6))
     ax = plt.subplot(1,1,1)
-    title = method
-    for trials,clr in zip(('hit','miss'),('k','0.5')):
+    for trials,fill,fitClr in zip(('hit','miss'),(True,False),('k','0.5')):
         d = [result[region]['changeMod']['active'][method][trials]for region in result]
-        m = [np.nanmean(regionData) for regionData in d]
+        mn = [np.nanmean(regionData) for regionData in d]
         ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
-        ax.plot(hier,m,'o',mec=clr,mfc='none',ms=6,label=trials)
-        for h,c in zip(hier,ci):
-            ax.plot([h,h],c,clr)
-        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,mn)
         x = np.array([min(hier),max(hier)])
-        ax.plot(x,slope*x+yint,'--',color=clr)
-        r,p = scipy.stats.pearsonr(hier,m)
-        title += '\nPearson ('+trials+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
-        r,p = scipy.stats.spearmanr(hier,m)
+        ax.plot(x,slope*x+yint,'--',color=fitClr)
+        r,p = scipy.stats.pearsonr(hier,mn)
+        if trials=='hit':
+            title = ''
+        else:
+            title +='\n'
+        title += 'Pearson ('+trials+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+        r,p = scipy.stats.spearmanr(hier,mn)
         title += '\nSpearman ('+trials+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+        for i,(h,m,c,clr) in enumerate(zip(hier,mn,ci,hierColors)):
+            mfc = clr if fill else 'none'
+            lbl = trials if i==0 else None
+            ax.plot(h,m,'o',mec=clr,mfc=mfc,ms=6,label=lbl)
+            ax.plot([h,h],c,color=clr)
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=10)
     ax.set_ylim(ylim)
-    ax.set_xticks(hier)
-    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
-    ax.set_xlabel('Hierarchy Score',fontsize=10)
-    ax.set_ylabel('Change Modulation Index',fontsize=10)
+    ax.set_xticks([-0.4,-0.2,0,0.2,0.4])
+#    ax.set_xticks(hier)
+#    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+    ax.set_xlabel('Hierarchy Score',fontsize=12)
+    ax.set_ylabel('Change Modulation Index',fontsize=12)
     ax.set_title(title,fontsize=8)
     ax.legend(loc='upper left')
     plt.tight_layout()
         
 # time to first spike
-fig = plt.figure(facecolor='w',figsize=(6,6))
+fig = plt.figure(facecolor='w',figsize=(6,5))
 ax = plt.subplot(1,1,1)
 d = [np.array(result[region]['firstSpikeLat'])*1000 for region in result]
-m = [np.nanmean(regionData) for regionData in d]
+mn = [np.nanmean(regionData) for regionData in d]
 ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
-ax.plot(hier,m,'o',mec='k',mfc='k',ms=6)
-for h,c in zip(hier,ci):
-    ax.plot([h,h],c,'k')
-slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
+slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,mn)
 x = np.array([min(hier),max(hier)])
 ax.plot(x,slope*x+yint,'--',color='k')
-r,p = scipy.stats.pearsonr(hier,m)
-title = '\nPearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-r,p = scipy.stats.spearmanr(hier,m)
+r,p = scipy.stats.pearsonr(hier,mn)
+title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+r,p = scipy.stats.spearmanr(hier,mn)
 title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+for h,m,c,clr in zip(hier,mn,ci,hierColors):
+    ax.plot(h,m,'o',mec=clr,mfc=clr,ms=6)
+    ax.plot([h,h],c,color=clr)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xticks(hier)
-ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
-ax.set_xlabel('Hierarchy Score',fontsize=10)
-ax.set_ylabel('Time to first spike (ms)',fontsize=10)
+ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+ax.set_xticks([-0.4,-0.2,0,0.2,0.4])
+#ax.set_xticks(hier)
+#ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+ax.set_xlabel('Hierarchy Score',fontsize=12)
+ax.set_ylabel('Time to first spike (ms)',fontsize=12)
 ax.set_title(title,fontsize=8)
 plt.tight_layout()
+
+# baseline, preResp, changeResp
+for method in ('eachImage',):
+    for rate,epoch,ylbl in zip(('base','resp','resp'),('change','preChange','change'),('Baseline Rate','Pre-change Response','Change Response')):
+        fig = plt.figure(facecolor='w',figsize=(6,5))
+        ax = plt.subplot(1,1,1)
+        ymax = 0
+        for state,fill in zip(behavStates,(True,False)):
+            if rate=='base':
+                d = [result[region][rate][state][epoch] for region in result]
+            else:
+                d = [result[region][rate][state][epoch][method]['change'] for region in result]
+            mn = [np.nanmean(regionData) for regionData in d]
+            ci = [np.percentile([np.nanmean(np.random.choice(regionData,len(regionData),replace=True)) for _ in range(5000)],(2.5,97.5)) for regionData in d]
+            r,p = scipy.stats.pearsonr(hier,mn)
+            if state=='active':
+                title = ''
+            else:
+                title +='\n'
+            title += 'Pearson ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+            r,p = scipy.stats.spearmanr(hier,mn)
+            title += '\nSpearman ('+state+'): r = '+str(round(r,2))+', p = '+str(round(p,3))
+            for i,(h,m,c,clr) in enumerate(zip(hier,mn,ci,hierColors)):
+                mfc = clr if fill else 'none'
+                lbl = state if i==0 else None
+                ax.plot(h,m,'o',mec=clr,mfc=mfc,ms=6,label=lbl)
+                ax.plot([h,h],c,color=clr)
+                ymax = max(ymax,c[1])
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+        ax.set_ylim([0,1.05*ymax])
+        ax.set_xticks([-0.4,-0.2,0,0.2,0.4])
+        #ax.set_xticks(hier)
+        #ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
+        ax.set_xlabel('Hierarchy Score',fontsize=12)
+        ax.set_ylabel(ylbl+' (spikes/s)',fontsize=12)
+        ax.set_title(title,fontsize=8)
+        ax.legend(loc='lower right')
+        plt.tight_layout()
+
+# parameter distributions       
+for param,xlbl,xticks in zip(('firstSpikeLat','changeMod'),('Time to first spike (ms)','Change Modulation Index'),((40,80,120),(-1,-0.5,0,0.5,1))):
+    fig = plt.figure(facecolor='w')
+    ax = plt.subplot(1,1,1)
+    if param=='firstSpikeLat':
+        r = [np.array(result[region][param])*1000 for region in result]
+    else:
+        r = [result[region][param]['active']['eachImage']['change'] for region in result]
+    for d,clr,lbl in zip(r,hierColors,regionLabels):
+        d = d[~np.isnan(d)]
+        sortd = np.sort(d)
+        cumProb = [np.sum(d<=i)/d.size for i in sortd]
+        ax.plot(sortd,cumProb,color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False,labelsize=10)
+    ax.set_xticks(xticks)
+    ax.set_yticks([0,0.5,1])
+    ax.set_xlabel(xlbl,fontsize=12)
+    ax.set_ylabel('Cumulative Probability',fontsize=12)
+    ax.legend()
+    plt.tight_layout()
+
+# p value matrix
+alpha = 0.05
+for param,lbl in zip(('firstSpikeLat','changeMod'),('Time to first spike','Change Modulation Index')):
+    if param=='firstSpikeLat':
+        d = [np.array(result[region][param]) for region in result]
+    else:
+        d = [result[region][param]['active']['eachImage']['change'] for region in result]
+    
+    comparison_matrix = np.full((len(regionLabels),)*2,np.nan) 
+    for i,r1 in enumerate(d):
+        for j,r2 in enumerate(d):
+            if j>i:
+                z, comparison_matrix[i,j] = ranksums(r1[np.invert(np.isnan(r1))],
+                                                     r2[np.invert(np.isnan(r2))])
+            
+    p_values = comparison_matrix.flatten()
+    ok_inds = np.where(p_values > 0)[0]
+    
+    reject, p_values_corrected, alphaSidak, alphacBonf = multipletests(p_values[ok_inds], alpha=alpha, method='fdr_bh')
+            
+    p_values_corrected2 = np.full((len(p_values),),np.nan)
+    p_values_corrected2[ok_inds] = p_values_corrected
+    comparison_corrected = np.reshape(p_values_corrected2, comparison_matrix.shape)
+    
+    lim = (1e-5,alpha)
+    clim = np.log10(lim)
+    
+    fig = plt.figure(facecolor='w')
+    ax = fig.subplots(1)
+    cmap = matplotlib.cm.gray
+    cmap.set_bad(color=np.array((255, 251, 204))/255)
+    im = ax.imshow(np.log10(comparison_matrix),cmap=cmap,clim=clim)
+    ax.set_xticks(np.arange(len(regionLabels)))
+    ax.set_xticklabels(regionLabels)
+    ax.set_yticks(np.arange(len(regionLabels)))
+    ax.set_yticklabels(regionLabels)
+    ax.set_ylim([-0.5,len(regionLabels)-0.5])
+    ax.set_xlim([-0.5,len(regionLabels)-0.5])
+    cb = plt.colorbar(im,ax=ax,fraction=0.026,pad=0.04)
+    cb.set_ticks(clim)
+    cb.set_ticklabels(lim)
+    plt.tight_layout()
 
 # population sdfs
 xlim = [0,350]
@@ -644,332 +775,7 @@ for region,clr,ylim in zip(('V1','AM'),'br',([-1.5,15],[-1.2,12])):#result:
                         plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs','forSchematic',region+'_'+str(i+1)+'_'+epoch+ext))
                     plt.close(fig)
 
-
-# old
-nMice = np.array([len(set(m)) for m in mouseIDs])
-nExps = np.array([len(set(d)) for d in expDates])
-nUnits = np.array([sum(n) for n in unitCount])
-activePreSdfs,activeChangeSdfs = [[np.concatenate(s) for s in sdfs] for sdfs in (activePreSdfs,activeChangeSdfs)]
-if 'passive' in behavStates:
-    passivePreSdfs,passiveChangeSdfs = [[np.concatenate(s) for s in sdfs] for sdfs in (passivePreSdfs,passiveChangeSdfs)]
-
-
-# calculate metrics    
-preBase,changeBase = [[s[:,baseWin].mean(axis=1) for s in sdfs] for sdfs in (activePreSdfs,activeChangeSdfs)]
-preRespActive,changeRespActive = [[s[:,respWin].mean(axis=1)-b for s,b in zip(sdfs,base)] for sdfs,base in zip((activePreSdfs,activeChangeSdfs),(preBase,changeBase))]
-baseRateActive = changeBase
-changeModActive = [np.clip((change-pre)/(change+pre),-1,1) for pre,change in zip(preRespActive,changeRespActive)]
-changeModLatActive = [findLatency(change-pre,baseWin,stimWin,method='abs',thresh=0.5,maxval=150) for pre,change in zip(activePreSdfs,activeChangeSdfs)]
-popChangeModLatActive = np.array([findLatency(np.mean(change-pre,axis=0),baseWin,stimWin,method='abs',thresh=0.5)[0] for pre,change in zip(activePreSdfs,activeChangeSdfs)])
-respLatActive = [findLatency(sdfs,baseWin,stimWin,method='abs',thresh=0.5,maxval=150) for sdfs in activeChangeSdfs]
-popRespLatActive = np.array([findLatency(sdfs.mean(axis=0),baseWin,stimWin,method='abs',thresh=0.5)[0] for sdfs in activeChangeSdfs])
-
-if 'passive' in behavStates:
-    preBase,changeBase = [[s[:,baseWin].mean(axis=1) for s in sdfs] for sdfs in (passivePreSdfs,passiveChangeSdfs)]
-    preRespPassive,changeRespPassive = [[s[:,respWin].mean(axis=1)-b for s,b in zip(sdfs,base)] for sdfs,base in zip((passivePreSdfs,passiveChangeSdfs),(preBase,changeBase))]
-    baseRatePassive = changeBase
-    changeModPassive = [np.clip((change-pre)/(change+pre),-1,1) for pre,change in zip(preRespPassive,changeRespPassive)]
-    behavModPre = [np.clip((active-passive)/(active+passive),-1,1) for active,passive in zip(preRespActive,preRespPassive)]
-    behavModChange = [np.clip((active-passive)/(active+passive),-1,1) for active,passive in zip(changeRespActive,changeRespPassive)]
-
-   
-# plot pre and post change sdfs and their difference
-for region,activePre,activeChange,passivePre,passiveChange in zip(regionLabels,activePreSdfs,activeChangeSdfs,passivePreSdfs,passiveChangeSdfs):
-    activePre,activeChange,passivePre,passiveChange = [d-d[:,baseWin].mean(axis=1)[:,None] for d in (activePre,activeChange,passivePre,passiveChange)]
-    fig = plt.figure(figsize=(8,8))
-    ylim = None
-    for i,(pre,change,clr,title) in enumerate(zip((activePre,passivePre),(activeChange,passiveChange),([1,0,0],[0,0,1]),('Active','Passive'))):
-        ax = fig.add_subplot(len(behavStates),1,i+1)
-        clrlight = np.array(clr).astype(float)
-        clrlight[clrlight==0] = 0.7
-        diff = change-pre
-        for d,c,lbl in zip((pre,change,change-pre),(clrlight,clr,[0.5,0.5,0.5]),('Pre','Change','Diff')):
-            m = d.mean(axis=0)
-            s = d.std(axis=0)/(len(d)**0.5)
-            ax.plot(m,color=c,label=lbl)
-            ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25) 
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_xlim([250,600])
-        ax.set_xticks([250,350,450,550])
-        ax.set_xticklabels([0,100,200,300,400])
-        if ylim is None:
-            ylim = plt.get(ax,'ylim')
-        else:
-            ax.set_ylim(ylim)
-        ax.set_ylabel('Spikes/s')
-        ax.set_title(region+' '+title)
-        ax.legend()
-
-    fig = plt.figure(figsize=(8,8))
-    ylim = None
-    for i,(active,passive,title) in enumerate(zip((activeChange,activePre),(passiveChange,passivePre),('Change','Pre'))):
-        ax = fig.add_subplot(len(behavStates),1,i+1)
-        for d,clr,lbl in zip((active,passive),'rb',('Active','Passive')):
-            m = d.mean(axis=0)
-            s = d.std(axis=0)/(len(d)**0.5)
-            ax.plot(m,color=clr,label=lbl)
-            ax.fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25) 
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_xlim([250,600])
-        ax.set_xticks([250,350,450,550])
-        ax.set_xticklabels([0,100,200,300,400])
-        if ylim is None:
-            ylim = plt.get(ax,'ylim')
-        else:
-            ax.set_ylim(ylim)
-        ax.set_ylabel('Spikes/s')
-        ax.set_title(region+' '+title)
-        ax.legend()
-        
-# another representation of sdfs
-cortical_cmap = plt.cm.plasma
-subcortical_cmap = plt.cm.Reds
-regionsToUse = (('LGd',(0,0,0)),
-                ('V1',cortical_cmap(0)),
-                ('LM',cortical_cmap(0.1)),
-                ('RL',cortical_cmap(0.2)),
-                ('AL',cortical_cmap(0.3)),
-                ('PM',cortical_cmap(0.4)),
-                ('AM',cortical_cmap(0.5)),
-                ('LP',subcortical_cmap(0.4)),
-                ('APN',subcortical_cmap(0.5)),
-                ('SCd',subcortical_cmap(0.6)),
-                ('MB',subcortical_cmap(0.7)),
-                ('MRN',subcortical_cmap(0.8)),
-                ('SUB',subcortical_cmap(0.9)),
-                ('hipp',subcortical_cmap(1.0)))
-regionsToUse = regionsToUse[:8]
-
-spacing = -0.1
-for i,(sdfs,lbl) in enumerate(zip((activeChangeSdfs,activePreSdfs,passiveChangeSdfs,passivePreSdfs),('Active Change','Active Pre','Passive Change','Passive Pre'))):
-    fig = plt.figure(figsize=(4.5,10))
-    ax = fig.subplots(1)
-    if i==0:
-        y = 0
-        yticks = []
-        norm = []
-    for j,(region,clr) in enumerate(regionsToUse[::-1]):
-        ind = regionLabels.index(region)
-        d = sdfs[ind]-sdfs[ind][:,baseWin].mean(axis=1)[:,None]
-        m = d.mean(axis=0)
-        s = d.std(axis=0)/(len(sdfs[ind])**0.5)
-        if i==0:
-            yticks.append(y)
-            norm.append(m.max())
-        m /= norm[j]
-        s /= norm[j]
-        m += yticks[j]
-        ax.plot(m,color=clr)
-        ax.fill_between(np.arange(len(m)),m+s,m-s,color=clr,alpha=0.25)
-        if i==0:
-            y = np.max(m+s)+spacing
-            ymax = y
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_xlim([250,600])
-        ax.set_xticks([250,350,450,550])
-        ax.set_xticklabels([0,100,200,300,400])
-        ax.set_xlabel('Time (ms)')
-        ax.set_ylim([-0.1,ymax-spacing+0.1])
-        ax.set_yticks(yticks)
-        ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
-        ax.set_title(lbl)
-    plt.tight_layout()
-
-    
-fig = plt.figure(figsize=(3,10))
-ax = fig.subplots(1)
-y = 0
-yticks = []
-norm = []
-xlim = [250,500]
-for j,(region,clr) in enumerate(regionsToUse[::-1]):
-    ind = regionLabels.index(region)
-    for i,(sdfs,lineStyle) in enumerate(zip((activeChangeSdfs[ind],activePreSdfs[ind]),('-','--'))):
-        d = sdfs-sdfs[:,baseWin].mean(axis=1)[:,None]
-        m = d.mean(axis=0)
-        s = d.std(axis=0)/(len(sdfs)**0.5)
-        if i==0:
-            yticks.append(y)
-            norm.append(m.max())
-        m /= norm[j]
-        s /= norm[j]
-        m += yticks[j]
-        c,lw,alpha = ('0.4',3,1) if i==2 else (clr,1,1)
-        z = -(i-2)
-        ax.plot(m,lineStyle,color=c,lineWidth=lw,alpha=alpha,zorder=z)
-        ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25,zorder=z+1)
-        if i==0:
-            y = np.max(m+s)+spacing
-            ymax = y
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xticks([250,350,450])
-    ax.set_xticklabels([0,100,200])
-    ax.set_xlim(xlim)
-    ax.set_xlabel('Time (ms)')
-    ax.set_yticks(yticks)
-    ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
-    ax.set_ylim([-0.1,ymax-spacing+0.1])
-plt.tight_layout()
-
-fig = plt.figure(figsize=(3,10))
-ax = fig.subplots(1)
-y = 0
-yticks = []
-norm = []
-xlim = [250,500]
-for j,(region,clr) in enumerate(regionsToUse[::-1]):
-    ind = regionLabels.index(region)
-    for i,(sdfs,lineStyle) in enumerate(zip((activeChangeSdfs[ind],passiveChangeSdfs[ind]),('-','--'))):
-        d = sdfs-sdfs[:,baseWin].mean(axis=1)[:,None]
-        m = d.mean(axis=0)
-        s = d.std(axis=0)/(len(sdfs)**0.5)
-        if i==0:
-            yticks.append(y)
-            norm.append(m.max())
-        m /= norm[j]
-        s /= norm[j]
-        m += yticks[j]
-        c,lw,alpha = ('0.4',3,1) if i==2 else (clr,1,1)
-        z = -(i-2)
-        ax.plot(m,lineStyle,color=c,lineWidth=lw,alpha=alpha,zorder=z)
-        ax.fill_between(np.arange(len(m)),m+s,m-s,color=c,alpha=0.25,zorder=z+1)
-        if i==0:
-            y = np.max(m+s)+spacing
-            ymax = y
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xticks([250,350,450])
-    ax.set_xticklabels([0,100,200])
-    ax.set_xlim(xlim)
-    ax.set_xlabel('Time (ms)')
-    ax.set_yticks(yticks)
-    ax.set_yticklabels([r[0] for r in regionsToUse[::-1]])
-    ax.set_ylim([-0.1,ymax-spacing+0.1])
-plt.tight_layout()
-
-
-# plot baseline rate, change resp, change mod, and behav mod
-ind = [regionLabels.index(r[0]) for r in regionsToUse]
-xticks = np.arange(len(regionsToUse))
-for param,ylab,lbl in zip(((baseRateActive,baseRatePassive),(changeRespActive,changeRespPassive),(changeModActive,changeModPassive),(behavModChange,behavModPre)),
-                          (('Baseline Rate (spikes/s)','Change Response (spikes/s)','Change Modulation','Behavior Modulation')),
-                          ((('Active','Passive'),)*3+(('Change','Pre'),))):
-    fig = plt.figure(facecolor='w',figsize=(15,8))
-    ax = fig.subplots(1)
-    xlim = [-0.5,len(regionsToUse)-0.5]
-    for p,fill,l in zip(param,[True,False],lbl):
-        p = [p[i] for i in ind]
-        mean = [np.nanmean(d) for d in p]
-        sem = [np.nanstd(d)/(np.sum(~np.isnan(d))**0.5) for d in p]
-        for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,[r[1] for r in regionsToUse])):
-            l = l if i==0 else None
-            mfc = clr if fill else 'none'
-            ax.plot(x,m,'o',mec=clr,mfc=mfc,ms=10,label=l)
-            ax.plot([x,x],[m-s,m+s],color=clr)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-    ax.set_xlim(xlim)
-    ax.set_xticks(xticks)
-    ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionsToUse,nUnits[ind],nExps[ind],nMice[ind])],fontsize=8)
-    ylim = plt.get(ax,'ylim')
-    if ylim[0]>0:
-        ax.set_ylim([0,ylim[1]])
-    else:
-        ax.plot(xlim,[0,0],'--',color='0.5')
-    ax.set_ylabel(ylab,fontsize=8)
-    ax.legend()
-    
-# plot behav mod of change resp alone
-fig = plt.figure(facecolor='w',figsize=(15,8))
-ax = fig.subplots(1)
-p = [behavModChange[i] for i in ind]
-mean = [np.nanmean(d) for d in p]
-sem = [np.nanstd(d)/(np.sum(~np.isnan(d))**0.5) for d in p]
-for x,m,s,clr in zip(xticks,mean,sem,[r[1] for r in regionsToUse]):
-    ax.plot(x,m,'o',mec=clr,mfc=clr,ms=10)
-    ax.plot([x,x],[m-s,m+s],color=clr)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xlim(xlim)
-ax.set_xticks(xticks)
-ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionsToUse,nUnits[ind],nExps[ind],nMice[ind])],fontsize=8)
-ylim = plt.get(ax,'ylim')
-if ylim[0]>0:
-    ax.set_ylim([0,ylim[1]])
-else:
-    ax.plot(xlim,[0,0],'--',color='0.5')
-ax.set_ylabel('Behavior Modulation',fontsize=8)
-
-# plot pre and change resp together
-fig = plt.figure(facecolor='w',figsize=(15,8))
-ax = fig.subplots(1)
-for param,clr,lbl in zip((preRespActive,changeRespActive,preRespPassive,changeRespPassive),'rrbb',('Active Pre','Active Change','Passive Pre','Passive Change')):
-    param = [param[i] for i in ind]
-    mean = [d.mean() for d in param]
-    sem = [d.std()/(d.size**0.5) for d in param]
-    mfc = clr if 'Change' in lbl else 'none'
-    ax.plot(xticks,mean,'o',mec=clr,mfc=mfc,ms=12,label=lbl)
-    for x,m,s in zip(xticks,mean,sem): 
-        ax.plot([x,x],[m-s,m+s],color=clr)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xlim(xlim)
-ax.set_xticks(xticks)
-ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionsToUse,nUnits[ind],nExps[ind],nMice[ind])],fontsize=8)
-ylim = plt.get(ax,'ylim')
-ax.set_ylim([0,ylim[1]])
-ax.set_ylabel('Response (spikes/s)',fontsize=8)
-ax.legend()
-
-# plot resp and change mod latency
-fig = plt.figure(facecolor='w',figsize=(15,8))
-ax = fig.subplots(1)
-for param,clr,lbl in zip((respLatActive,changeModLatActive),('k','0.5'),('Visual Response','Change Modulation')):
-    param = [param[i] for i in ind]
-    mean = [np.nanmean(d) for d in param]
-    sem = [np.nanstd(d)/(np.sum(~np.isnan(d))**0.5) for d in param]
-    for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,[r[1] for r in regionsToUse])):
-        mfc = 'none' if 'Change' in lbl else clr
-        l = lbl if i==0 else None
-        ax.plot(x,m,'o',mec=clr,mfc=mfc,ms=10,label=l)
-        ax.plot([x,x],[m-s,m+s],color=clr)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xlim(xlim)
-ax.set_xticks(xticks)
-ax.set_xticklabels([r[0]+'\n'+str(n)+' cells\n'+str(d)+' days\n'+str(m)+' mice' for r,n,d,m in zip(regionsToUse,nUnits[ind],nExps[ind],nMice[ind])],fontsize=8)
-ax.set_ylabel('Latency (ms)',fontsize=8)
-ax.legend()
-    
-# plot pop resp and change mod latency
-fig = plt.figure(facecolor='w')
-ax = plt.subplot(1,1,1)
-for lat,mec,mfc,lbl in zip((popRespLatActive,popChangeModLatActive),'kk',('k','none'),('visual response','change mod')):
-    ax.plot(lat[ind],'o',mec=mec,mfc=mfc,ms=10,label=lbl)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-ax.set_xlim(xlim)
-ax.set_xticks(xticks)
-ax.set_xticklabels([r[0] for r in regionsToUse])
-ax.set_ylabel('Pop Resp Latency (ms)',fontsize=10)
-ax.legend()
-
-
-# make dataframe for Josh
+# make dataframe for Josh (old)
 d = OrderedDict()
 colLabels = ('Experiment Date','Mouse ID','Region','Change Modulation Index','Time to first spike','Baseline Rate','Pre-change Response','Change Response')
 for i,(key,val) in enumerate(zip(colLabels,(expDates,mouseIDs,regionLabels,changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive))):
@@ -981,110 +787,6 @@ for i,(key,val) in enumerate(zip(colLabels,(expDates,mouseIDs,regionLabels,chang
 df = pd.DataFrame(data=d)
 f = fileIO.saveFile(fileType='*.hdf5')
 df.to_hdf(f,'table')
-    
-
-# plot parameters vs hierarchy score
-anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
-hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]
-    
-hier = hierScore_8regions
-
-paramLabels = ('Change Modulation Index','Time to first spike after image change (ms)','Baseline Rate (spikes/s)','Pre-change Response (spikes/s)','Change Response (spikes/s)')
-for param,ylbl in zip((changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive),paramLabels):
-    fig = plt.figure(facecolor='w',figsize=(6,6))
-    ax = plt.subplot(1,1,1)
-    title = ''
-    prms = (param,changeModPassive) if ylbl=='Change Modulation Index' else (param,)
-    for prm in prms:
-        m = [np.nanmean(reg) for reg in prm]
-        ci = [np.percentile([np.nanmean(np.random.choice(reg,len(reg),replace=True)) for _ in range(5000)],(2.5,97.5)) for reg in prm]
-        if prm is changeModPassive:
-            clr = '0.5'
-            mfc = 'none'
-            lbl = 'passive'
-        else:
-            clr = 'k'
-            mfc = clr
-            lbl = 'active'
-        ax.plot(hier,m,'o',mec=clr,mfc=mfc,ms=6,label=lbl)
-        for h,c in zip(hier,ci):
-            ax.plot([h,h],c,clr)
-        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,m)
-        x = np.array([min(hier),max(hier)])
-        ax.plot(x,slope*x+yint,'--',color=clr)
-        r,p = scipy.stats.pearsonr(hier,m)
-        if len(title)>0:
-            title += '\n'
-        title += 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-        r,p = scipy.stats.spearmanr(hier,m)
-        title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-    ax.set_xticks(hier)
-    ax.set_xticklabels([str(round(h,2))+'\n'+r[0]+'\n'+str(nu)+'\n'+str(nm) for h,r,nu,nm in zip(hier,regionNames,nUnits,nMice)])
-    ax.set_xlabel('Hierarchy Score',fontsize=10)
-    ax.set_ylabel(ylbl,fontsize=10)
-    ax.set_title(title,fontsize=8)
-    ax.legend(loc='upper left')
-    plt.tight_layout()
-    assert(False)
-    
-# distributions of parameter values
-regionColors = matplotlib.cm.jet(np.linspace(0,1,len(regionLabels)))
-for param,lbl in zip((changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive),paramLabels):
-    fig = plt.figure(facecolor='w',figsize=(8,6))
-    ax = plt.subplot(1,1,1)
-    for d,clr,r in zip(param,regionColors,regionLabels):
-        d = d[~np.isnan(d)]
-        sortd = np.sort(d)
-        cumProb = [np.sum(d<=i)/d.size for i in sortd]
-        ax.plot(sortd,cumProb,color=clr,label=r)
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False,labelsize=8)
-    ax.set_yticks([0,0.5,1])
-    ax.set_xlabel(lbl)
-    ax.set_ylabel('Cumulative Probability')
-    ax.legend()
-    plt.tight_layout()
-
-# p value matrix
-alpha = 0.05
-for metric,lbl in zip((cmiActive,),('Change modulation',)):
-    comparison_matrix = np.zeros((len(regionLabels),)*2) 
-    for i,region in enumerate(regionLabels):
-        for j,region in enumerate(regionLabels):
-            if j > i:
-                v1 = metric[i]
-                v2 = metric[j]
-                z, comparison_matrix[i,j] = ranksums(v1[np.invert(np.isnan(v1))],
-                                                     v2[np.invert(np.isnan(v2))])
-            
-    p_values = comparison_matrix.flatten()
-    ok_inds = np.where(p_values > 0)[0]
-    
-    reject, p_values_corrected, alphaSidak, alphacBonf = multipletests(p_values[ok_inds], alpha=alpha, method='fdr_bh')
-            
-    p_values_corrected2 = np.zeros((len(p_values),))
-    p_values_corrected2[ok_inds] = p_values_corrected
-    comparison_corrected = np.reshape(p_values_corrected2, comparison_matrix.shape)
-    
-    sig_thresh = np.log10(alpha)
-    plot_range = 10
-    
-    fig = plt.figure(facecolor='w')
-    ax = fig.subplots(1)
-    im = ax.imshow(np.log10(comparison_matrix),cmap='seismic',vmin=sig_thresh-plot_range,vmax=sig_thresh+plot_range)
-    cb = plt.colorbar(im,ax=ax,fraction=0.026,pad=0.04)
-    ax.set_xticks(np.arange(len(regionLabels)))
-    ax.set_xticklabels(regionLabels)
-    ax.set_yticks(np.arange(len(regionLabels)))
-    ax.set_yticklabels(regionLabels)
-    ax.set_ylim([-0.5,len(regionLabels)-0.5])
-    ax.set_xlim([-0.5,len(regionLabels)-0.5])
-    ax.set_title(lbl+' p-values')
-    plt.tight_layout()
     
 
 
