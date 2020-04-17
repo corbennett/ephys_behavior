@@ -501,6 +501,10 @@ nMice = [len(set(result[region]['mouseIDs'])) for region in result]
 nExps = [len(set(result[region]['expDates'])) for region in result]
 nUnits = [sum(result[region]['unitCount']) for region in result]
 
+totalMice = len(set(exp[-6:] for exp in exps))
+totalExps = len(exps)
+totalUnits = sum(nUnits)
+
 anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xlsx'))
 hierScore_8regions,hierScore_allRegions = [[h for r in regionNames for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')]    
 hier = hierScore_8regions
@@ -701,7 +705,7 @@ for param,lbl in zip(('firstSpikeLat','changeMod'),('Time to first spike','Chang
                                                      r2[np.invert(np.isnan(r2))])
             
     p_values = comparison_matrix.flatten()
-    ok_inds = np.where(p_values > 0)[0]
+    ok_inds = ~np.isnan(p_values)
     
     reject, p_values_corrected, alphaSidak, alphacBonf = multipletests(p_values[ok_inds], alpha=alpha, method='fdr_bh')
             
@@ -712,11 +716,13 @@ for param,lbl in zip(('firstSpikeLat','changeMod'),('Time to first spike','Chang
     lim = (1e-5,alpha)
     clim = np.log10(lim)
     
+    pmatrix = comparison_corrected
+    
     fig = plt.figure(facecolor='w')
     ax = fig.subplots(1)
     cmap = matplotlib.cm.gray
     cmap.set_bad(color=np.array((255, 251, 204))/255)
-    im = ax.imshow(np.log10(comparison_matrix),cmap=cmap,clim=clim)
+    im = ax.imshow(np.log10(pmatrix),cmap=cmap,clim=clim)
     ax.set_xticks(np.arange(len(regionLabels)))
     ax.set_xticklabels(regionLabels)
     ax.set_yticks(np.arange(len(regionLabels)))
