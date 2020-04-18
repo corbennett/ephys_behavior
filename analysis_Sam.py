@@ -21,10 +21,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.rcParams['pdf.fonttype'] = 42
+import sklearn
 from sklearn.model_selection import cross_validate, cross_val_score, cross_val_predict
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import LinearSVC
-from sklearn.svm import SVC
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import fileIO
 import getData
@@ -1041,6 +1041,25 @@ for state in behavStates:
 
 
 ###### decoding analysis
+    
+def crossValidate(model,X,y,cv=5):
+    modelMethods = dir(model)
+    estimators = [sklearn.base.clone(model) for _ in range(cv)]
+    n = len(y)
+    randInd = np.random.permutation(n)
+    for k,(est,i) in enumerate(estimators,n//cv * np.arange(cv)):
+        testInd = randInd[i,i+n//cv] if k<cv else randInd[i:]
+        trainInd = np.setdiff1d(randInd,testInd)
+        est.fit(X[trainInd],y[trainInd])
+        est.predict(X[testInd])
+        est.score(X[testInd])
+        for method in ('predict_proba','decision_function'):
+            if model in modelMethods:
+                getattr(est,method)(X[testInd])
+        for attr in ('feature_importances_','coef_'):
+            if attr in  modelMethods:
+                getattr(est,attr)
+
 
 exps = Aexps+Bexps
 
@@ -1080,10 +1099,10 @@ decodeWindows = [] #np.arange(stimWin.start,stimWin.start+150,decodeWindowSize)
 preImageDecodeWindowSize = 50
 preImageDecodeWindows = [] #np.arange(stimWin.start,stimWin.start+750,preImageDecodeWindowSize)
 
-# models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4),LinearDiscriminantAnalysis(),SVC(kernel='linear',C=1.0,probability=True)))
-# modelNames = ('randomForest','supportVector','LDA')
-models = (RandomForestClassifier(n_estimators=100),)
-modelNames = ('randomForest',)
+# models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4),LinearDiscriminantAnalysis()))
+# modelNames = ('randomForest','SVM','LDA')
+models = (RandomForestClassifier(n_estimators=100),LinearSVC(C=1.0,max_iter=1e4))
+modelNames = ('randomForest','SVM')
 
 behavStates = ('active',)
 
@@ -1096,6 +1115,7 @@ result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames
                                  'changePredictShuffle':{model:[] for model in modelNames},
                                  'changePredictProbShuffle':{model:[] for model in modelNames},
                                  'changeFeatureImportance':{model:[] for model in modelNames},
+                                 'changeFeatureImportanceShuffled':{model:[] for model in modelNames},
                                  'catchPredict':{model:[] for model in modelNames},
                                  'catchPredictProb':{model:[] for model in modelNames},
                                  'nonChangePredict':{model:[] for model in modelNames},
@@ -1244,6 +1264,7 @@ for expInd,exp in enumerate(exps):
                         changePredictShuffle = {model: [] for model in modelNames}
                         changePredictProbShuffle = {model: [] for model in modelNames}
                         changeFeatureImportance = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
+                        changeFeatureImportanceShuffled = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
                         catchPredict = {model: [] for model in modelNames}
                         catchPredictProb = {model: [] for model in modelNames}
                         nonChangePredict = {model: [] for model in modelNames}
@@ -1262,7 +1283,7 @@ for expInd,exp in enumerate(exps):
                             y = np.zeros(X.shape[0])
                             y[:int(X.shape[0]/2)] = 1
                             Xshuffle = X.copy()
-                            for u in range(len(unitSamp)):
+                            for u in range(len(unitSamp)): # change this to only shuffle across same initial or change image
                                 uslice = slice(u*respWinDur,u*respWinDur+respWinDur)
                                 np.random.shuffle(Xshuffle[:int(X.shape[0]/2),uslice])
                                 np.random.shuffle(Xshuffle[int(X.shape[0]/2):,uslice])
@@ -1272,15 +1293,17 @@ for expInd,exp in enumerate(exps):
                                 cv = cross_validate(model,X,y,cv=nCrossVal,return_train_score=True,return_estimator=True)
                                 changeScore[name].append(cv['test_score'].mean())
                                 changeScoreTrain[name].append(cv['train_score'].mean())
-                                changeScoreShuffle[name].append(cross_val_score(model,Xshuffle,y,cv=nCrossVal).mean())
                                 changePredict[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
-                                changePredictShuffle[name].append(cross_val_predict(model,Xshuffle,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
                                 catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
+                                cvShuffle = cross_validate(model,Xshuffle,y,cv=nCrossVal,return_train_score=True,return_estimator=True)
+                                changeScoreShuffle[name].append(cross_val_score(model,Xshuffle,y,cv=nCrossVal).mean())
+                                changePredictShuffle[name].append(cross_val_predict(model,Xshuffle,y,cv=nCrossVal,method='predict')[:changeTrials.sum()])
                                 if name=='randomForest':
                                     changePredictProb[name].append(cross_val_predict(model,X,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
                                     changePredictProbShuffle[name].append(cross_val_predict(model,Xshuffle,y,cv=nCrossVal,method='predict_proba')[:changeTrials.sum(),1])
                                     changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+                                    changeFeatureImportanceShuffled[name][i][unitSamp] = np.mean([np.reshape(estimator.feature_importances_,(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                                     catchPredictProb[name].append(np.mean([estimator.predict_proba(Xcatch)[:,1] for estimator in cv['estimator']],axis=0))
                                     nonChangePredictProb[name].append(np.mean([estimator.predict_proba(Xnonchange)[:,1] for estimator in cv['estimator']],axis=0))
 #                            # image identity
