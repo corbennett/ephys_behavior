@@ -319,21 +319,93 @@ ax.set_title('n = '+str(nMice)+' mice, '+str(len(exps))+' experiments',fontsize=
 
 
 # compare active and passive running
-activeRunSpeed,passiveRunSpeed = [[np.median(data[exp][speed]) for exp in exps] for speed in ('behaviorRunSpeed','passiveRunSpeed')]
-            
+
+# overall, engaged change times, overall distribution , distribution of overall medians
+sessionLabels = ('behavior','passive')
+overallRunSpeed = {session: [] for session in sessionLabels}
+sortedSpeeds = {session: [] for session in sessionLabels}
+cumProbSpeed = {session: [] for session in sessionLabels}
+changeRunSpeed = {session: [] for session in sessionLabels}
+for exp in exps:
+    print(exp)
+    response = data[exp]['response'][:]
+    hit = response=='hit'
+    changeTimes = data[exp]['behaviorChangeTimes'][:]
+    engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+    for session in sessionLabels:
+        runTime = data[exp][session+'RunTime'][:]
+        runSpeed = data[exp][session+'RunSpeed'][:]
+        changeTimes = data[exp][session+'ChangeTimes'][:]
+        overallRunSpeed[session].append(np.median(runSpeed))
+        sortedSpeeds[session].append(np.sort(runSpeed))
+        cumProbSpeed[session].append([np.searchsorted(runSpeed,s)/runSpeed.size for s in sortedSpeeds[session][-1]])
+        s = []
+        for t in changeTimes[engaged]:
+            i = np.searchsorted(runTime,t)
+            s.append(np.median(runSpeed[i-1:i+2]))
+        changeRunSpeed[session].append(s)
+
+
+for speed in (overallRunSpeed,changeRunSpeed):          
+    if speed is overallRunSpeed:
+        behaviorRunSpeed,passiveRunSpeed = [speed[session] for session in sessionLabels]
+        lbl = 'overall'
+    else:
+        behaviorRunSpeed,passiveRunSpeed = [[np.median(s) for s in speed[session]] for session in sessionLabels]
+        lbl = 'at change time'
+    amax = 1.05*max(np.max(behaviorRunSpeed),np.max(passiveRunSpeed))
+    
+    fig = plt.figure(facecolor='w')
+    ax = plt.subplot(1,1,1)
+    ax.plot([0,amax],[0,amax],'k--')
+    ax.plot(behaviorRunSpeed,passiveRunSpeed,'o',ms=10,mec='k',mfc='none')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim([-5,amax])
+    ax.set_ylim([-5,amax])
+    ax.set_aspect('equal')
+    ax.set_xlabel('Median behavior run speed '+lbl+' (cm/s)')
+    ax.set_ylabel('Median passive run speed '+lbl+' (cm/s)')
+    plt.tight_layout()
+    
+    fig = plt.figure(facecolor='w')
+    ax = plt.subplot(1,1,1)
+    bins = np.arange(-5,100)
+    ymax = -10
+    for session,spd,clr in zip(sessionLabels,(behaviorRunSpeed,passiveRunSpeed),'mg'):
+        n = ax.hist(spd,bins,color=clr,edgecolor='none',alpha=0.5,label=session)[0]
+        ymax = max(ymax,max(n))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_yticks(np.arange(ymax+1))
+    ax.set_xlim([-5,amax])
+    ax.set_ylim([0,3.05])
+    ax.set_xlabel('Median run speed '+lbl+' (cm/s)')
+    ax.set_ylabel('Number of sessions')
+    ax.legend()
+    plt.tight_layout()
+    
+    
+speedIntp = np.arange(-50,200,0.1)    
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
-amax = 1.05*max(np.max(activeRunSpeed),np.max(passiveRunSpeed))
-ax.plot([0,amax],[0,amax],'k--')
-ax.plot(activeRunSpeed,passiveRunSpeed,'o',ms=10,mec='k',mfc='none')
+for session,clr in zip(sessionLabels,('mg')):
+    probIntp = [np.interp(speedIntp,speed,prob) for speed,prob in zip(sortedSpeeds[session],cumProbSpeed[session])]
+    m = np.mean(probIntp,axis=0)
+    s = np.std(probIntp,axis=0)/(len(probIntp)**0.5)
+    ax.plot(speedIntp,m,color=clr,label=session)
+    ax.fill_between(speedIntp,m+s,m-s,color=clr,alpha=0.25)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim([0,amax])
-ax.set_ylim([0,amax])
-ax.set_aspect('equal')
-ax.set_xlabel('Median Active Run Speed (cm/s)')
-ax.set_ylabel('Median Passive Run Speed (cm/s)')
+ax.set_xlim([-10,100])
+ax.set_xlabel('Run speed (cm/s)')
+ax.set_ylabel('Cumulative fraction of samples')
+ax.legend()
+plt.tight_layout()
+    
 
 
 
@@ -1015,7 +1087,7 @@ modelNames = ('randomForest',)
 
 behavStates = ('active',)
 
-# add catchScore, catchPrediction, reactionScore
+
 result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames},
                                  'changeScoreTrain':{model:[] for model in modelNames},
                                  'changeScoreShuffle':{model:[] for model in modelNames},
@@ -1453,7 +1525,6 @@ for model in modelNames:
                 if n>0:
                     mean[i] = np.mean(regionScore)
                     sem[i] = np.std(regionScore)/(n**0.5)
-                print(region,score,mean)
             for i,(x,m,s,clr) in enumerate(zip(xticks,mean,sem,regionColors)):
                 mfc = clr if state=='active' else 'none'
                 lbl = state if i==0 else None
