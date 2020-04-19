@@ -1063,7 +1063,7 @@ def crossValidate(model,X,y,nsplits=5):
         cv['test_score'].append(estimator.score(X[testInd],y[testInd]))
         cv['predict'][testInd] = estimator.predict(X[testInd])
         for method in ('predict_proba','decision_function'):
-            if model in modelMethods:
+            if method in modelMethods:
                 m = getattr(estimator,method)(X[testInd])
                 if method=='decision_function' and nclasses<3:
                     m = np.tile(m,(2,1)).T
@@ -1314,8 +1314,8 @@ for expInd,exp in enumerate(exps):
                                 changePredictShuffle[name].append(cvShuffle['predict'][:changeTrials.sum()])
                                 changePredictProb[name].append(cv[probMethod][:changeTrials.sum(),1])
                                 changePredictProbShuffle[name].append(cv[probMethod][:changeTrials.sum(),1])
-                                changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(getattr(estimator,featureMethod),(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
-                                changeFeatureImportanceShuffle[name][i][unitSamp] = np.mean([np.reshape(getattr(estimator,featureMethod),(sampleSize,-1)) for estimator in cvShuffle['estimator']],axis=0)
+                                changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(np.absolute(getattr(estimator,featureMethod)),(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
+                                changeFeatureImportanceShuffle[name][i][unitSamp] = np.mean([np.reshape(np.absolute(getattr(estimator,featureMethod)),(sampleSize,-1)) for estimator in cvShuffle['estimator']],axis=0)
                                 catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 if probMethod=='decision_function':
@@ -1964,6 +1964,7 @@ for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictPr
                     regionData.append(np.mean([np.corrcoef(np.random.permutation(behavior),s[-1])[0,1] for _ in range(10)]))
                 else:
                     regionData.append(np.corrcoef(behavior,s[-1])[0,1])
+                print(s)
         n = len(regionData)
         if n>0:
             m = np.mean(regionData)
