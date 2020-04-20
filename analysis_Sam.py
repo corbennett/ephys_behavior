@@ -1045,7 +1045,7 @@ for state in behavStates:
 def crossValidate(model,X,y,nsplits=5):
     nclasses = len(set(y))
     nsamples = len(y)
-    samplesPerSplit = nsamples//nsplits if nsplits<nsamples else 1
+    samplesPerSplit = round(nsamples/nsplits) if nsplits<nsamples else 1
     randInd = np.random.permutation(nsamples)
     cv = {'estimator': [sklearn.base.clone(model) for _ in range(nsplits)]}
     cv['train_score'] = []
@@ -1056,7 +1056,7 @@ def crossValidate(model,X,y,nsplits=5):
     modelMethods = dir(model)
     for k,estimator in enumerate(cv['estimator']):
         i = k*samplesPerSplit
-        testInd = randInd[i:i+samplesPerSplit] if k<nsplits else randInd[i:]
+        testInd = randInd[i:i+samplesPerSplit] if k+1<nsplits else randInd[i:]
         trainInd = np.setdiff1d(randInd,testInd)
         estimator.fit(X[trainInd],y[trainInd])
         cv['train_score'].append(estimator.score(X[trainInd],y[trainInd]))
@@ -1281,10 +1281,10 @@ for expInd,exp in enumerate(exps):
                         nonChangePredictProb = {model: [] for model in modelNames}
                         imageScore = {model: [] for model in modelNames}
                         imageFeatureImportance = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
-                        changeScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
-                        changePredictWindows = {model: np.zeros((nsamples,len(decodeWindows),changeTrials.sum())) for model in modelNames}
-                        imageScoreWindows = {model: np.zeros((nsamples,len(decodeWindows))) for model in modelNames}
-                        preImageScoreWindows = {model: np.zeros((nsamples,len(preImageDecodeWindows))) for model in modelNames}
+                        changeScoreWindows = {model: np.full((nsamples,len(decodeWindows)),np.nan) for model in modelNames}
+                        changePredictWindows = {model: np.full((nsamples,len(decodeWindows),changeTrials.sum()),np.nan) for model in modelNames}
+                        imageScoreWindows = {model: np.full((nsamples,len(decodeWindows)),np.nan) for model in modelNames}
+                        preImageScoreWindows = {model: np.full((nsamples,len(preImageDecodeWindows)),np.nan) for model in modelNames}
                         
                         for i,unitSamp in enumerate(unitSamples):
                             # decode image change and identity for full respWin
@@ -1885,36 +1885,37 @@ for model in ('randomForest',):#modelNames:
 
 
 # plot correlation of model prediction and mouse behavior
-fig = plt.figure(facecolor='w',figsize=(6,4))
-ax = plt.subplot(1,1,1)
-xticks = np.arange(len(regionLabels))
-xlim = [-0.5,len(regionLabels)-0.5]
-ax.plot(xlim,[0,0],'--',color='0.5')
-for score,mrk,fill,lbl in zip(('changeScore','changeScoreShuffle'),('o','d'),(True,False),('','shuffle neurons')):
-    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
-        regionData = []
-        for exp in result:
-            s = result[exp][region]['active'][score]['randomForest']
-            if len(s)>0:
-                regionData.append(s[-1])
-        n = len(regionData)
-        if n>0:
-            m = np.mean(regionData)
-            s = np.std(regionData)/(n**0.5)
-            mfc = clr if fill else 'none'
-            lbl = lbl if i==0 else None
-            ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
-            ax.plot([i,i],[m-s,m+s],color=clr)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim(xlim)
-ax.set_xticks(xticks)
-ax.set_xticklabels(regionLabels)
-ax.set_ylim([0.5,1])
-ax.set_ylabel('Decoder accuracy')
-ax.legend(loc='upper left')
-plt.tight_layout()
+for model in modelNames:
+    fig = plt.figure(facecolor='w',figsize=(6,4))
+    ax = plt.subplot(1,1,1)
+    xticks = np.arange(len(regionLabels))
+    xlim = [-0.5,len(regionLabels)-0.5]
+    ax.plot(xlim,[0,0],'--',color='0.5')
+    for score,mrk,fill,lbl in zip(('changeScore','changeScoreShuffle'),('o','d'),(True,False),('','shuffle neurons')):
+        for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+            regionData = []
+            for exp in result:
+                s = result[exp][region]['active'][score][model]
+                if len(s)>0:
+                    regionData.append(s[-1])
+            n = len(regionData)
+            if n>0:
+                m = np.mean(regionData)
+                s = np.std(regionData)/(n**0.5)
+                mfc = clr if fill else 'none'
+                lbl = lbl if i==0 else None
+                ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
+                ax.plot([i,i],[m-s,m+s],color=clr)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim(xlim)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(regionLabels)
+    ax.set_ylim([0.5,1])
+    ax.set_ylabel('Decoder accuracy')
+    ax.legend(loc='upper left')
+    plt.tight_layout()
 
 # plot individual experiments
 fig = plt.figure(facecolor='w',figsize=(6,4))
@@ -1964,8 +1965,8 @@ for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictPr
                     regionData.append(np.mean([np.corrcoef(np.random.permutation(behavior),s[-1])[0,1] for _ in range(10)]))
                 else:
                     regionData.append(np.corrcoef(behavior,s[-1])[0,1])
-                print(s)
         n = len(regionData)
+        print(s)
         if n>0:
             m = np.mean(regionData)
             s = np.std(regionData)/(n**0.5)
