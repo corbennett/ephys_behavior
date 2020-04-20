@@ -1313,7 +1313,7 @@ for expInd,exp in enumerate(exps):
                                 changePredict[name].append(cv['predict'][:changeTrials.sum()])
                                 changePredictShuffle[name].append(cvShuffle['predict'][:changeTrials.sum()])
                                 changePredictProb[name].append(cv[probMethod][:changeTrials.sum(),1])
-                                changePredictProbShuffle[name].append(cv[probMethod][:changeTrials.sum(),1])
+                                changePredictProbShuffle[name].append(cvShuffle[probMethod][:changeTrials.sum(),1])
                                 changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(np.absolute(getattr(estimator,featureMethod)),(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                                 changeFeatureImportanceShuffle[name][i][unitSamp] = np.mean([np.reshape(np.absolute(getattr(estimator,featureMethod)),(sampleSize,-1)) for estimator in cvShuffle['estimator']],axis=0)
                                 catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
@@ -1966,7 +1966,6 @@ for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictPr
                 else:
                     regionData.append(np.corrcoef(behavior,s[-1])[0,1])
         n = len(regionData)
-        print(s)
         if n>0:
             m = np.mean(regionData)
             s = np.std(regionData)/(n**0.5)
