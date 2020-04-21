@@ -1885,13 +1885,14 @@ for model in ('randomForest',):#modelNames:
 
 
 # plot correlation of model prediction and mouse behavior
+d = []
 for model in modelNames:
     fig = plt.figure(facecolor='w',figsize=(6,4))
     ax = plt.subplot(1,1,1)
     xticks = np.arange(len(regionLabels))
     xlim = [-0.5,len(regionLabels)-0.5]
     ax.plot(xlim,[0,0],'--',color='0.5')
-    for score,mrk,fill,lbl in zip(('changeScore','changeScoreShuffle'),('o','d'),(True,False),('','shuffle neurons')):
+    for score,mrk,fill,lbl in zip(('changeScore','changeScoreShuffle'),('o','d'),(False,False),('non-shuffled','shuffled')):
         for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
             regionData = []
             for exp in result:
@@ -1906,6 +1907,7 @@ for model in modelNames:
                 lbl = lbl if i==0 else None
                 ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
                 ax.plot([i,i],[m-s,m+s],color=clr)
+                d.append(m)
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
@@ -1915,6 +1917,7 @@ for model in modelNames:
     ax.set_ylim([0.5,1])
     ax.set_ylabel('Decoder accuracy')
     ax.legend(loc='upper left')
+    ax.set_title(model)
     plt.tight_layout()
 
 # plot individual experiments
@@ -1949,39 +1952,41 @@ ax.set_ylabel('Correlation of decoder prediction and behavior')
 plt.tight_layout()
 
 
-fig = plt.figure(facecolor='w',figsize=(6,4))
-ax = plt.subplot(1,1,1)
-xticks = np.arange(len(regionLabels))
-xlim = [-0.5,len(regionLabels)-0.5]
-ax.plot(xlim,[0,0],'--',color='0.5')
-for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictProb','changePredictProbShuffle'),(False,True,False),('o','s','d'),(True,False,False),('','shuffle behavior','shuffle neurons')):
-    for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
-        regionData = []
-        for exp in result:
-            behavior = result[exp]['responseToChange']
-            s = result[exp][region]['active'][score]['randomForest']
-            if len(s)>0 and any(behavior) and any(s[-1]):
-                if shuffleBehav:
-                    regionData.append(np.mean([np.corrcoef(np.random.permutation(behavior),s[-1])[0,1] for _ in range(10)]))
-                else:
-                    regionData.append(np.corrcoef(behavior,s[-1])[0,1])
-        n = len(regionData)
-        if n>0:
-            m = np.mean(regionData)
-            s = np.std(regionData)/(n**0.5)
-            mfc = clr if fill else 'none'
-            lbl = lbl if i==0 else None
-            ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
-            ax.plot([i,i],[m-s,m+s],color=clr)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim(xlim)
-ax.set_xticks(xticks)
-ax.set_xticklabels(regionLabels)
-ax.set_ylabel('Correlation of decoder prediction and behavior')
-ax.legend()
-plt.tight_layout()
+for model in modelNames:
+    fig = plt.figure(facecolor='w',figsize=(6,4))
+    ax = plt.subplot(1,1,1)
+    xticks = np.arange(len(regionLabels))
+    xlim = [-0.5,len(regionLabels)-0.5]
+    ax.plot(xlim,[0,0],'--',color='0.5')
+    for score,shuffleBehav,mrk,fill,lbl in zip(('changePredictProb','changePredictProb','changePredictProbShuffle'),(False,True,False),('o','s','d'),(True,False,False),('','shuffle behavioral response','shuffle neural response')):
+        for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+            regionData = []
+            for exp in result:
+                behavior = result[exp]['responseToChange']
+                s = result[exp][region]['active'][score][model]
+                if len(s)>0 and any(behavior) and any(s[-1]):
+                    if shuffleBehav:
+                        regionData.append(np.mean([np.corrcoef(np.random.permutation(behavior),s[-1])[0,1] for _ in range(10)]))
+                    else:
+                        regionData.append(np.corrcoef(behavior,s[-1])[0,1])
+            n = len(regionData)
+            if n>0:
+                m = np.mean(regionData)
+                s = np.std(regionData)/(n**0.5)
+                mfc = clr if fill else 'none'
+                lbl = lbl if i==0 else None
+                ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
+                ax.plot([i,i],[m-s,m+s],color=clr)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim(xlim)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(regionLabels)
+    ax.set_ylabel('Correlation of decoder confidence and behavior')
+    ax.legend()
+    ax.set_title(model)
+    plt.tight_layout()
 
 
 for model in ('randomForest',):    
@@ -2025,51 +2030,53 @@ anatomyData = pd.read_excel(os.path.join(localDir,'hierarchy_scores_2methods.xls
 hierScore_8regions,hierScore_allRegions = [[h for r in regionsToUse for a,h in zip(anatomyData['areas'],anatomyData[hier]) if a==r[1][0]] for hier in ('Computed among 8 regions','Computed with ALL other cortical & thalamic regions')] 
 hier = hierScore_8regions
 
-fig = plt.figure(facecolor='w',figsize=(4,4))
-ax = plt.subplot(1,1,1)
-for state,fill in zip(('active',),(True,)):
-    meanRegionData = []
-    regionN = []
-    for shuffleBehav in (False,True):
-        for i,(region,clr,h) in enumerate(zip(regionLabels,regionColors,hier)):
+hierColors = np.array([[217,141,194], # LGd
+                       [129,116,177], # V1
+                       [78,115,174], # LM
+                       [101,178,201], # RL
+                       [202,183,120], # AL
+                       [219,132,87], # PM
+                       [194,79,84], # AM
+                       [88,167,106]], #LP
+                     ).astype(float)
+hierColors /= 255
+
+for model in modelNames:
+    fig = plt.figure(facecolor='w',figsize=(5,5))
+    ax = plt.subplot(1,1,1)
+    title = model
+    for state,fill in zip(('active',),(True,)):
+        meanRegionData = []
+        regionN = []
+        for i,(region,h,clr) in enumerate(zip(regionLabels,hier,hierColors)):
             regionData = []
             for exp in result:
                 behavior = result[exp]['responseToChange']
-                if shuffleBehav:
-                    behavior = np.random.permutation(behavior)
-                s = result[exp][region][state]['changePredictProb']['randomForest']
+                s = result[exp][region][state]['changePredictProb'][model]
                 if len(s)>0 and any(behavior) and any(s[0]):
                     regionData.append(np.corrcoef(behavior,s[0])[0,1])
             n = len(regionData)
             if n>0:
                 m = np.mean(regionData)
                 s = np.std(regionData)/(n**0.5)
-                mfc = clr if fill and not shuffleBehav else 'none'
-                lbl = 'shuffle behavior' if i==0 and shuffleBehav else ''
-                ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
-                ax.plot([h,h],[m-s,m+s],color=clr)   
-            if not shuffleBehav:
-                if n>0:
-                    meanRegionData.append(m)
-                    regionN.append(n)
-                else:
-                    meanRegionData.append(np.nan)
-                    regionData.append(0)
-    slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
-    x = np.array([min(hier),max(hier)])
-    ax.plot(x,slope*x+yint,'--',color='0.5')
-    r,p = scipy.stats.pearsonr(hier,meanRegionData)
-    title = 'Pearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
-    r,p = scipy.stats.spearmanr(hier,meanRegionData)
-    title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+                ax.plot(h,m,'o',mec=clr,mfc=clr)
+                ax.plot([h,h],[m-s,m+s],color=clr)
+                meanRegionData.append(m)
+                regionN.append(n)
+        slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
+        x = np.array([min(hier),max(hier)])
+        ax.plot(x,slope*x+yint,'--',color='0.5')
+        r,p = scipy.stats.pearsonr(hier,meanRegionData)
+        title += '\nPearson: r = '+str(round(r,2))+', p = '+str(round(p,3))
+        r,p = scipy.stats.spearmanr(hier,meanRegionData)
+        title += '\nSpearman: r = '+str(round(r,2))+', p = '+str(round(p,3))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlabel('Hierarchy score')
+    ax.set_ylabel('Correlation of decoder confidence and mouse behavior')
     ax.set_title(title,fontsize=8)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlabel('Hierarchy score')
-ax.set_ylabel('Correlation of decoder prediction and mouse behavior')
-ax.legend()
-plt.tight_layout()
+    plt.tight_layout()
 
 fig = plt.figure(facecolor='w',figsize=(4,4))
 ax = plt.subplot(1,1,1)
@@ -3007,4 +3014,62 @@ ax.legend()
 plt.tight_layout()
 
 
+# "Rabbit effect" analysis for Christof
 
+hitRateAfterHit = []
+hitRateAfterMiss = []
+for exp in exps:
+    response = data[exp]['response'][:]
+    hit = response=='hit'
+    miss = response=='miss'
+    changeTimes = data[exp]['behaviorChangeTimes'][:] 
+    engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+    changeTrials = np.where(engaged & (hit | miss))[0]
+    hitAfterHit = 0
+    missAfterHit = 0
+    hitAfterMiss = 0
+    missAfterMiss = 0
+    for prev,trial in zip(changeTrials[0:],changeTrials[1:]):
+        if hit[trial]:
+            if hit[prev]:
+                hitAfterHit += 1
+            else:
+                hitAfterMiss += 1
+        else:
+            if hit[prev]:
+                missAfterHit += 1
+            else:
+                missAfterMiss += 1
+    hitRateAfterHit.append(hitAfterHit/(hitAfterHit+missAfterHit))
+    hitRateAfterMiss.append(hitAfterMiss/(hitAfterMiss+missAfterMiss))
+
+mouseID = [exp[-6:] for exp in exps]
+nMice = len(set(mouseID))
+
+#mouseAvg = []    
+#for param in (hitRate,falseAlarmRate,dprime):
+#    d = []
+#    for mouse in set(mouseID):
+#        mouseVals = [p for p,m in zip(param,mouseID) if m==mouse]
+#        d.append(sum(mouseVals)/len(mouseVals))
+#    mouseAvg.append(d)
+#hitRate,falseAlarmRate,dprime = mouseAvg
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+for h,fa in zip(hitRate,falseAlarmRate):
+    ax.plot([0,1],[h,fa],'0.5')
+for x,y in enumerate((hitRate,falseAlarmRate)):
+    m = np.mean(y)
+    s = np.std(y)/(len(y)**0.5)
+    ax.plot(x,m,'ko',ms=10,mec='k',mfc='k')
+    ax.plot([x,x],[m-s,m+s],'k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False,labelsize=16)
+ax.set_xticks([0,1])
+ax.set_xticklabels(['Change','Catch'])
+ax.set_xlim([-0.25,1.25])
+ax.set_ylim([0,1])
+ax.set_ylabel('Response Probability',fontsize=16)
+ax.set_title('n = '+str(nMice)+' mice,\n'+str(len(exps))+' experiments',fontsize=16)
