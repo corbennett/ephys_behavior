@@ -1126,6 +1126,8 @@ result = {exp: {region: {state: {'changeScore':{model:[] for model in modelNames
                                  'changePredictProbShuffle':{model:[] for model in modelNames},
                                  'changeFeatureImportance':{model:[] for model in modelNames},
                                  'changeFeatureImportanceShuffle':{model:[] for model in modelNames},
+                                 'preChangePredict':{model:[] for model in modelNames},
+                                 'preChangePredictProb':{model:[] for model in modelNames},
                                  'catchPredict':{model:[] for model in modelNames},
                                  'catchPredictProb':{model:[] for model in modelNames},
                                  'nonChangePredict':{model:[] for model in modelNames},
@@ -1275,6 +1277,8 @@ for expInd,exp in enumerate(exps):
                         changePredictProbShuffle = {model: [] for model in modelNames}
                         changeFeatureImportance = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
                         changeFeatureImportanceShuffle = {model: np.full((nsamples,nUnits,respWinDur),np.nan) for model in modelNames}
+                        preChangePredict = {model: [] for model in modelNames}
+                        preChangePredictProb = {model: [] for model in modelNames}
                         catchPredict = {model: [] for model in modelNames}
                         catchPredictProb = {model: [] for model in modelNames}
                         nonChangePredict = {model: [] for model in modelNames}
@@ -1316,6 +1320,8 @@ for expInd,exp in enumerate(exps):
                                 changePredictProbShuffle[name].append(cvShuffle[probMethod][:changeTrials.sum(),1])
                                 changeFeatureImportance[name][i][unitSamp] = np.mean([np.reshape(np.absolute(getattr(estimator,featureMethod)),(sampleSize,-1)) for estimator in cv['estimator']],axis=0)
                                 changeFeatureImportanceShuffle[name][i][unitSamp] = np.mean([np.reshape(np.absolute(getattr(estimator,featureMethod)),(sampleSize,-1)) for estimator in cvShuffle['estimator']],axis=0)
+                                preChangePredict[name].append(cv['predict'][changeTrials.sum():])
+                                preChangePredictProb[name].append(cv[probMethod][changeTrials.sum():,1])
                                 catchPredict[name].append(scipy.stats.mode([estimator.predict(Xcatch) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 nonChangePredict[name].append(scipy.stats.mode([estimator.predict(Xnonchange) for estimator in cv['estimator']],axis=0)[0].flatten())
                                 if probMethod=='decision_function':
@@ -1373,6 +1379,8 @@ for expInd,exp in enumerate(exps):
                             result[exp][region][state]['changePredictProbShuffle'][model].append(np.median(changePredictProbShuffle[model],axis=0))
                             result[exp][region][state]['changeFeatureImportance'][model].append(np.nanmedian(changeFeatureImportance[model],axis=0))
                             result[exp][region][state]['changeFeatureImportanceShuffle'][model].append(np.nanmedian(changeFeatureImportanceShuffle[model],axis=0))
+                            result[exp][region][state]['preChangePredict'][model].append(scipy.stats.mode(preChangePredict[model],axis=0)[0].flatten())
+                            result[exp][region][state]['preChangePredictProb'][model].append(np.median(preChangePredictProb[model],axis=0))
                             result[exp][region][state]['catchPredict'][model].append(scipy.stats.mode(catchPredict[model],axis=0)[0].flatten())
                             result[exp][region][state]['catchPredictProb'][model].append(np.median(catchPredictProb[model],axis=0))
                             result[exp][region][state]['nonChangePredict'][model].append(scipy.stats.mode(nonChangePredict[model],axis=0)[0].flatten())
@@ -1589,43 +1597,42 @@ for model in modelNames:
     
 # image and change feature importance
 x = np.arange(0,respWin.stop-respWin.start)
-for model in ('randomForest',):
-    fig = plt.figure(facecolor='w',figsize=(10,10))
-    fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
-    gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
-    for i,region in enumerate(regionLabels):
-        for j,state in enumerate(behavStates):
-            ax = plt.subplot(gs[i,j])
-            for score,clr in zip(('imageFeatureImportance','changeFeatureImportance'),('0.5','k')):
-                regionScore = []
-                for exp in result:
-                    s = result[exp][region][state][score][model]
-                    if len(s)>0:
-                        regionScore.append(np.nanmean(s[0],axis=0))
-                n = len(regionScore)
-                if n>0:
-                    m = np.mean(regionScore,axis=0)
-                    s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
-                    ax.plot(x,m,color=clr,label=score[:score.find('F')])
-                    ax.fill_between(x,m+s,m-s,color=clr,alpha=0.25)
-            for side in ('right','top'):
-                ax.spines[side].set_visible(False)
-            ax.tick_params(direction='out',top=False,right=False)
-            ax.set_xticks([0,50,100,150,200])
-            ax.set_xlim(x[[0,-1]])
-            if i<len(regionLabels)-1:
-                ax.set_xticklabels([])
+fig = plt.figure(facecolor='w',figsize=(10,12))
+gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
+for i,region in enumerate(regionLabels):
+    for j,model in enumerate(modelNames):
+        ax = plt.subplot(gs[i,j])
+        regionScore = []
+        for exp in result:
+            s = result[exp][region]['active']['changeFeatureImportanceShuffle'][model]
+            if len(s)>0:
+                regionScore.append(np.nanmean(s[0],axis=0))
+                print(s[0].shape)
+        n = len(regionScore)
+        if n>0:
+            m = np.mean(regionScore,axis=0)
+            s = np.std(regionScore,axis=0)/(len(regionScore)**0.5)
+            ax.plot(x,m,color='k')
+            ax.fill_between(x,m+s,m-s,color='k',alpha=0.25)
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xticks([0,50,100,150,200])
+        ax.set_xlim(x[[0,-1]])
+        if i<len(regionLabels)-1:
+            ax.set_xticklabels([])
+        else:
+            ax.set_xlabel('Time (ms)')
+        if i==0:
+            if j==0:
+                ax.set_title(region+', '+model)
+                ax.set_ylabel('Feature Importance')
             else:
-                ax.set_xlabel('Time (ms)')   
-            if i==0:
-                if j==0:
-                    ax.set_title(region+', '+state)
-                    ax.set_ylabel('Feature Importance')
-                else:
-                    ax.set_title(state)
-                    ax.legend()
-            elif j==0:
-                ax.set_title(region)          
+                ax.set_title(model)
+        elif j==0:
+            ax.set_title(region) 
+plt.tight_layout()    
+
 
 for model in ('randomForest',):
     for i,region in enumerate(regionLabels):
@@ -3018,12 +3025,19 @@ plt.tight_layout()
 
 hitRateAfterHit = []
 hitRateAfterMiss = []
-for exp in exps:
+reactionTimeAfterHit = [[] for exp in exps]
+reactionTimeAfterMiss = [[] for exp in exps]
+reactionTimeAfterHitByImage = [[[] for exp in exps] for _ in range(8)]
+reactionTimeAfterMissByImage = [[[] for exp in exps] for _ in range(8)]
+for expInd,exp in enumerate(exps):
+    changeTimes = data[exp]['behaviorChangeTimes'][:]
+    changeImage = data[exp]['changeImage'][:]
+    imageNames = np.unique(changeImage)
     response = data[exp]['response'][:]
     hit = response=='hit'
     miss = response=='miss'
-    changeTimes = data[exp]['behaviorChangeTimes'][:] 
     engaged = np.array([np.sum(hit[(changeTimes>t-60) & (changeTimes<t+60)]) > 1 for t in changeTimes])
+    reactionTime = data[exp]['rewardTimes'][:]-changeTimes
     changeTrials = np.where(engaged & (hit | miss))[0]
     hitAfterHit = 0
     missAfterHit = 0
@@ -3031,10 +3045,15 @@ for exp in exps:
     missAfterMiss = 0
     for prev,trial in zip(changeTrials[0:],changeTrials[1:]):
         if hit[trial]:
+            imgInd = np.where(imageNames==changeImage[trial])[0][0]
             if hit[prev]:
                 hitAfterHit += 1
+                reactionTimeAfterHit[expInd].append(reactionTime[trial])
+                reactionTimeAfterHitByImage[imgInd][expInd].append(reactionTime[trial])
             else:
                 hitAfterMiss += 1
+                reactionTimeAfterMiss[expInd].append(reactionTime[trial])
+                reactionTimeAfterMissByImage[imgInd][expInd].append(reactionTime[trial])
         else:
             if hit[prev]:
                 missAfterHit += 1
@@ -3043,33 +3062,57 @@ for exp in exps:
     hitRateAfterHit.append(hitAfterHit/(hitAfterHit+missAfterHit))
     hitRateAfterMiss.append(hitAfterMiss/(hitAfterMiss+missAfterMiss))
 
-mouseID = [exp[-6:] for exp in exps]
-nMice = len(set(mouseID))
-
-#mouseAvg = []    
-#for param in (hitRate,falseAlarmRate,dprime):
-#    d = []
-#    for mouse in set(mouseID):
-#        mouseVals = [p for p,m in zip(param,mouseID) if m==mouse]
-#        d.append(sum(mouseVals)/len(mouseVals))
-#    mouseAvg.append(d)
-#hitRate,falseAlarmRate,dprime = mouseAvg
 
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
-for h,fa in zip(hitRate,falseAlarmRate):
-    ax.plot([0,1],[h,fa],'0.5')
-for x,y in enumerate((hitRate,falseAlarmRate)):
-    m = np.mean(y)
-    s = np.std(y)/(len(y)**0.5)
-    ax.plot(x,m,'ko',ms=10,mec='k',mfc='k')
-    ax.plot([x,x],[m-s,m+s],'k')
+alim = [0,1.05]
+ax.plot(alim,alim,color='0.5',linestyle='--')
+ax.plot(hitRateAfterHit,hitRateAfterMiss,'ko')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=16)
-ax.set_xticks([0,1])
-ax.set_xticklabels(['Change','Catch'])
-ax.set_xlim([-0.25,1.25])
-ax.set_ylim([0,1])
-ax.set_ylabel('Response Probability',fontsize=16)
-ax.set_title('n = '+str(nMice)+' mice,\n'+str(len(exps))+' experiments',fontsize=16)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim(alim)
+ax.set_ylim(alim)
+ax.set_aspect('equal')
+ax.set_xlabel('Hit rate after hit for each session')
+ax.set_ylabel('Hit rate after miss for each session')
+plt.tight_layout()
+
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+alim = [250,650]
+ax.plot(alim,alim,color='0.5',linestyle='--')
+rtHit,rtMiss = [[np.median(exp)*1000 for exp in rt] for rt in (reactionTimeAfterHit,reactionTimeAfterMiss)]
+ax.plot(rtHit,rtMiss,'ko')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xticks(np.arange(100,800,100))
+ax.set_xlim(alim)
+ax.set_ylim(alim)
+ax.set_aspect('equal')
+ax.set_xlabel('Reaction time after hit for each session (ms)')
+ax.set_ylabel('Reaction time after miss for each session (ms)')
+plt.tight_layout()
+
+
+fig = plt.figure(facecolor='w')
+ax = plt.subplot(1,1,1)
+alim = [250,650]
+ax.plot(alim,alim,color='0.5',linestyle='--')
+rtHit,rtMiss = [[np.nanmedian([np.median(exp) for exp in img])*1000 for img in rt] for rt in (reactionTimeAfterHitByImage,reactionTimeAfterMissByImage)]
+ax.plot(rtHit,rtMiss,'ko')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xticks(np.arange(100,800,100))
+ax.set_xlim(alim)
+ax.set_ylim(alim)
+ax.set_aspect('equal')
+ax.set_xlabel('Reaction time after hit for each image (ms)')
+ax.set_ylabel('Reaction time after miss for each image (ms)')
+plt.tight_layout()
+
+
+
