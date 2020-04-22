@@ -1889,10 +1889,125 @@ for model in ('randomForest',):#modelNames:
             ax.set_ylabel(latencyLabels[key])
             if i==0:
                 ax.set_title(state)
+                
+                
+# decoder confidence change vs pre-change
+for model,chanceLevel,ylbl in zip(modelNames,(0.5,0),('Change probability','Distance from decision boundary')):
+    fig = plt.figure(facecolor='w',figsize=(6,4))
+    ax = plt.subplot(1,1,1)
+    xticks = np.arange(len(regionLabels))
+    xlim = [-0.5,len(regionLabels)-0.5]
+    ax.plot(xlim,[chanceLevel]*2,'--',color='0.5')
+    ymax = 0
+    for score,fill,label in zip(('changePredictProb','preChangePredictProb'),(True,False),('Change','Pre-change')):
+        for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+            regionData = []
+            for exp in result:
+                s = result[exp][region]['active'][score][model]
+                if len(s)>0:
+                    regionData.append(np.mean(s[-1]))
+            n = len(regionData)
+            if n>0:
+                m = np.mean(regionData)
+                s = np.std(regionData)/(n**0.5)
+                mfc = clr if fill else 'none'
+                lbl = label if i==0 else None
+                ax.plot(i,m,'o',mec=clr,mfc=mfc,label=lbl)
+                ax.plot([i,i],[m-s,m+s],color=clr)
+                ymax = max(ymax,np.max(np.absolute(m-chanceLevel)+s))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(regionLabels)
+    ax.set_xlim(xlim)
+    ymax *= 1.05
+    ax.set_ylim([chanceLevel-ymax,chanceLevel+ymax])
+    ax.set_ylabel(ylbl)
+    ax.legend(loc='upper right')
+    ax.set_title(model)
+    plt.tight_layout()
+    
+# decoder confidence hit vs miss
+for model,chanceLevel,ylbl in zip(modelNames,(0.5,0),('Change probability','Distance from decision boundary')):
+    fig = plt.figure(facecolor='w',figsize=(6,4))
+    ax = plt.subplot(1,1,1)
+    xticks = np.arange(len(regionLabels))
+    xlim = [-0.5,len(regionLabels)-0.5]
+    ymax = 0
+    for label,fill in zip(('Hit','Miss'),(True,False)):
+        for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+            regionData = []
+            for exp in result:
+                behavior = result[exp]['responseToChange'][:]
+                ind = behavior if label=='Hit' else ~behavior
+                s = result[exp][region]['active']['changePredictProb'][model]
+                if len(s)>0:
+                    regionData.append(np.mean(s[-1][ind]))
+            n = len(regionData)
+            if n>0:
+                m = np.mean(regionData)
+                s = np.std(regionData)/(n**0.5)
+                mfc = clr if fill else 'none'
+                lbl = label if i==0 else None
+                ax.plot(i,m,'o',mec=clr,mfc=mfc,label=lbl)
+                ax.plot([i,i],[m-s,m+s],color=clr)
+                ymax = max(ymax,np.max(m+s))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(regionLabels)
+    ax.set_xlim(xlim)
+    ax.set_ylim([chanceLevel,1.05*ymax])
+    ax.set_ylabel(ylbl)
+    ax.legend(loc='upper right')
+    ax.set_title(model)
+    plt.tight_layout()
+    
+# difference in decoder confidence
+for model,ylbl in zip(modelNames,('Change probability','Distance from decision boundary')):
+    for label in ('Change - Pre-change','Hit - Miss'):
+        fig = plt.figure(facecolor='w',figsize=(6,4))
+        ax = plt.subplot(1,1,1)
+        xticks = np.arange(len(regionLabels))
+        xlim = [-0.5,len(regionLabels)-0.5]
+        ymin = 0
+        ymax = 0
+        for i,(region,clr) in enumerate(zip(regionLabels,regionColors)):
+            regionData = []
+            for exp in result:
+                s = result[exp][region]['active']['changePredictProb'][model]
+                if len(s)>0:
+                    if 'Hit' in label:
+                        behavior = result[exp]['responseToChange'][:]
+                        ind = behavior if label=='Hit' else ~behavior
+                        regionData.append(np.mean(s[-1][behavior])-np.mean(s[-1][~behavior]))
+                    else:
+                        regionData.append(np.mean(s[-1])-np.mean(result[exp][region]['active']['preChangePredictProb'][model][-1]))
+            n = len(regionData)
+            if n>0:
+                m = np.mean(regionData)
+                s = np.std(regionData)/(n**0.5)
+                lbl = label if i==0 else None
+                ax.plot(i,m,'o',mec=clr,mfc=clr,label=lbl)
+                ax.plot([i,i],[m-s,m+s],color=clr)
+                ymin = min(ymin,np.min(m-s))
+                ymax = max(ymax,np.max(m+s))
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xticks(xticks)
+        ax.set_xticklabels(regionLabels)
+        ax.set_xlim(xlim)
+        ax.set_ylim([1.05*ymin,1.05*ymax])
+        ax.set_ylabel('$\Delta$ '+ylbl)
+        ax.set_title(model+'\n'+label)
+        plt.tight_layout()
+
 
 
 # plot correlation of model prediction and mouse behavior
-d = []
 for model in modelNames:
     fig = plt.figure(facecolor='w',figsize=(6,4))
     ax = plt.subplot(1,1,1)
@@ -1914,7 +2029,6 @@ for model in modelNames:
                 lbl = lbl if i==0 else None
                 ax.plot(i,m,mrk,mec=clr,mfc=mfc,label=lbl)
                 ax.plot([i,i],[m-s,m+s],color=clr)
-                d.append(m)
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
