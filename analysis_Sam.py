@@ -853,6 +853,28 @@ for region,clr,ylim in zip(('V1','AM'),'br',([-1.5,15],[-1.2,12])):#result:
                         plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs','forSchematic',region+'_'+str(i+1)+'_'+epoch+ext))
                     plt.close(fig)
 
+# sdfs for new schematic
+region = 'V1'
+xlim = [0,150]
+ylim = [-2,18]
+for epoch in ('change','preChange'):
+    sdfs = result[region]['sdfs']['active'][epoch]['allImages']['change'][:,stimWin.start+xlim[0]:stimWin.start+xlim[1]]
+    units = np.array_split(np.random.permutation(sdfs.shape[0]),6)
+    for i,u in enumerate(units):
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)   
+        ax.plot(sdfs[u].mean(axis=0),color='k',lw=20)
+        for side in ('right','top','left','bottom'):
+            ax.spines[side].set_visible(False)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        plt.tight_layout()
+        for ext in ('.pdf',):
+            plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs','forSchematic',region+'_'+epoch+'_'+str(i+1)+ext))
+        plt.close(fig)
+
 # make dataframe for Josh (old)
 d = OrderedDict()
 colLabels = ('Experiment Date','Mouse ID','Region','Change Modulation Index','Time to first spike','Baseline Rate','Pre-change Response','Change Response')
