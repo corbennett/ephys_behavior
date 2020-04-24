@@ -1215,7 +1215,7 @@ for expInd,exp in enumerate(exps):
                 nonChangeLickLat.append(np.nan)
     nonChangeImage = np.array(nonChangeImage)
     minImgCount = np.unique(nonChangeImage,return_counts=True)[1].min()
-    nonChangeSample = [i for a in [np.random.choice(np.where(nonChangeImage==img)[0],minImgCount,replace=False) for img in imageNames] for i in a]
+    nonChangeSample = np.concatenate([np.random.choice(np.where(nonChangeImage==img)[0],minImgCount,replace=False) for img in imageNames])
     nonChangeFlashIndex = np.array(nonChangeFlashIndex)[nonChangeSample]
     nonChangeFlashTimes = flashTimes[nonChangeFlashIndex]
     if 'passive' in behavStates:
