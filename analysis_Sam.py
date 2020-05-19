@@ -218,11 +218,13 @@ mouseInfo = (
              ('479219',('11262019',),('BCD',),'A',(True,)),
              ('484106',('12132019',),('BCDEF',),'A',(True,)),
              ('474732',('12192019','12202019'),('ABCDEF','ABCDE'),'AA',(True,True)),
+             ('490193',('03242020','03252020'),('BCDF','ABCDE'),'AB',(True,True)),
+             ('490194',('03252020',),('ABCD',),'A',(True,)),
             )
 
 
 #
-makeSummaryPlots(miceToAnalyze=('484106','474732'))
+makeSummaryPlots(miceToAnalyze=('490193','490194'))
 
 
 # make new experiment hdf5s without updating popData.hdf5

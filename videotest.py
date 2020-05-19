@@ -8,6 +8,7 @@ Created on Wed Jan  8 15:52:40 2020
 from __future__ import division
 import re
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import cv2
 import fileIO
@@ -19,6 +20,40 @@ dataDir = r'Z:'
 
 syncFile = fileIO.getFile('choose sync file',dataDir,'*.h5')
 syncDataset = sync.Dataset(syncFile)
+
+
+
+plt.figure(figsize=(12,10))
+gs = matplotlib.gridspec.GridSpec(3,3)
+channelNames = ('sync','transmission','exposure')
+bins = np.arange(0,17,0.1)
+for i,cam in enumerate((1,2,3)):
+    if cam==1:
+        channels = (8,26,30) # cam1
+    elif cam==2:
+        channels = (9,25,29) # cam2
+    elif cam==3:
+        channels = (10,22,28) # cam3
+    elif cam==4:
+        channels = (8,21,27) # cam1 plugged into cam4
+    for j,(ch,chname) in enumerate(zip(channels,channelNames)):
+        ax = plt.subplot(gs[i,j])
+        rising,falling = probeSync.get_sync_line_data(syncDataset,channel=ch)
+        pulseDur = falling-rising[:len(falling)]
+        pulseDur *= 1000
+        ax.hist(pulseDur,bins=bins,color='k')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_yscale('log')
+        ax.set_xlim([0,1.2*pulseDur.max()])
+        if i==2:
+            ax.set_xlabel('Pulse duration (falling-rising, ms)')
+        if j==0:
+            ax.set_ylabel('Events')
+        ax.set_title('cam'+str(cam)+' '+chname+' channel '+str(ch)+', '+str(len(falling))+' falling edges',fontsize=10)
+plt.tight_layout()
+
 
 
 lickTimes = probeSync.get_sync_line_data(syncDataset, channel=31)[0]
@@ -34,11 +69,26 @@ camFrameTimes = np.sort(np.concatenate((camFramesRising,camFramesFalling)))
 camFramesWithLicks = np.searchsorted(camFrameTimes,lickTimes)
 
 
-channels = (8,27,29)
+cam = 1
+
+if cam==1:
+    channels = (8,26,30) # cam1
+elif cam==2:
+    channels = (9,25,29) # cam2
+elif cam==3:
+    channels = (10,22,28) # cam3
+elif cam==4:
+    channels = (8,21,27) # cam1 plugged into cam4
+
 channelNames = ('sync','transmission','exposure')
 
 rising = [probeSync.get_sync_line_data(syncDataset, channel=ch)[0] for ch in channels]
-falling = [probeSync.get_sync_line_data(syncDataset, channel=ch)[1] for ch in channels] 
+falling = [probeSync.get_sync_line_data(syncDataset, channel=ch)[1] for ch in channels]
+
+pulseDur = [fall-rise[:len(fall)] for rise,fall in zip(rising,falling)]
+
+
+
 
 
 plt.figure()
