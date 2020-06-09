@@ -63,12 +63,14 @@ interTrialInterval = trialStartTimes[1:]-trialStartTimes[:-1]
 
 timeFromChangeToTrialEnd = trialEndTimes[~incompleteTrials]-changeTimes
 
-timeFromAbortToNextTrial = trialStartTimes[abortedTrials][1:]-abortTimes[:-1]
+timeFromAbortToTrialEnd = trialEndTimes[abortedTrials]-abortTimes
+
+
 
 
 
 fig = plt.figure(figsize=(5,6))
-ax = fig.add_subplot(3,1,1)
+ax = fig.add_subplot(4,1,1)
 ax.hist(timeToChange[(changeTrials & ~abortedTrials)[~incompleteTrials]],bins=np.arange(0,10,0.17),color='g',label='change (n='+str(np.sum(changeTrials & ~abortedTrials))+')')
 ax.hist(timeToChange[(catchTrials & ~abortedTrials)[~incompleteTrials]],bins=np.arange(0,10,0.17),color='r',label='catch (n='+str(np.sum(catchTrials & ~abortedTrials))+')')
 for side in ('right','top'):
@@ -80,17 +82,17 @@ ax.set_ylabel('Number of trials')
 ax.set_title(params['stage'])
 ax.legend()
 
-ax = fig.add_subplot(3,1,2)
+ax = fig.add_subplot(4,1,2)
 ax.hist(interTrialInterval,bins=np.arange(0,10,0.17),color='k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim([interTrialInterval.min()-1,interTrialInterval.max()+1])
-ax.set_xlabel('Inter-trial interval (s)')
+ax.set_xlabel('Inter-trial interval (start to start) (s)')
 ax.set_ylabel('Number of trials')
 plt.tight_layout()
 
-ax = fig.add_subplot(3,1,3)
+ax = fig.add_subplot(4,1,3)
 t = timeFromChangeToTrialEnd[~abortedTrials[~incompleteTrials]]
 ax.hist(t,bins=np.arange(0,10,0.17),color='k')
 for side in ('right','top'):
@@ -98,6 +100,16 @@ for side in ('right','top'):
 ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim([t.min()-1,t.max()+1])
 ax.set_xlabel('Time from change/catch to trial end (includes random gray) (s)')
+ax.set_ylabel('Number of trials')
+plt.tight_layout()
+
+ax = fig.add_subplot(4,1,4)
+ax.hist(timeFromAbortToTrialEnd,bins=np.arange(0,10,0.17),color='k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim([timeFromAbortToTrialEnd.min()-1,timeFromAbortToTrialEnd.max()+1])
+ax.set_xlabel('Time from abort to trial end (includes random gray) (s)')
 ax.set_ylabel('Number of trials')
 plt.tight_layout()
 
