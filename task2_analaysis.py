@@ -7,8 +7,11 @@ Created on Thu May 14 17:47:06 2020
 
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import fileIO
+
+matplotlib.rcParams['pdf.fonttype'] = 42
 
 
 f = fileIO.getFile()
@@ -19,6 +22,9 @@ params = pkl['items']['behavior']['params']
 frameIntervals = pkl['items']['behavior']['intervalsms']
 trialLog = np.array(pkl['items']['behavior']['trial_log'][:-1])
 
+
+fig = plt.figure(figsize=(8,10))
+ax = fig.add_subplot(1,1,1)
 
 trialStartTimes = np.full(len(trialLog),np.nan)
 trialEndTimes = np.full(len(trialLog),np.nan)
@@ -58,6 +64,27 @@ for i,trial in enumerate(trialLog):
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
+        
+    if abortedTrials[i]:
+        clr = (1,0,0)
+    elif autoReward[i]:
+        clr = (0,0,1)
+    elif hit[i]:
+        clr = (0,0.5,0)
+    elif miss[i]:
+        clr = np.array((144,238,144))/255
+    elif falseAlarm[i]:
+        clr = np.array((255,140,0))/255
+    elif correctReject[i]:
+        clr = (1,1,0)
+    
+    ct = changeTimes[i] if not np.isnan(changeTimes[i]) else scheduledChangeTimes[i]
+    ax.add_patch(matplotlib.patches.Rectangle([trialStartTimes[i]-ct,i-0.5],width=trialEndTimes[i]-trialStartTimes[i],height=1,facecolor=clr,edgecolor=None,alpha=0.5,zorder=0))
+    lickTimes = np.array([lick[0] for lick in trial['licks']])
+    lickTimes -= ct
+    ax.vlines(lickTimes,i-0.5,i+0.5,colors='k')
+    
+plt.tight_layout()
 
 
 # task timing
@@ -87,7 +114,6 @@ ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim([round(interTrialInterval.min())-1,round(interTrialInterval.max())+1])
 ax.set_xlabel('Inter-trial interval (start to start) (s)')
 ax.set_ylabel('Trials')
-plt.tight_layout()
 
 ax = fig.add_subplot(4,1,3)
 changeToEnd = timeFromChangeToTrialEnd[~abortedTrials]
@@ -100,7 +126,6 @@ ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim(xlim)
 ax.set_xlabel('Time from change/catch to trial end (includes response window + random gray) (s)')
 ax.set_ylabel('Trials')
-plt.tight_layout()
 
 ax = fig.add_subplot(4,1,4)
 ax.hist(abortToEnd,bins=np.arange(0,10,0.17),color='k')
