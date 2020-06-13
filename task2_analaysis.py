@@ -6,12 +6,33 @@ Created on Thu May 14 17:47:06 2020
 """
 
 import numpy as np
+import scipy
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 import fileIO
 
 matplotlib.rcParams['pdf.fonttype'] = 42
+
+
+def calcDprime(hits,misses,falseAlarms,correctRejects):
+    hitRate = calcHitRate(hits,misses,adjusted=True)
+    falseAlarmRate = calcHitRate(falseAlarms,correctRejects,adjusted=True)
+    z = [scipy.stats.norm.ppf(r) for r in (hitRate,falseAlarmRate)]
+    return z[0]-z[1]
+
+
+def calcHitRate(hits,misses,adjusted=False):
+    n = hits+misses
+    if n==0:
+        return np.nan
+    hitRate = hits/n
+    if adjusted:
+        if hitRate==0:
+            hitRate = 0.5/n
+        elif hitRate==1:
+            hitRate = 1-0.5/n
+    return hitRate
 
 
 f = fileIO.getFile()
@@ -23,15 +44,14 @@ frameIntervals = pkl['items']['behavior']['intervalsms']
 trialLog = np.array(pkl['items']['behavior']['trial_log'][:-1])
 
 
-fig = plt.figure(figsize=(8,10))
-ax = fig.add_subplot(1,1,1)
-
+# parse pkl file
 trialStartTimes = np.full(len(trialLog),np.nan)
 trialEndTimes = np.full(len(trialLog),np.nan)
 scheduledChangeTimes = np.full(len(trialLog),np.nan)
 changeTimes = np.full(len(trialLog),np.nan)
 abortedTrials = np.zeros(len(trialLog),dtype=bool)
 abortTimes = np.full(len(trialLog),np.nan)
+changeTrials = np.zeros(len(trialLog),dtype=bool)
 catchTrials = np.zeros(len(trialLog),dtype=bool)
 rewardTimes = np.full(len(trialLog),np.nan)
 autoReward = np.zeros(len(trialLog),dtype=bool)
@@ -40,6 +60,7 @@ miss = np.zeros(len(trialLog),dtype=bool)
 falseAlarm = np.zeros(len(trialLog),dtype=bool)
 correctReject = np.zeros(len(trialLog),dtype=bool)
 for i,trial in enumerate(trialLog):
+    events = [event[0] for event in trial['events']]
     for event,epoch,t,frame in trial['events']:
         if event=='trial_start':
             trialStartTimes[i] = t
@@ -47,11 +68,12 @@ for i,trial in enumerate(trialLog):
             trialEndTimes[i] = t
         elif event=='stimulus_window' and epoch=='enter':
             scheduledChangeTimes[i] = t + trial['trial_params']['change_time']
+        elif 'abort' in events:
+            if event=='abort':
+                abortedTrials[i] = True
+                abortTimes[i] = t
         elif event in ('stimulus_changed','sham_change'):
             changeTimes[i] = t
-        elif event=='abort':
-            abortedTrials[i] = True
-            abortTimes[i] = t
         elif event=='hit':
             hit[i] = True
         elif event=='miss':
@@ -60,31 +82,75 @@ for i,trial in enumerate(trialLog):
             falseAlarm[i] = True
         elif event=='rejection':
             correctReject[i] = True
-    catchTrials[i] = trial['trial_params']['catch']
-    if len(trial['rewards']) > 0:
-        rewardTimes[i] = trial['rewards'][0][1]
-        autoReward[i] = trial['trial_params']['auto_reward']
-        
+    if not abortedTrials[i]:
+        if trial['trial_params']['catch']:
+            catchTrials[i] = True
+        else:
+            changeTrials[i] = True
+        if len(trial['rewards']) > 0:
+            rewardTimes[i] = trial['rewards'][0][1]
+            autoReward[i] = trial['trial_params']['auto_reward']
+
+
+# lick raster
+fig = plt.figure(figsize=(8,10))
+ax = fig.add_subplot(1,1,1)
+for i,trial in enumerate(trialLog):       
     if abortedTrials[i]:
         clr = (1,0,0)
-    elif autoReward[i]:
-        clr = (0,0,1)
+        lbl = 'aborted' if abortedTrials[:i].sum()==0 else None
     elif hit[i]:
         clr = (0,0.5,0)
+        lbl = 'hit' if hit[:i].sum()==0 else None
     elif miss[i]:
         clr = np.array((144,238,144))/255
+        lbl = 'miss' if miss[:i].sum()==0 else None
     elif falseAlarm[i]:
         clr = np.array((255,140,0))/255
+        lbl = 'false alarm' if falseAlarm[:i].sum()==0 else None
     elif correctReject[i]:
         clr = (1,1,0)
-    
+        lbl = 'correct reject' if correctReject[:i].sum()==0 else None
     ct = changeTimes[i] if not np.isnan(changeTimes[i]) else scheduledChangeTimes[i]
-    ax.add_patch(matplotlib.patches.Rectangle([trialStartTimes[i]-ct,i-0.5],width=trialEndTimes[i]-trialStartTimes[i],height=1,facecolor=clr,edgecolor=None,alpha=0.5,zorder=0))
+    ax.add_patch(matplotlib.patches.Rectangle([trialStartTimes[i]-ct,i-0.5],width=trialEndTimes[i]-trialStartTimes[i],height=1,facecolor=clr,edgecolor=None,alpha=0.5,zorder=0,label=lbl))
     lickTimes = np.array([lick[0] for lick in trial['licks']])
     lickTimes -= ct
     ax.vlines(lickTimes,i-0.5,i+0.5,colors='k')
-    
+    clr = 'b' if autoReward[i] else clr
+    ax.vlines(rewardTimes[i]-ct,i-0.5,i+0.5,colors=clr)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([len(trialLog),-1])
+ax.set_xlabel('Time relative to actual or schuduled change/catch (s)')   
+ax.set_ylabel('Trial')
+ax.legend()
 plt.tight_layout()
+
+
+# performance
+binInterval = 60
+binDuration = 600
+bins = np.arange(0,60*params['max_task_duration_min']-binDuration+binInterval,binInterval).astype(int)
+abort = []
+h = []
+m = []
+fa = []
+cr = []
+dprime = []
+for binStart in bins:
+    i = trialStartTimes>=binStart
+    if binStart<bins.max():
+        i = i & (trialStartTimes<binStart+binDuration)
+    abort.append(abortedTrials[i].sum())
+    h.append(hit[i].sum())
+    m.append(miss[i].sum())
+    fa.append(falseAlarm[i].sum())
+    cr.append(correctReject[i].sum())
+    dprime.append(calcDprime(h[-1],m[-1],fa[-1],cr[-1]))
+    
+fig = plt.figure(figsize=(8,10))
+
 
 
 # task timing
@@ -95,8 +161,8 @@ timeFromAbortToTrialEnd = trialEndTimes - abortTimes
 
 fig = plt.figure(figsize=(7,7))
 ax = fig.add_subplot(4,1,1)
-ax.hist(timeToChange[~catchTrials & ~abortedTrials],bins=np.arange(0,10,0.17),color='g',label='change (n='+str(np.sum(~catchTrials & ~abortedTrials))+')')
-ax.hist(timeToChange[catchTrials & ~abortedTrials],bins=np.arange(0,10,0.17),color='r',label='catch (n='+str(np.sum(catchTrials & ~abortedTrials))+')')
+ax.hist(timeToChange[changeTrials],bins=np.arange(0,10,0.17),color='g',label='change (n='+str(changeTrials.sum())+')')
+ax.hist(timeToChange[catchTrials],bins=np.arange(0,10,0.17),color='r',label='catch (n='+str(catchTrials.sum())+')')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
