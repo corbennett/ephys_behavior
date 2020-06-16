@@ -92,24 +92,32 @@ for i,trial in enumerate(trialLog):
             autoReward[i] = trial['trial_params']['auto_reward']
 
 
+trialColors = {
+               'abort': (1,0,0),
+               'hit': (0,0.5,0),
+               'miss': np.array((144,238,144))/255,
+               'false alarm': np.array((255,140,0))/255,
+               'correct reject': (1,1,0)
+              }
+
 # lick raster
 fig = plt.figure(figsize=(8,10))
 ax = fig.add_subplot(1,1,1)
 for i,trial in enumerate(trialLog):       
     if abortedTrials[i]:
-        clr = (1,0,0)
-        lbl = 'aborted' if abortedTrials[:i].sum()==0 else None
+        clr = trialColors['abort']
+        lbl = 'abort' if abortedTrials[:i].sum()==0 else None
     elif hit[i]:
-        clr = (0,0.5,0)
+        clr = trialColors['hit']
         lbl = 'hit' if hit[:i].sum()==0 else None
     elif miss[i]:
-        clr = np.array((144,238,144))/255
+        clr = trialColors['miss']
         lbl = 'miss' if miss[:i].sum()==0 else None
     elif falseAlarm[i]:
-        clr = np.array((255,140,0))/255
+        clr = trialColors['false alarm']
         lbl = 'false alarm' if falseAlarm[:i].sum()==0 else None
     elif correctReject[i]:
-        clr = (1,1,0)
+        clr = trialColors['correct reject']
         lbl = 'correct reject' if correctReject[:i].sum()==0 else None
     ct = changeTimes[i] if not np.isnan(changeTimes[i]) else scheduledChangeTimes[i]
     ax.add_patch(matplotlib.patches.Rectangle([trialStartTimes[i]-ct,i-0.5],width=trialEndTimes[i]-trialStartTimes[i],height=1,facecolor=clr,edgecolor=None,alpha=0.5,zorder=0,label=lbl))
@@ -132,6 +140,7 @@ plt.tight_layout()
 binInterval = 60
 binDuration = 600
 bins = np.arange(0,60*params['max_task_duration_min']-binDuration+binInterval,binInterval).astype(int)
+binCenters = bins+binDuration/2
 abort = []
 h = []
 m = []
@@ -148,9 +157,50 @@ for binStart in bins:
     fa.append(falseAlarm[i].sum())
     cr.append(correctReject[i].sum())
     dprime.append(calcDprime(h[-1],m[-1],fa[-1],cr[-1]))
-    
-fig = plt.figure(figsize=(8,10))
 
+  
+fig = plt.figure(figsize=(7,7))
+for i,d in enumerate((
+                      ((abort,),('abort',)),
+                      ((h,m),('hit','miss')),
+                      ((fa,cr),('false alarm','correct reject')),
+                     )
+                    ):
+    ax = fig.add_subplot(3,1,i+1)
+    for y,lbl in zip(*d):
+        ax.plot(binCenters/60,np.array(y)/binDuration*60,color=trialColors.get(lbl,'k'),label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    if i==0:
+        ax.set_ylabel('Events per min\n(rolling 10 min bins)')
+    if i==2:
+        ax.set_xlabel('Time (min)')
+    ax.legend()
+plt.tight_layout()
+
+
+fig = plt.figure(figsize=(7,5))
+hitRate,falseAlarmRate = [[calcHitRate(a,b,adjusted=False) for a,b in zip(*d)] for d in ((h,m),(fa,cr))]
+ax = fig.add_subplot(2,1,1)
+ax.plot(binCenters/60,hitRate,color=trialColors['hit'],label='change')
+ax.plot(binCenters/60,falseAlarmRate,color=trialColors['false alarm'],label='catch')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([0,1.05])
+ax.set_ylabel('Response probability')
+ax.legend()
+
+ax = fig.add_subplot(2,1,2)
+ax.plot(binCenters/60,dprime,color='k',label='d prime')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([0,np.nanmax(dprime)*1.05])
+ax.set_ylabel('d prime')
+ax.set_xlabel('Time (min)')
+plt.tight_layout()
 
 
 # task timing
@@ -159,7 +209,7 @@ interTrialInterval = trialStartTimes[1:] - trialStartTimes[:-1]
 timeFromChangeToTrialEnd = trialEndTimes - changeTimes
 timeFromAbortToTrialEnd = trialEndTimes - abortTimes
 
-fig = plt.figure(figsize=(7,7))
+fig = plt.figure(figsize=(7,8))
 ax = fig.add_subplot(4,1,1)
 ax.hist(timeToChange[changeTrials],bins=np.arange(0,10,0.17),color='g',label='change (n='+str(changeTrials.sum())+')')
 ax.hist(timeToChange[catchTrials],bins=np.arange(0,10,0.17),color='r',label='catch (n='+str(catchTrials.sum())+')')
