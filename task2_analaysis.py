@@ -87,9 +87,9 @@ for i,trial in enumerate(trialLog):
             catchTrials[i] = True
         else:
             changeTrials[i] = True
-        if len(trial['rewards']) > 0:
-            rewardTimes[i] = trial['rewards'][0][1]
-            autoReward[i] = trial['trial_params']['auto_reward']
+    if len(trial['rewards']) > 0:
+        rewardTimes[i] = trial['rewards'][0][1]
+        autoReward[i] = trial['trial_params']['auto_reward']
 
 
 trialColors = {
@@ -203,7 +203,7 @@ ax.set_xlabel('Time (min)')
 plt.tight_layout()
 
 
-# task timing
+# task event timing
 timeToChange = changeTimes - trialStartTimes
 interTrialInterval = trialStartTimes[1:] - trialStartTimes[:-1]
 timeFromChangeToTrialEnd = trialEndTimes - changeTimes
