@@ -114,6 +114,34 @@ trialColors = {
               }
 
 
+# task parameters
+def printParam(ax,x,y,key,val):
+    if isinstance(val,dict):
+        ax.text(x,y,key+':',fontsize='small')
+        x += 0.05
+        y += 1.5
+        for k in val:
+            y = printParam(ax,x,y,k,val[k])
+        return y
+    else:
+        ax.text(x,y,key+': '+str(val),fontsize='small')
+        return y+1.5
+
+fig = plt.figure(figsize=(6,10))
+ax = fig.add_subplot(1,1,1)
+x = y = 0
+for key in sorted(params.keys()):
+    y = printParam(ax,x,y,key,params[key])
+ax.set_ylim([y+1,-1])
+for side in ('left','right','top','bottom'):
+    ax.spines[side].set_visible(False)
+ax.set_xticks([])
+ax.set_yticks([])
+plt.tight_layout()
+if makeSummaryPDF:
+    fig.savefig(pdf,format='pdf')
+
+
 # task timing
 timeToChange = changeTimes - trialStartTimes
 interTrialInterval = trialStartTimes[1:] - trialStartTimes[:-1]
