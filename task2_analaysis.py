@@ -49,13 +49,15 @@ trialLog = np.array(pkl['items']['behavior']['trial_log'][:-1])
 trialStartTimes = np.full(len(trialLog),np.nan)
 trialStartFrames = np.full(len(trialLog),np.nan)
 trialEndTimes = np.full(len(trialLog),np.nan)
+abortedTrials = np.zeros(len(trialLog),dtype=bool)
+abortTimes = np.full(len(trialLog),np.nan)
 scheduledChangeTimes = np.full(len(trialLog),np.nan)
 changeTimes = np.full(len(trialLog),np.nan)
 changeFrames = np.full(len(trialLog),np.nan)
-abortedTrials = np.zeros(len(trialLog),dtype=bool)
-abortTimes = np.full(len(trialLog),np.nan)
 changeTrials = np.zeros(len(trialLog),dtype=bool)
 catchTrials = np.zeros(len(trialLog),dtype=bool)
+homeOri = np.full(len(trialLog),np.nan)
+changeOri = np.full(len(trialLog),np.nan)
 rewardTimes = np.full(len(trialLog),np.nan)
 autoReward = np.zeros(len(trialLog),dtype=bool)
 hit = np.zeros(len(trialLog),dtype=bool)
@@ -95,6 +97,12 @@ for i,trial in enumerate(trialLog):
             catchTrials[i] = True
         else:
             changeTrials[i] = True
+            for entry in trial['stimulus_changes'][0]:
+                if isinstance(entry,tuple):
+                    if entry[0]=='home':
+                        homeOri[i] = entry[1]
+                    elif entry[0]=='change_ori':
+                        changeOri[i] = entry[1]
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
@@ -351,6 +359,33 @@ ax.tick_params(direction='out',top=False,right=False)
 ax.set_ylim([0,np.nanmax(dprime)*1.05])
 ax.set_ylabel('d prime')
 ax.set_xlabel('Time (min)')
+plt.tight_layout()
+if makeSummaryPDF:
+    fig.savefig(pdf,format='pdf')
+    
+    
+# orientation  
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+oris = np.unique(changeOri[changeTrials])
+for ori in oris:
+    oriInd = changeOri==ori
+    n = oriInd.sum()
+    fracCorr = np.sum(hit & oriInd)/n
+    ax.plot(ori,fracCorr,'ko')
+    ax.text(ori,fracCorr+0.05,str(n),ha='center')
+falseAlarmRate = falseAlarm.sum()/catchTrials.sum()
+ax.plot(0,falseAlarmRate,'ko')
+ax.text(0,falseAlarmRate+0.05,str(catchTrials.sum()),ha='center')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+xmax = 1.05*max(abs(oris))
+ax.set_xlim(-xmax,xmax)
+ax.set_ylim([0,1.05])
+ax.set_ylabel('Response probability',fontsize=12)
+ax.set_xlabel('$\Delta$ Orientation (degrees)',fontsize=12)
+ax.set_title('number of trials above each point',fontsize=10)
 plt.tight_layout()
 if makeSummaryPDF:
     fig.savefig(pdf,format='pdf')
