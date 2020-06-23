@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.rcParams['pdf.fonttype'] = 42
 import fileIO
+import visual_behavior
 
 
 
@@ -43,17 +44,14 @@ f = fileIO.getFile()
 pkl = pd.read_pickle(f)
 
 params = pkl['items']['behavior']['params']
-
-frameIntervals = pkl['items']['behavior']['intervalsms']/1000
-frameTimes = np.cumsum(frameIntervals)
-
-
-# parse trial log
 trialLog = np.array(pkl['items']['behavior']['trial_log'][:-1])
+
 trialStartTimes = np.full(len(trialLog),np.nan)
+trialStartFrames = np.full(len(trialLog),np.nan)
 trialEndTimes = np.full(len(trialLog),np.nan)
 scheduledChangeTimes = np.full(len(trialLog),np.nan)
 changeTimes = np.full(len(trialLog),np.nan)
+changeFrames = np.full(len(trialLog),np.nan)
 abortedTrials = np.zeros(len(trialLog),dtype=bool)
 abortTimes = np.full(len(trialLog),np.nan)
 changeTrials = np.zeros(len(trialLog),dtype=bool)
@@ -69,6 +67,7 @@ for i,trial in enumerate(trialLog):
     for event,epoch,t,frame in trial['events']:
         if event=='trial_start':
             trialStartTimes[i] = t
+            trialStartFrames[i] = frame
         elif event=='trial_end':
             trialEndTimes[i] = t
         elif event=='stimulus_window' and epoch=='enter':
@@ -82,6 +81,7 @@ for i,trial in enumerate(trialLog):
                 abortTimes[i] = t
         elif event in ('stimulus_changed','sham_change'):
             changeTimes[i] = t
+            changeFrames[i] = frame
         elif event=='hit':
             hit[i] = True
         elif event=='miss':
@@ -98,6 +98,13 @@ for i,trial in enumerate(trialLog):
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
+        
+frameIntervals = pkl['items']['behavior']['intervalsms']/1000
+frameTimes = np.concatenate(([0],np.cumsum(frameIntervals)))
+frameTimes += trialStartTimes[0] - frameTimes[int(trialStartFrames[0])]
+
+dx,vsig,vin = [pkl['items']['behavior']['encoders'][0][key] for key in ('dx','vsig','vin')]
+runSpeed = visual_behavior.analyze.compute_running_speed(dx,frameTimes,vsig,vin)
 
 
 # make figures
@@ -234,6 +241,50 @@ if makeSummaryPDF:
     fig.savefig(pdf,format='pdf')
 
 
+# running
+fig = plt.figure(figsize=(6,8))
+ax = fig.add_subplot(2,1,1)
+ax.plot(frameTimes/60,runSpeed,'k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlabel('Time (min)')
+ax.set_ylabel('Running speed (cm/s)')
+
+ax = fig.add_subplot(2,1,2)
+preTime = 2.75
+postTime = params['response_window'][1] + params['no_stim_no_lick_randrange'][0]
+runPlotTime = np.arange(-preTime,postTime+0.01,0.01)
+trialSpeed = np.full((len(trialLog),len(runPlotTime)),np.nan)
+for i,ct in enumerate(changeTimes):
+    if not np.isnan(ct):
+        ind = (frameTimes>=ct-preTime) & (frameTimes<=ct+postTime)
+        trialSpeed[i] = np.interp(runPlotTime,frameTimes[ind]-ct,runSpeed[ind])
+for trials,lbl in zip((hit,miss,falseAlarm,correctReject),('hit','miss','false alarm','correct reject')):
+    m = trialSpeed[trials].mean(axis=0)
+    n = trials.sum()
+    s = trialSpeed[trials].std(axis=0)/(n**0.5)
+    ax.plot(runPlotTime,m,color=trialColors[lbl],label=lbl+' (n='+str(n)+')')
+    ax.fill_between(runPlotTime,m+s,m-s,color=trialColors[lbl],alpha=0.25)
+if params['periodic_flash'] is not None:
+    flashDur,grayDur = params['periodic_flash']
+    flashInterval = flashDur + grayDur
+    ylim = plt.get(ax,'ylim')
+    for t in np.arange(-3*flashInterval,flashDur,flashInterval):
+        ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=flashDur,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlim([-preTime,postTime])
+ax.set_xlabel('Time from change/catch (s)')
+ax.set_ylabel('Running speed (cm/s)')
+ax.legend()
+
+plt.tight_layout()
+if makeSummaryPDF:
+    fig.savefig(pdf,format='pdf')
+
+
 # performance
 binInterval = 60
 binDuration = 600
@@ -304,6 +355,8 @@ plt.tight_layout()
 if makeSummaryPDF:
     fig.savefig(pdf,format='pdf')
 
+
+# finalize pdf
 if makeSummaryPDF:
     pdf.close()
     plt.close('all')
