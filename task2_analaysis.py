@@ -112,7 +112,7 @@ frameTimes = np.concatenate(([0],np.cumsum(frameIntervals)))
 frameTimes += trialStartTimes[0] - frameTimes[int(trialStartFrames[0])]
 
 dx,vsig,vin = [pkl['items']['behavior']['encoders'][0][key] for key in ('dx','vsig','vin')]
-runSpeed = visual_behavior.analyze.compute_running_speed(dx,frameTimes,vsig,vin)
+runSpeed = visual_behavior.analyze.compute_running_speed(dx[:frameTimes.size],frameTimes,vsig,vin)
 
 
 # make figures
