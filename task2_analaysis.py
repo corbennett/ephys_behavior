@@ -260,7 +260,7 @@ ax.set_xlabel('Time (min)')
 ax.set_ylabel('Running speed (cm/s)')
 
 ax = fig.add_subplot(2,1,2)
-preTime = 2.75
+preTime = 2
 postTime = params['response_window'][1] + params['no_stim_no_lick_randrange'][0]
 runPlotTime = np.arange(-preTime,postTime+0.01,0.01)
 trialSpeed = np.full((len(trialLog),len(runPlotTime)),np.nan)
