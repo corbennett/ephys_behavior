@@ -329,6 +329,9 @@ for i,d in enumerate((
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim([0,(bins[-1]+binDuration)/60])
+    ylim = plt.get(ax,'ylim')
+    ax.set_ylim([0,ylim[1]])
     if i==0:
         ax.set_ylabel('Events per min\n(rolling 10 min bins)')
     if i==2:
