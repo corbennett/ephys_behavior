@@ -187,7 +187,7 @@ ax.set_ylabel('Trials')
 
 ax = fig.add_subplot(4,1,3)
 changeToEnd = timeFromChangeToTrialEnd[~abortedTrials]
-abortToEnd = timeFromAbortToTrialEnd[abortedTrials]
+abortToEnd = timeFromAbortToTrialEnd[abortedTrials] if abortedTrials.sum()>0 else np.full(len(trialLog),np.nan)
 xlim = [round(min(changeToEnd.min(),abortToEnd.min()))-1,round(max(changeToEnd.max(),abortToEnd.max()))+1]
 ax.hist(changeToEnd,bins=np.arange(0,10,0.17),color='k')
 for side in ('right','top'):
@@ -198,7 +198,8 @@ ax.set_xlabel('Time from change/catch to trial end (includes response window + r
 ax.set_ylabel('Trials')
 
 ax = fig.add_subplot(4,1,4)
-ax.hist(abortToEnd,bins=np.arange(0,10,0.17),color='k')
+if not np.all(np.isnan(abortToEnd)):
+    ax.hist(abortToEnd,bins=np.arange(0,10,0.17),color='k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
