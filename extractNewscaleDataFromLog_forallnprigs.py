@@ -8,21 +8,52 @@ Created on Wed Jul 24 16:54:59 2019
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
-import cPickle as pickle
+#import cPickle as pickle
 import os
 
 
 #Path to New Scale log file
-logFile = r"Z:\newscale_log_08142019.txt"
+logFile = r"\\10.128.50.43\sd6.3\1033388795_509652_20200630\1033388795_509652_20200630.motor-locs.csv"
 
 #Look up table to find probe position from new scale manipulator serial number
-serialToProbeDict = {' SN31212': 'A', ' SN34029': 'B', ' SN31058':'C', ' SN24272':'D', ' SN32152':'E', ' SN36800':'F'}
+serialToProbeDict = {' SN32148': 'A', ' SN32142': 'B', ' SN32144':'C', ' SN32149':'D', ' SN32135':'E', ' SN24273':'F'}
+serialToProbeDict = {' SN34027': 'A', ' SN31056': 'B', ' SN32141':'C', ' SN32146':'D', ' SN32139':'E', ' SN32145':'F'}
 
 #Date and time of experiment
-dateOfInterest = '2019-08-14'
+dateOfInterest = '2020-06-30'
 startTime = '0:00'  #I've set it to 12 am, only necessary to change if you did multiple insertions that day
                     #This script just finds the first insertion after the experiment time
 
+
+#def findInsertionStartStop(df):
+#    ''' Input: Dataframe from newscale log file for a specific date and probe serial number indexed by time stamps
+#            df is used to generate timeDeltas: Series datetime index of pandas dataframe (time between rows) in seconds
+#        OutPut: start and stop points where probe insertion is inferred to have started and stopped
+#        (based on pattern of many log entries at small time deltas)'''
+#    
+#    timeDeltas = df.index.to_series().diff().astype('timedelta64[s]')
+#    zDeltas = df['z'].diff().abs()
+#    #find the first time such that the next 20 time and z deltas are all small
+#    try:    
+#        rolling_time_delta = timeDeltas.rolling(20, win_type='boxcar').mean().dropna()
+#        rolling_z_delta = zDeltas.rolling(20, win_type='boxcar').mean().dropna()
+#        start = rollingDelta.where(rollingDelta<5).dropna().index[0]
+#        end = timeDeltas.loc[start:].where(timeDeltas.loc[start:]>1000).dropna().index[0] #find first point after start where time gap is long
+#        endind = timeDeltas.index.get_loc(end)
+#        if type(endind) == slice:
+#            endind = endind.start
+#        
+#        end = timeDeltas.index[endind-1] #take the time stamp right before that point as the end of insertion
+#        
+#        #now see if there are any retractions between start and end (since we may have repositioned)
+#        diff = df.loc[start:end, 'z']
+#        diff = diff.where(diff.diff()<-50).dropna()
+#        if len(diff)>0:
+#            start = diff.index[-1]
+#    except:
+#        start, end = timeDeltas.index[0], timeDeltas.index[0]
+#    
+#    return start, end
 
 def findInsertionStartStop(df):
     ''' Input: Dataframe from newscale log file for a specific date and probe serial number indexed by time stamps
@@ -30,26 +61,24 @@ def findInsertionStartStop(df):
         OutPut: start and stop points where probe insertion is inferred to have started and stopped
         (based on pattern of many log entries at small time deltas)'''
     
-    timeDeltas = tempdf.index.to_series().diff().astype('timedelta64[s]')
-    #find the first time such that the next 20 deltas are all small
-    try:    
-        rollingDelta = timeDeltas.rolling(10, win_type='boxcar').sum().dropna()
-        start = rollingDelta.where(rollingDelta<1).dropna().index[0]
-        end = timeDeltas.loc[start:].where(timeDeltas.loc[start:]>1000).dropna().index[0] #find first point after start where time gap is long
-        endind = timeDeltas.index.get_loc(end)
-        if type(endind) == slice:
-            endind = endind.start
-        
-        end = timeDeltas.index[endind-1] #take the time stamp right before that point as the end of insertion
-        
-        #now see if there are any retractions between start and end (since we may have repositioned)
-        diff = df.loc[start:end, 'z']
-        diff = diff.where(diff.diff()<-50).dropna()
-        if len(diff)>0:
-            start = diff.index[-1]
-    except:
-        start, end = timeDeltas.index[0], timeDeltas.index[0]
+    timeDeltas = df.index.to_series().diff().astype('timedelta64[s]')
+    rolling_time_delta = timeDeltas.rolling(20, win_type='boxcar').mean().shift(-19).dropna()
     
+    deltas = df[['z','x','y']].diff().abs() #get deltas for each axis
+    rolling = deltas.rolling(20, win_type='boxcar').mean().shift(-19).dropna() #average over 20 steps and shift to left align
+    #find the first time such that there are small steps in Z and no movement in X and Y AND the time steps are small
+    try:    
+        insertion = rolling.where((rolling['z']<10)&
+                                              (rolling['z']>2)&
+                                              (rolling['x']<1)&
+                                              (rolling['y']<1)&
+                                              (rolling_time_delta<2)).dropna()
+     
+        start = insertion.index[0]
+        end = timeDeltas[start:][timeDeltas[start:]<10].index[-1]
+        
+    except:
+        start, end = deltas.index[0], deltas.index[0]
     return start, end
 
 
@@ -71,11 +100,11 @@ for pSN in np.unique(pdf.probeID.values):
     
     fig = plt.figure(pSN + ': ' + pid, figsize=[12,5])
     ax1 = plt.subplot2grid([1,3], [0,0], colspan=2)
-    tempdf.plot(y=['z', 'x', 'y'], ax=ax1)
+    tempdf.plot(y=['relz', 'relx', 'rely'], ax=ax1)
 
     start, end = findInsertionStartStop(tempdf)
     ax2 = plt.subplot2grid([1,3],[0,2], colspan=1)
-    tempdf.plot(y=['z', 'x', 'y'], ax=ax2)
+    tempdf.plot(y=['relz', 'relx', 'rely'], ax=ax2)
     ax2.set_xlim([start - pd.Timedelta(minutes=1), end + pd.Timedelta(minutes=1)])
     insertiondf = tempdf.loc[start:end]
     
