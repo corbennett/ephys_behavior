@@ -96,13 +96,14 @@ for i,trial in enumerate(trialLog):
         if trial['trial_params']['catch']:
             catchTrials[i] = True
         else:
-            changeTrials[i] = True
-            for entry in trial['stimulus_changes'][0]:
-                if isinstance(entry,tuple):
-                    if entry[0]=='home':
-                        homeOri[i] = entry[1]
-                    elif entry[0]=='change_ori':
-                        changeOri[i] = entry[1]
+            if len(trial['stimulus_changes'])>0:
+                changeTrials[i] = True
+                for entry in trial['stimulus_changes'][0]:
+                    if isinstance(entry,tuple):
+                        if entry[0]=='home':
+                            homeOri[i] = entry[1]
+                        elif entry[0]=='change_ori':
+                            changeOri[i] = entry[1]
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
@@ -170,7 +171,7 @@ ax.hist(timeToChange[catchTrials],bins=np.arange(0,10,0.17),color='r',label='cat
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim([0,round(timeToChange[~abortedTrials].max())+1])
+ax.set_xlim([0,round(np.nanmax(timeToChange[~abortedTrials]))+1])
 ax.set_xlabel('Time to change/catch from trial start (s)')
 ax.set_ylabel('Trials')
 ax.set_title(params['stage'])
@@ -188,7 +189,7 @@ ax.set_ylabel('Trials')
 ax = fig.add_subplot(4,1,3)
 changeToEnd = timeFromChangeToTrialEnd[~abortedTrials]
 abortToEnd = timeFromAbortToTrialEnd[abortedTrials] if abortedTrials.sum()>0 else np.full(len(trialLog),np.nan)
-xlim = [round(min(changeToEnd.min(),abortToEnd.min()))-1,round(max(changeToEnd.max(),abortToEnd.max()))+1]
+xlim = [round(min(np.nanmin(changeToEnd),np.nanmin(abortToEnd)))-1,round(max(np.nanmax(changeToEnd),np.nanmax(abortToEnd)))+1]
 ax.hist(changeToEnd,bins=np.arange(0,10,0.17),color='k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
@@ -230,6 +231,9 @@ for i,trial in enumerate(trialLog):
     elif correctReject[i]:
         clr = trialColors['correct reject']
         lbl = 'correct reject' if correctReject[:i].sum()==0 else None
+    else:
+        clr = '0.5'
+        lbl = 'unknown'
     ct = changeTimes[i] if not np.isnan(changeTimes[i]) else scheduledChangeTimes[i]
     ax.add_patch(matplotlib.patches.Rectangle([trialStartTimes[i]-ct,i-0.5],width=trialEndTimes[i]-trialStartTimes[i],height=1,facecolor=clr,edgecolor=None,alpha=0.5,zorder=0,label=lbl))
     lickTimes = np.array([lick[0] for lick in trial['licks']])
@@ -261,7 +265,12 @@ ax.set_xlabel('Time (min)')
 ax.set_ylabel('Running speed (cm/s)')
 
 ax = fig.add_subplot(2,1,2)
-preTime = 2
+if params['periodic_flash'] is not None:
+    flashDur,grayDur = params['periodic_flash']
+    flashInterval = flashDur + grayDur
+    preTime = 2*flashInterval + grayDur
+else:
+    preTime = 2
 postTime = params['response_window'][1] + params['no_stim_no_lick_randrange'][0]
 runPlotTime = np.arange(-preTime,postTime+0.01,0.01)
 trialSpeed = np.full((len(trialLog),len(runPlotTime)),np.nan)
@@ -276,8 +285,6 @@ for trials,lbl in zip((hit,miss,falseAlarm,correctReject),('hit','miss','false a
     ax.plot(runPlotTime,m,color=trialColors[lbl],label=lbl+' (n='+str(n)+')')
     ax.fill_between(runPlotTime,m+s,m-s,color=trialColors[lbl],alpha=0.25)
 if params['periodic_flash'] is not None:
-    flashDur,grayDur = params['periodic_flash']
-    flashInterval = flashDur + grayDur
     ylim = plt.get(ax,'ylim')
     for t in np.arange(-3*flashInterval,flashDur,flashInterval):
         ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=flashDur,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
@@ -372,6 +379,7 @@ if makeSummaryPDF:
 # orientation  
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
+ax.plot([0,0],[0,1.05],'--',color='0.5')
 oris = np.unique(changeOri[changeTrials])
 for ori in oris:
     oriInd = changeOri==ori
