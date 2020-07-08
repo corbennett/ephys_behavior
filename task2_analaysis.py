@@ -75,8 +75,10 @@ for i,trial in enumerate(trialLog):
         elif event=='stimulus_window' and epoch=='enter':
             ct = trial['trial_params']['change_time']
             if params['periodic_flash'] is not None:
-                ct *= sum(params['periodic_flash'])
-            scheduledChangeTimes[i] = t + trial['trial_params']['change_time']
+                flashInterval = sum(params['periodic_flash'])
+                ct *= flashInterval
+                ct -= params['pre_change_time']-flashInterval
+            scheduledChangeTimes[i] = t + ct
         elif 'abort' in events:
             if event=='abort':
                 abortedTrials[i] = True
@@ -166,23 +168,25 @@ timeFromAbortToTrialEnd = trialEndTimes - abortTimes
 
 fig = plt.figure(figsize=(7,8))
 ax = fig.add_subplot(4,1,1)
-ax.hist(timeToChange[changeTrials],bins=np.arange(0,10,0.17),color='g',label='change (n='+str(changeTrials.sum())+')')
-ax.hist(timeToChange[catchTrials],bins=np.arange(0,10,0.17),color='r',label='catch (n='+str(catchTrials.sum())+')')
+xlim = [0,round(np.nanmax(timeToChange[~abortedTrials]))+1]
+ax.hist(timeToChange[changeTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='g',label='change (n='+str(changeTrials.sum())+')')
+ax.hist(timeToChange[catchTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='r',label='catch (n='+str(catchTrials.sum())+')')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim([0,round(np.nanmax(timeToChange[~abortedTrials]))+1])
+ax.set_xlim(xlim)
 ax.set_xlabel('Time to change/catch from trial start (s)')
 ax.set_ylabel('Trials')
 ax.set_title(params['stage'])
 ax.legend()
 
 ax = fig.add_subplot(4,1,2)
-ax.hist(interTrialInterval,bins=np.arange(0,10,0.17),color='k')
+xlim = [round(interTrialInterval.min())-1,round(interTrialInterval.max())+1]
+ax.hist(interTrialInterval,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim([round(interTrialInterval.min())-1,round(interTrialInterval.max())+1])
+ax.set_xlim(xlim)
 ax.set_xlabel('Inter-trial interval (start to start) (s)')
 ax.set_ylabel('Trials')
 
@@ -190,7 +194,7 @@ ax = fig.add_subplot(4,1,3)
 changeToEnd = timeFromChangeToTrialEnd[~abortedTrials]
 abortToEnd = timeFromAbortToTrialEnd[abortedTrials] if abortedTrials.sum()>0 else np.full(len(trialLog),np.nan)
 xlim = [round(min(np.nanmin(changeToEnd),np.nanmin(abortToEnd)))-1,round(max(np.nanmax(changeToEnd),np.nanmax(abortToEnd)))+1]
-ax.hist(changeToEnd,bins=np.arange(0,10,0.17),color='k')
+ax.hist(changeToEnd,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
@@ -200,7 +204,7 @@ ax.set_ylabel('Trials')
 
 ax = fig.add_subplot(4,1,4)
 if not np.all(np.isnan(abortToEnd)):
-    ax.hist(abortToEnd,bins=np.arange(0,10,0.17),color='k')
+    ax.hist(abortToEnd,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
@@ -252,7 +256,21 @@ ax.legend()
 plt.tight_layout()
 if makeSummaryPDF:
     fig.savefig(pdf,format='pdf')
-
+    
+    
+# reaction time
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+ax.plot(changeTimes[hit]/60,rewardTimes[hit]-changeTimes[hit],'ko')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([0,1])
+ax.set_xlabel('Time (min)')
+ax.set_ylabel('Reaction time (s)')
+plt.tight_layout()
+if makeSummaryPDF:
+    fig.savefig(pdf,format='pdf')
 
 # running
 fig = plt.figure(figsize=(6,8))
