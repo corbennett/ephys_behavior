@@ -114,6 +114,9 @@ frameIntervals = pkl['items']['behavior']['intervalsms']/1000
 frameTimes = np.concatenate(([0],np.cumsum(frameIntervals)))
 frameTimes += trialStartTimes[0] - frameTimes[int(trialStartFrames[0])]
 
+lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
+lickTimes = frameTimes[lickFrames]
+
 dx,vsig,vin = [pkl['items']['behavior']['encoders'][0][key] for key in ('dx','vsig','vin')]
 runSpeed = visual_behavior.analyze.compute_running_speed(dx[:frameTimes.size],frameTimes,vsig,vin)
 
@@ -240,9 +243,9 @@ for i,trial in enumerate(trialLog):
         lbl = 'unknown'
     ct = changeTimes[i] if not np.isnan(changeTimes[i]) else scheduledChangeTimes[i]
     ax.add_patch(matplotlib.patches.Rectangle([trialStartTimes[i]-ct,i-0.5],width=trialEndTimes[i]-trialStartTimes[i],height=1,facecolor=clr,edgecolor=None,alpha=0.5,zorder=0,label=lbl))
-    lickTimes = np.array([lick[0] for lick in trial['licks']])
-    lickTimes -= ct
-    ax.vlines(lickTimes,i-0.5,i+0.5,colors='k')
+    trialLickTimes = np.array([lick[0] for lick in trial['licks']])
+    trialLickTimes -= ct
+    ax.vlines(trialLickTimes,i-0.5,i+0.5,colors='k')
     clr = 'b' if autoReward[i] else clr
     ax.vlines(rewardTimes[i]-ct,i-0.5,i+0.5,colors=clr)
 for side in ('right','top'):
@@ -261,16 +264,31 @@ if makeSummaryPDF:
 # reaction time
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
-ax.plot(changeTimes[hit]/60,rewardTimes[hit]-changeTimes[hit],'ko')
+ylim = [0,params['response_window'][1]*2]
+for i in (0,1):
+    ax.plot([0,60],[params['response_window'][i]]*2,'--',color='0.5')
+ax.plot(changeTimes[hit]/60,rewardTimes[hit]-changeTimes[hit],'o',color=trialColors['hit'],label='hit')
+for resp,lbl in zip((miss,falseAlarm,correctReject),('miss','false alarm','correct reject')):
+    firstLickInd = np.searchsorted(lickTimes,changeTimes[resp]+params['response_window'][0])
+    noLicksAfter = firstLickInd==lickTimes.size
+    firstLickInd[noLicksAfter] = lickTimes.size-1
+    lickLat = lickTimes[firstLickInd]-changeTimes[resp]
+    lickLat[noLicksAfter] = np.nan
+    i = lickLat<=ylim[1]
+    ax.plot(changeTimes[resp][i]/60,lickLat[i],'o',color=trialColors[lbl],label=lbl)
+    i = (lickLat>ylim[1]) | (np.isnan(lickLat))
+    ax.plot(changeTimes[resp][i]/60,np.zeros(i.sum())+0.99*ylim[1],'^',color=trialColors[lbl])
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
-ax.set_ylim([0,1])
+ax.set_ylim(ylim)
 ax.set_xlabel('Time (min)')
 ax.set_ylabel('Reaction time (s)')
+ax.legend(loc='lower right')
 plt.tight_layout()
 if makeSummaryPDF:
     fig.savefig(pdf,format='pdf')
+
 
 # running
 fig = plt.figure(figsize=(6,8))
