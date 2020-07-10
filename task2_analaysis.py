@@ -49,6 +49,7 @@ if params['periodic_flash'] is not None:
     flashInterval = flashDur + grayDur
     
 trialLog = np.array(pkl['items']['behavior']['trial_log'][:-1])
+changeLog = pkl['items']['behavior']['stimuli']['grating']['change_log']
 
 trialStartTimes = np.full(len(trialLog),np.nan)
 trialStartFrames = np.full(len(trialLog),np.nan)
@@ -274,8 +275,6 @@ else:
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
 ylim = [0,params['response_window'][1]*2]
-for i in (0,1):
-    ax.plot([0,60],[params['response_window'][i]]*2,'--',color='0.5')
 ax.plot(changeTimes[hit]/60,rewardTimes[hit]-changeTimes[hit],'o',color=trialColors['hit'],label='hit')
 for resp,lbl in zip((miss,falseAlarm,correctReject),('miss','false alarm','correct reject')):
     firstLickInd = np.searchsorted(lickTimes,changeTimes[resp]+params['response_window'][0])
@@ -292,6 +291,10 @@ for resp,lbl in zip((miss,falseAlarm,correctReject),('miss','false alarm','corre
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
+xlim = plt.get(ax,'xlim')
+for i in (0,1):
+    ax.plot(xlim,[params['response_window'][i]]*2,'--',color='0.5',zorder=0)
+ax.set_xlim(xlim)
 ax.set_ylim(ylim)
 ax.set_xlabel('Time in session (min)')
 ax.set_ylabel('Reaction time (s)')
@@ -443,54 +446,61 @@ if makeSummaryPDF:
     
     
 # orientation
+home = np.unique(homeOri[changeTrials])
 oris = np.unique(changeOri[changeTrials])
-if len(oris)>1:
-    oriNtrials = []
-    oriFracCorr = []
-    oriReactionTime = []
-    for ori in oris:
-        oriInd = changeOri==ori
-        oriNtrials.append(oriInd.sum())
-        oriFracCorr.append(np.sum(hit & oriInd)/oriNtrials[-1])
-        oriReactionTime.append((rewardTimes-changeTimes)[hit & oriInd])
-        
-    fig = plt.figure(figsize=(6,8))
-    ax = fig.add_subplot(2,1,1)
-    ax.plot([0,0],[0,1.05],'--',color='0.5',alpha=0.5)
-    for ori,fracCorr,n in zip(oris,oriFracCorr,oriNtrials):
-        ax.plot(ori,fracCorr,'ko')
-        ax.text(ori,fracCorr+0.05,str(n),ha='center')
-    falseAlarmRate = falseAlarm.sum()/catchTrials.sum()
-    ax.plot(0,falseAlarmRate,'ko')
-    ax.text(0,falseAlarmRate+0.05,str(catchTrials.sum()),ha='center')
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    xmax = 1.05*max(abs(oris))
-    ax.set_xlim(-xmax,xmax)
-    ax.set_ylim([0,1.05])
-    ax.set_ylabel('Response probability',fontsize=12)
-    ax.set_title('number of trials above each point',fontsize=10)
-        
-    ax = fig.add_subplot(2,1,2)
-    for ori,rt in zip(np.concatenate((oris,[0])),oriReactionTime+[falseAlarmReactionTime]):
-        ax.plot([ori]*rt.size,rt,'o',mec='0.5',mfc='none',alpha=0.5)
-        m = rt.mean()
-        s = rt.std()/(rt.size**0.5)
-        ax.plot(ori,m,'ko')
-        ax.plot([ori]*2,[m-s,m+s],'k')
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xlim(-xmax,xmax)
-    ymax = plt.get(ax,'ylim')[1]
-    ax.plot([0,0],[0,ymax],'--',color='0.5',alpha=0.5,zorder=0)
-    ax.set_ylim([0,ymax])
-    ax.set_ylabel('Reaction time (s)',fontsize=12)
-    ax.set_xlabel('$\Delta$ Orientation (degrees)',fontsize=12)
-    plt.tight_layout()
-    if makeSummaryPDF:
-        fig.savefig(pdf,format='pdf')
+if len(home)>1 or len(oris)>1:
+    for ho in home:
+        oriNtrials = []
+        oriDelta = []
+        oriFracCorr = []
+        oriReactionTime = []
+        for ori in oris:
+            oriInd = (homeOri==ho) & (changeOri==ori)
+            oriNtrials.append(oriInd.sum())
+            delta = ori-ho
+            if ho==90 and delta<-90:
+                delta = ho+ori
+            oriDelta.append(delta)
+            oriFracCorr.append(np.sum(hit & oriInd)/oriNtrials[-1])
+            oriReactionTime.append((rewardTimes-changeTimes)[hit & oriInd])
+            
+        fig = plt.figure(figsize=(6,8))
+        ax = fig.add_subplot(2,1,1)
+        ax.plot([0,0],[0,1.05],'--',color='0.5',alpha=0.5)
+        for ori,fracCorr,n in zip(oriDelta,oriFracCorr,oriNtrials):
+            ax.plot(ori,fracCorr,'ko')
+            ax.text(ori,fracCorr+0.05,str(n),ha='center')
+        falseAlarmRate = falseAlarm.sum()/catchTrials.sum()
+        ax.plot(0,falseAlarmRate,'ko')
+        ax.text(0,falseAlarmRate+0.05,str(catchTrials.sum()),ha='center')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        xmax = 1.05*max(np.abs(oriDelta))
+        ax.set_xlim(-xmax,xmax)
+        ax.set_ylim([0,1.05])
+        ax.set_ylabel('Response probability',fontsize=12)
+        ax.set_title('home ori: '+str(ho)+' (n='+str(np.sum(homeOri==ho))+')\nnumber of trials above each point',fontsize=10)
+            
+        ax = fig.add_subplot(2,1,2)
+        for ori,rt in zip(np.concatenate((oriDelta,[0])),oriReactionTime+[falseAlarmReactionTime]):
+            ax.plot([ori]*rt.size,rt,'o',mec='0.5',mfc='none',alpha=0.5)
+            m = rt.mean()
+            s = rt.std()/(rt.size**0.5)
+            ax.plot(ori,m,'ko')
+            ax.plot([ori]*2,[m-s,m+s],'k')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim(-xmax,xmax)
+        ylim = [0,params['response_window'][1]]
+        ax.plot([0,0],ylim,'--',color='0.5',alpha=0.5,zorder=0)
+        ax.set_ylim(ylim)
+        ax.set_ylabel('Reaction time (s)',fontsize=12)
+        ax.set_xlabel('$\Delta$ Orientation (degrees)',fontsize=12)
+        plt.tight_layout()
+        if makeSummaryPDF:
+            fig.savefig(pdf,format='pdf')
 
 
 # finalize pdf
