@@ -38,6 +38,15 @@ def calcHitRate(hits,misses,adjusted=False):
     return hitRate
 
 
+def getLickLatency(lickTimes,eventTimes,offset=0):
+    firstLickInd = np.searchsorted(lickTimes,eventTimes+offset)
+    noLicksAfter = firstLickInd==lickTimes.size
+    firstLickInd[noLicksAfter] = lickTimes.size-1
+    lickLat = lickTimes[firstLickInd]-eventTimes
+    lickLat[noLicksAfter] = np.nan
+    return lickLat
+
+
 
 # read pkl file
 f = fileIO.getFile()
@@ -110,6 +119,8 @@ for i,trial in enumerate(trialLog):
                             homeOri[i] = entry[1]
                         elif entry[0]=='change_ori':
                             changeOri[i] = entry[1]
+    if 'home' in trial:
+        homeOri[i] = trial['home']['Ori']
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
@@ -277,13 +288,7 @@ else:
 ylim = [0,params['response_window'][1]*2]
 ax.plot(changeTimes[hit]/60,rewardTimes[hit]-changeTimes[hit],'o',color=trialColors['hit'],label='hit')
 for resp,lbl in zip((miss,falseAlarm,correctReject),('miss','false alarm','correct reject')):
-    firstLickInd = np.searchsorted(lickTimes,changeTimes[resp]+params['response_window'][0])
-    noLicksAfter = firstLickInd==lickTimes.size
-    firstLickInd[noLicksAfter] = lickTimes.size-1
-    lickLat = lickTimes[firstLickInd]-changeTimes[resp]
-    lickLat[noLicksAfter] = np.nan
-    if lbl=='false alarm':
-        falseAlarmReactionTime = lickLat
+    lickLat = getLickLatency(lickTimes,changeTimes[resp],params['response_window'][0])
     i = lickLat<=ylim[1]
     ax.plot(changeTimes[resp][i]/60,lickLat[i],'o',color=trialColors[lbl],label=lbl)
     i = (lickLat>ylim[1]) | (np.isnan(lickLat))
@@ -456,13 +461,14 @@ if len(home)>1 or len(oris)>1:
         oriReactionTime = []
         for ori in oris:
             oriInd = (homeOri==ho) & (changeOri==ori)
-            oriNtrials.append(oriInd.sum())
-            delta = ori-ho
-            if ho==90 and delta<-90:
-                delta = ho+ori
-            oriDelta.append(delta)
-            oriFracCorr.append(np.sum(hit & oriInd)/oriNtrials[-1])
-            oriReactionTime.append((rewardTimes-changeTimes)[hit & oriInd])
+            if any(oriInd):
+                oriNtrials.append(oriInd.sum())
+                oriDelta.append(ori-ho)
+                oriFracCorr.append(np.sum(hit & oriInd)/oriNtrials[-1])
+                oriReactionTime.append((rewardTimes-changeTimes)[hit & oriInd])
+        
+        falseAlarmRate = falseAlarm[homeOri==ho].sum()/catchTrials[homeOri==ho].sum()
+        falseAlarmReactionTime = getLickLatency(lickTimes,changeTimes[falseAlarm],params['response_window'][0])
             
         fig = plt.figure(figsize=(6,8))
         ax = fig.add_subplot(2,1,1)
@@ -470,9 +476,8 @@ if len(home)>1 or len(oris)>1:
         for ori,fracCorr,n in zip(oriDelta,oriFracCorr,oriNtrials):
             ax.plot(ori,fracCorr,'ko')
             ax.text(ori,fracCorr+0.05,str(n),ha='center')
-        falseAlarmRate = falseAlarm.sum()/catchTrials.sum()
         ax.plot(0,falseAlarmRate,'ko')
-        ax.text(0,falseAlarmRate+0.05,str(catchTrials.sum()),ha='center')
+        ax.text(0,falseAlarmRate+0.05,str(catchTrials[homeOri==ho].sum()),ha='center')
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
         ax.tick_params(direction='out',top=False,right=False)
@@ -480,7 +485,7 @@ if len(home)>1 or len(oris)>1:
         ax.set_xlim(-xmax,xmax)
         ax.set_ylim([0,1.05])
         ax.set_ylabel('Response probability',fontsize=12)
-        ax.set_title('home ori: '+str(ho)+' (n='+str(np.sum(homeOri==ho))+')\nnumber of trials above each point',fontsize=10)
+        ax.set_title('home ori: '+str(ho)+' (n='+str(np.sum(homeOri[changeTrials | catchTrials]==ho))+' + '+str(np.sum(abortedTrials & (homeOri==ho)))+' aborted trials)'+'\n'+'number of trials above each point',fontsize=10)
             
         ax = fig.add_subplot(2,1,2)
         for ori,rt in zip(np.concatenate((oriDelta,[0])),oriReactionTime+[falseAlarmReactionTime]):
