@@ -51,7 +51,7 @@ for u in unitIDs:
     chosen_templates = kilosortData['spike_templates'][chosen_spikes].flatten()
     units[u]['template'] = np.mean(kilosortData['templates'][chosen_templates],axis=0).T
     
-    peakChan = np.unravel_index(np.argmin(units[u]['template']),units[u]['template'].shape)[1]
+    peakChan = np.unravel_index(np.argmin(units[u]['template']),units[u]['template'].shape)[0]
     units[u]['peakChan'] = peakChan
     units[u]['position'] = kilosortData['channel_positions'][peakChan]
     units[u]['amplitudes'] = kilosortData['amplitudes'][uind]
@@ -76,18 +76,28 @@ goodUnits = goodUnits[np.argsort([units[u]['peakChan'] for u in goodUnits])]
 probeCols = 8
 probeRows = 48
 channelSpacing = 6 # microns
-x = np.arange(probeCols)*channelSpacing
-y = np.arange(probeRows)*channelSpacing
-for u in [goodUnits[0]]:
-    fig = plt.figure()
+probeX = np.arange(probeCols)*channelSpacing
+probeY = np.arange(probeRows)*channelSpacing
+for u in goodUnits:
+    fig = plt.figure(figsize=(12,12))
     gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
-    for ind,ch in enumerate(units[u]['template']):
-        chx,chy = kilosortData['channel_positions'][ind]
-        i = np.where(y==chy)[0][0]
-        j = np.where(x==chx)[0][0]
+    template = units[u]['template']
+    ymin = template.min()
+    ymax = template.max()
+    for ind,ch in enumerate(template):
+        chX,chY = kilosortData['channel_positions'][ind]
+        i = np.where(probeY==chY)[0][0]
+        j = np.where(probeX==chX)[0][0]
         ax = fig.add_subplot(gs[i,j])
-        ax.plot(ch,'k')
-
+        clr = 'r' if ind==units[u]['peakChan'] else 'k'
+        ax.plot(ch,color=clr,lw=2)
+        for side in ('right','top','left','bottom'):
+            ax.spines[side].set_visible(False)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim([31,52])
+        ax.set_ylim([ymin,ymax])
+    plt.tight_layout()
 
 
 
