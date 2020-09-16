@@ -60,9 +60,10 @@ def getPSTH(spikes,startTimes,windowDur,binSize=0.01,avg=True):
 
 
 
-probeLabel = 'C'
+probeLabel = 'D'
 
 probeDataDir = fileIO.getDir('select probe data directory')
+
 
 pxiDict = {'A': 'slot2-probe1',
            'B': 'slot2-probe2',
@@ -71,19 +72,20 @@ pxiDict = {'A': 'slot2-probe1',
            'E': 'slot3-probe2',
            'F': 'slot3-probe3'}
 
-
-# raw spike data
 nChannels = 384
-probeSpikeDataDir = os.path.join(probeDataDir,'continuous','Neuropix-PXI-'+pxiDict[probeLabel]+'-AP')
-rawData = np.memmap(os.path.join(probeSpikeDataDir,'continuous.dat'),dtype='int16',mode='r')    
-rawData = np.reshape(rawData,(int(rawData.size/nChannels),-1)).T
-totalSamples = rawData.shape[1]
-
 probeCols = 8
 probeRows = 48
 channelSpacing = 6 # microns
 probeX = np.arange(probeCols)*channelSpacing
 probeY = np.arange(probeRows)*channelSpacing
+
+
+# raw spike data
+probeSpikeDataDir = os.path.join(probeDataDir,'continuous','Neuropix-PXI-'+pxiDict[probeLabel]+'-AP')
+rawData = np.memmap(os.path.join(probeSpikeDataDir,'continuous.dat'),dtype='int16',mode='r')    
+rawData = np.reshape(rawData,(int(rawData.size/nChannels),-1)).T
+totalSamples = rawData.shape[1]
+
 
 #fig = plt.figure(figsize=(10,10))
 #gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
@@ -91,18 +93,14 @@ probeY = np.arange(probeRows)*channelSpacing
 #ymin = data.min()
 #ymax = data.max()
 #j = 0
-#probeMean = np.zeros((probeRows,probeCols))
-#probeStd = np.zeros((probeRows,probeCols))
 #for ch,d in enumerate(data):
-#    i = ch//probeCols
+#    i = probeRows-1-ch//probeCols
 #    ax = fig.add_subplot(gs[i,j])
 #    if j==7:
 #        j = 0
 #    else:
 #        j += 1
 #    ax.plot(d,'k')
-#    probeMean[i,j] = d.mean()
-#    probeStd[i,j] = d.std()
 #    for side in ('right','top','left','bottom'):
 #        ax.spines[side].set_visible(False)
 #    ax.set_xticks([])
@@ -115,7 +113,7 @@ probeMean = np.zeros((probeRows,probeCols))
 probeStd = np.zeros((probeRows,probeCols))
 j = 0
 for ch,d in enumerate(rawData[:,:300000]):
-    i = ch//probeCols
+    i = probeRows-1-ch//probeCols
     probeMean[i,j] = d.mean()
     probeStd[i,j] = d.std()
     if j==7:
@@ -133,6 +131,25 @@ im = ax.imshow(probeStd,cmap='gray')
 cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
 ax.set_title('raw std')
 plt.tight_layout()
+
+
+fig = plt.figure(figsize=(10,10))
+channelsToPlot = [219,220]
+samplesToPlot = slice(12000,22000)
+ymin = rawData[channelsToPlot,samplesToPlot].min()
+ymax = rawData[channelsToPlot,samplesToPlot].max()
+for i,ch in enumerate(channelsToPlot):
+    ax = fig.add_subplot(len(channelsToPlot),1,i+1)
+    ax.plot(rawData[ch,samplesToPlot],'k')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.set_ylim([ymin,ymax])
+    ax.set_ylabel('uV')
+    if i==len(channelsToPlot)-1:
+        ax.set_xlabel('Sample')
+    ax.set_title('ch '+str(ch))
+plt.tight_layout()
+
 
 
 # sync data
@@ -155,6 +172,7 @@ be_t, be = ecephys.extract_barcodes_from_times(beRising, beFalling)
     
 # compute time shift between ephys and sync
 probeShift, probeSampleRate, m_endpoints = ecephys.get_probe_time_offset(bs_t, bs, be_t, be, 0, 30000)
+
 
 
 # unit data
@@ -207,13 +225,9 @@ goodUnits = np.array([u for u in unitData if unitData[u]['label']=='good' and un
 goodUnits = goodUnits[np.argsort([unitData[u]['peakChan'] for u in goodUnits])]
 
 
+
 # plot templates
-probeCols = 8
-probeRows = 48
-channelSpacing = 6 # microns
-probeX = np.arange(probeCols)*channelSpacing
-probeY = np.arange(probeRows)*channelSpacing
-for u in [16]:#goodUnits:
+for u in goodUnits:
     fig = plt.figure(figsize=(10,10))
     gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
     template = unitData[u]['template']
@@ -233,7 +247,26 @@ for u in [16]:#goodUnits:
         ax.set_xlim([31,52])
         ax.set_ylim([ymin,ymax])
     plt.tight_layout()
+
+
+for u in [16]:#goodUnits:
+    templateAmp = np.zeros((probeRows,probeCols))
+    for ind,ch in enumerate(unitData[u]['template']):
+        chX,chY = kilosortData['channel_positions'][ind]
+        i = probeRows-1-np.where(probeY==chY)[0][0]
+        j = np.where(probeX==chX)[0][0]
+        templateAmp[i,j] = ch.min()
+        
+    fig = plt.figure(figsize=(6,8))
+    ax = fig.add_subplot(1,1,1)
+    im = ax.imshow(templateAmp,cmap='gray')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title('template amplitude')
+    plt.tight_layout()
     
+
 
 # optotagging 
 optoPklFile = fileIO.getFile()
