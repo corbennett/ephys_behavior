@@ -60,7 +60,7 @@ def getPSTH(spikes,startTimes,windowDur,binSize=0.01,avg=True):
 
 
 
-probeLabel = 'D'
+probeLabel = 'C'
 
 probeDataDir = fileIO.getDir('select probe data directory')
 
@@ -113,7 +113,7 @@ probeMean = np.zeros((probeRows,probeCols))
 probeStd = np.zeros((probeRows,probeCols))
 j = 0
 for ch,d in enumerate(rawData[:,:300000]):
-    i = probeRows-1-ch//probeCols
+    i = ch//probeCols
     probeMean[i,j] = d.mean()
     probeStd[i,j] = d.std()
     if j==7:
