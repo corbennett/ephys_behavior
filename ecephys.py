@@ -88,11 +88,60 @@ def extract_barcodes_from_times(on_times, off_times, inter_barcode_interval=10,
                     
     return barcode_start_times, barcodes
 
+def find_matching_index(master_barcodes, probe_barcodes, alignment_type="start"):
+    """Given a set of barcodes for the master clock and the probe clock, find the
+    indices of a matching set, either starting from the beginning or the end
+    of the list.
+    Parameters
+    ----------
+    master_barcodes : np.ndarray
+        barcode values on the master line. One per barcode
+    probe_barcodes : np.ndarray
+        barcode values on the probe line. One per barcode
+    alignment_type : string
+        'start' or 'end'
+    Returns
+    -------
+    master_barcode_index : int
+        matching index for master barcodes (None if not found)
+    probe_barcode_index : int
+        matching index for probe barcodes (None if not found)
+    """
+
+    foundMatch = False
+    master_barcode_index = None
+
+    if alignment_type == "start":
+        probe_barcode_index = 0
+        direction = 1
+    else:
+        probe_barcode_index = -1
+        direction = -1
+
+    while not foundMatch and abs(probe_barcode_index) < len(probe_barcodes):
+
+        master_barcode_index = np.where(
+            master_barcodes == probe_barcodes[probe_barcode_index]
+        )[0]
+
+        assert len(master_barcode_index) < 2
+
+        if len(master_barcode_index) == 1:
+            foundMatch = True
+        else:
+            probe_barcode_index += direction
+
+    if foundMatch:
+        return master_barcode_index, probe_barcode_index
+    else:
+        return None, None
+
+
 def match_barcodes(master_times, master_barcodes, probe_times, probe_barcodes):
-    #from ecephys repo
-    '''Given sequences of barcode values and (local) times on a probe line and a master 
+    """Given sequences of barcode values and (local) times on a probe line and a master 
     line, find the time points on each clock corresponding to the first and last shared 
     barcode.
+    If there's only one probe barcode, only the first matching timepoint is returned.
     Parameters
     ----------
     master_times : np.ndarray
@@ -111,43 +160,97 @@ def match_barcodes(master_times, master_barcodes, probe_times, probe_barcodes):
         Start and end times of the matched interval according to the probe_clock.
     master_interval : np.ndarray
         Start and end times of the matched interval according to the master clock
-    '''
+    """
 
-    if abs( len(probe_barcodes) - len(master_barcodes) ) < 3:
+    master_start_index, probe_start_index = find_matching_index(
+        master_barcodes, probe_barcodes, alignment_type="start"
+    )
 
-        if probe_barcodes[0] == master_barcodes[0]:
-            t_p_start = probe_times[0]
-            t_m_start = master_times[0]
-        else:
-            t_p_start = probe_times[2]
-            t_m_start = master_times[np.where(master_barcodes == probe_barcodes[2])]
-
-        if probe_barcodes[-1] == master_barcodes[-1]:
-            t_p_end = probe_times[-1]
-            t_m_end = master_times[-1]
-        else:
-            t_p_end = probe_times[-2]
-            t_m_end = master_times[np.where(master_barcodes == probe_barcodes[-2])]
-
+    if master_start_index is not None:
+        t_m_start = master_times[master_start_index]
+        t_p_start = probe_times[probe_start_index]
     else:
+        t_m_start, t_p_start = None, None
 
-        for idx, item in enumerate(master_barcodes):
+    # print(master_barcodes)
+    # print(probe_barcodes)
 
-            if item == probe_barcodes[0]:
-                print('probe dropped initial barcodes. Start from ' + str(idx))
-                t_p_start = probe_times[0]
-                t_m_start = master_times[idx]
-                
-                if probe_barcodes[-1] == master_barcodes[-1]:
-                    t_p_end = probe_times[-1]
-                    t_m_end = master_times[-1]
-                else:
-                    t_p_end = probe_times[-2]
-                    t_m_end = master_times[np.where(master_barcodes == probe_barcodes[-2])]
-
-                break
+    print("Master start index: " + str(master_start_index))
+    if len(probe_barcodes) > 2:
+        master_end_index, probe_end_index = find_matching_index(master_barcodes, probe_barcodes, alignment_type='end')
+        
+        if probe_end_index is not None:
+            print("Probe end index: " + str(probe_end_index))
+            t_m_end = master_times[master_end_index]
+            t_p_end = probe_times[probe_end_index]
+        else:
+            t_m_end = None
+            t_p_end = None
+    else:
+        t_m_end, t_p_end = None, None
 
     return np.array([t_p_start, t_p_end]), np.array([t_m_start, t_m_end])
+
+#def match_barcodes(master_times, master_barcodes, probe_times, probe_barcodes):
+#    #from ecephys repo
+#    '''Given sequences of barcode values and (local) times on a probe line and a master 
+#    line, find the time points on each clock corresponding to the first and last shared 
+#    barcode.
+#    Parameters
+#    ----------
+#    master_times : np.ndarray
+#        start times of barcodes (according to the master clock) on the master line. 
+#        One per barcode.
+#    master_barcodes : np.ndarray
+#        barcode values on the master line. One per barcode
+#    probe_times : np.ndarray
+#        start times (according to the probe clock) of barcodes on the probe line. 
+#        One per barcode
+#    probe_barcodes : np.ndarray
+#        barcode values on the probe_line. One per barcode
+#    Returns
+#    -------
+#    probe_interval : np.ndarray
+#        Start and end times of the matched interval according to the probe_clock.
+#    master_interval : np.ndarray
+#        Start and end times of the matched interval according to the master clock
+#    '''
+#
+#    if abs( len(probe_barcodes) - len(master_barcodes) ) < 3:
+#
+#        if probe_barcodes[0] == master_barcodes[0]:
+#            t_p_start = probe_times[0]
+#            t_m_start = master_times[0]
+#        else:
+#            t_p_start = probe_times[2]
+#            t_m_start = master_times[np.where(master_barcodes == probe_barcodes[2])]
+#
+#        if probe_barcodes[-1] == master_barcodes[-1]:
+#            t_p_end = probe_times[-1]
+#            t_m_end = master_times[-1]
+#        else:
+#            t_p_end = probe_times[-2]
+#            t_m_end = master_times[np.where(master_barcodes == probe_barcodes[-2])]
+#
+#    else:
+#
+#        for idx, item in enumerate(master_barcodes):
+#
+#            if item == probe_barcodes[0]:
+#                print('probe dropped initial barcodes. Start from ' + str(idx))
+#                t_p_start = probe_times[0]
+#                t_m_start = master_times[idx]
+#                
+#                if probe_barcodes[-1] == master_barcodes[-1]:
+#                    t_p_end = probe_times[-1]
+#                    t_m_end = master_times[-1]
+#                else:
+#                    t_p_end = probe_times[-2]
+#                    t_m_end = master_times[np.where(master_barcodes == probe_barcodes[-2])]
+#
+#                break
+#
+#    return np.array([t_p_start, t_p_end]), np.array([t_m_start, t_m_end])
 
 
 def linear_transform_from_intervals(master, probe):
