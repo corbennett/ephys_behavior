@@ -2186,20 +2186,23 @@ hierColors = np.array([[217,141,194], # LGd
                      ).astype(float)
 hierColors /= 255
 
-for model in modelNames:
+for model in ('randomForest',):#modelNames:
     fig = plt.figure(facecolor='w',figsize=(5,5))
     ax = plt.subplot(1,1,1)
     title = model
     for state,fill in zip(('active',),(True,)):
         meanRegionData = []
         regionN = []
+        regionExps = []
         for i,(region,h,clr) in enumerate(zip(regionLabels,hier,hierColors)):
             regionData = []
+            regionExps.append([])
             for exp in result:
                 behavior = result[exp]['responseToChange']
                 s = result[exp][region][state]['changePredictProb'][model]
                 if len(s)>0 and any(behavior) and any(s[0]):
                     regionData.append(np.corrcoef(behavior,s[0])[0,1])
+                    regionExps[-1].append(exp)
             n = len(regionData)
             if n>0:
                 m = np.mean(regionData)
@@ -2222,6 +2225,15 @@ for model in modelNames:
     ax.set_ylabel('Correlation of decoder confidence and mouse behavior')
     ax.set_title(title,fontsize=8)
     plt.tight_layout()
+    
+for i,region in enumerate(regionLabels):
+    mouseIDs = [expName[-6:] for expName in regionExps[i]]
+    nMice = len(set(mouseIDs))
+    nSessions = len(regionExps[i])
+    assert(nSessions==regionN[i])
+    print(region+': n='+str(nSessions)+' sessions from '+str(nMice)+' mice')
+    
+
 
 fig = plt.figure(facecolor='w',figsize=(4,4))
 ax = plt.subplot(1,1,1)
