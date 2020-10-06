@@ -413,6 +413,8 @@ plt.tight_layout()
 
 ###### change mod and latency analysis
 
+Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo[2:14] for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im and hasPassive] for im in 'AB']
+
 exps = Aexps+Bexps
 
 baseWin = slice(stimWin.start-250,stimWin.start)
@@ -877,18 +879,25 @@ for epoch in ('change','preChange'):
             plt.savefig(os.path.join(figSaveDir,'changeMod','SDFs','forSchematic',region+'_'+epoch+'_'+str(i+1)+ext))
         plt.close(fig)
 
-# make dataframe for Josh (old)
+# make dataframe for Josh
+changeModData = (('Region', [[region]*n for region,n in zip(regionLabels,nUnits)]),
+                 ('Time To First Spike', [np.array(result[region]['firstSpikeLat'])*1000 for region in regionLabels]),
+                 ('Change Modulation Active', [result[region]['changeMod']['active']['eachImage']['change'] for region in regionLabels]),
+                 ('Change Modulation Passive', [result[region]['changeMod']['passive']['eachImage']['change'] for region in regionLabels]),
+                 ('Change Modulation Hit', [result[region]['changeMod']['active']['eachImage']['hit'] for region in regionLabels]),
+                 ('Change Modulation Miss', [result[region]['changeMod']['active']['eachImage']['miss'] for region in regionLabels]),
+                 ('Pre-change Response Active', [result[region]['resp']['active']['preChange']['eachImage']['change'] for region in regionLabels]),
+                 ('Pre-change Response Passive', [result[region]['resp']['passive']['preChange']['eachImage']['change'] for region in regionLabels]),
+                 ('Change Response Active', [result[region]['resp']['active']['change']['eachImage']['change'] for region in regionLabels]),
+                 ('Change Response Passive', [result[region]['resp']['passive']['change']['eachImage']['change'] for region in regionLabels]),
+                 ('Baseline Rate Active', [result[region]['base']['active']['change'] for region in regionLabels]),
+                 ('Baseline Rate Passive', [result[region]['base']['passive']['change'] for region in regionLabels]))
 d = OrderedDict()
-colLabels = ('Experiment Date','Mouse ID','Region','Change Modulation Index','Time to first spike','Baseline Rate','Pre-change Response','Change Response')
-for i,(key,val) in enumerate(zip(colLabels,(expDates,mouseIDs,regionLabels,changeModActive,activeFirstSpikeLat,baseRateActive,preRespActive,changeRespActive))):
-    if i<2:
-        val = [[v]*n for reg,count in zip(val,unitCount) for v,n in zip(reg,count)]
-    elif i==2:
-        val = [[v]*n for v,n in zip(val,nUnits)]
+for (key,val) in changeModData:
     d[key] = np.concatenate(val)
 df = pd.DataFrame(data=d)
-f = fileIO.saveFile(fileType='*.hdf5')
-df.to_hdf(f,'table')
+f = fileIO.saveFile(fileType='*.csv')
+df.to_csv(f)
     
 
 
@@ -1094,6 +1103,8 @@ def crossValidate(model,X,y,nsplits=5):
                 cv[method][testInd] = m
     return cv
 
+
+Aexps,Bexps = [[expDate+'_'+mouse[0] for mouse in mouseInfo[2:14] for expDate,probes,imgSet,hasPassive in zip(*mouse[1:]) if imgSet==im and hasPassive] for im in 'AB']
 
 exps = Aexps+Bexps
 
@@ -2186,6 +2197,8 @@ hierColors = np.array([[217,141,194], # LGd
                      ).astype(float)
 hierColors /= 255
 
+decoderMouseCorr = []
+
 for model in ('randomForest',):#modelNames:
     fig = plt.figure(facecolor='w',figsize=(5,5))
     ax = plt.subplot(1,1,1)
@@ -2211,6 +2224,7 @@ for model in ('randomForest',):#modelNames:
                 ax.plot([h,h],[m-s,m+s],color=clr)
                 meanRegionData.append(m)
                 regionN.append(n)
+                decoderMouseCorr.append(regionData)
         slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
         x = np.array([min(hier),max(hier)])
         ax.plot(x,slope*x+yint,'--',color='0.5')
@@ -2234,6 +2248,7 @@ for i,region in enumerate(regionLabels):
     print(region+': n='+str(nSessions)+' sessions from '+str(nMice)+' mice')
     
 
+decoderAccuracy = []
 
 fig = plt.figure(facecolor='w',figsize=(4,4))
 ax = plt.subplot(1,1,1)
@@ -2254,6 +2269,7 @@ for state,fill in zip(('active',),(True,)):
             ax.plot(h,m,'o',mec=clr,mfc=mfc,label=lbl)
             ax.plot([h,h],[m-s,m+s],color=clr)
             meanRegionData.append(m)
+            decoderAccuracy.append(regionData)
         else:
             meanRegionData.append(np.nan)
     slope,yint,rval,pval,stderr = scipy.stats.linregress(hier,meanRegionData)
@@ -2272,7 +2288,12 @@ ax.set_xlabel('Hierarchy score')
 ax.set_ylabel('Decoder accuracy')
 plt.tight_layout()
 
-
+d = OrderedDict()
+for key,val in zip(('Region','Correleation of decoder prediction and mouse behavior','Decoder accuracy'),([[r]*n for r,n in zip(regionLabels,regionN)],decoderMouseCorr,decoderAccuracy)):
+    d[key] = np.concatenate(val)
+df = pd.DataFrame(data=d)
+f = fileIO.saveFile(fileType='*.csv')
+df.to_csv(f)
 
 
 ## analysis of population sdfs
