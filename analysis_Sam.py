@@ -1445,6 +1445,7 @@ for model in modelNames:
     fig.text(0.5,0.95,model,fontsize=14,horizontalalignment='center')
     gs = matplotlib.gridspec.GridSpec(len(regionLabels),2)
     allScores = {score: [] for score in ('changeScore','imageScore')}
+    allScoresRegion = {score: [] for score in ('changeScore','imageScore')}
     for i,region in enumerate(regionLabels):
         for j,(score,ymin) in enumerate(zip(('changeScore','imageScore'),(0.5,0.125))):
             ax = plt.subplot(gs[i,j])
@@ -1455,6 +1456,7 @@ for model in modelNames:
                     s = s + [np.nan]*(len(unitSampleSize)-len(s))
                     expScores.append(s)
                     allScores[score].append(s)
+                    allScoresRegion[score].append(region)
                     ax.plot(unitSampleSize,s,'k')
             if len(expScores)>0:
                 ax.plot(unitSampleSize,np.nanmean(expScores,axis=0),'r',linewidth=2)
@@ -1530,6 +1532,15 @@ for model in modelNames:
 #        ax.set_title(model+', '+score[:score.find('S')])
         ax.legend(loc='upper left',fontsize=12)
         plt.tight_layout()
+        
+d = OrderedDict()
+d['Region'] = allScoresRegion['changeScore']
+for n,accuracy in zip(unitSampleSize,np.array(allScores['changeScore']).T):
+    d[n] = accuracy
+df = pd.DataFrame(data=d)
+f = fileIO.saveFile(fileType='*.csv')
+df.to_csv(f)
+
         
 fig = plt.figure(facecolor='w')
 ax = plt.subplot(1,1,1)
