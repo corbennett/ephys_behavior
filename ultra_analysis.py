@@ -64,6 +64,10 @@ probeLabel = 'C'
 
 probeDataDir = fileIO.getDir('select probe data directory')
 
+expLabel = re.search('[0-9]{6}_[0-9]{8}',probeDataDir)
+if expLabel is not None:
+    expLabel = expLabel.group()
+
 
 pxiDict = {'A': 'slot2-probe1',
            'B': 'slot2-probe2',
@@ -121,13 +125,13 @@ for ch,d in enumerate(rawData[:,:300000]):
     else:
         j += 1
 
-fig = plt.figure(figsize=(3,10))
+fig = plt.figure(figsize=(2,10))
 ax = fig.add_subplot(2,1,1)
-im = ax.imshow(probeMean,cmap='gray')
+im = ax.imshow(probeMean,cmap='gray',origin='lower')
 cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
 ax.set_title('raw mean')
 ax = fig.add_subplot(2,1,2)
-im = ax.imshow(probeStd,cmap='gray')
+im = ax.imshow(probeStd,cmap='gray',origin='lower')
 cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
 ax.set_title('raw std')
 plt.tight_layout()
@@ -227,43 +231,43 @@ goodUnits = goodUnits[np.argsort([unitData[u]['peakChan'] for u in goodUnits])]
 
 
 # plot templates
+#for u in goodUnits:
+#    fig = plt.figure(figsize=(10,10))
+#    gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
+#    template = unitData[u]['template']
+#    ymin = template.min()
+#    ymax = template.max()
+#    for ind,ch in enumerate(template):
+#        chX,chY = kilosortData['channel_positions'][ind]
+#        i = probeRows-1-np.where(probeY==chY)[0][0]
+#        j = np.where(probeX==chX)[0][0]
+#        ax = fig.add_subplot(gs[i,j])
+#        clr = 'r' if ind==unitData[u]['peakChan'] else 'k'
+#        ax.plot(ch,color=clr,lw=2)
+#        for side in ('right','top','left','bottom'):
+#            ax.spines[side].set_visible(False)
+#        ax.set_xticks([])
+#        ax.set_yticks([])
+#        ax.set_xlim([31,52])
+#        ax.set_ylim([ymin,ymax])
+#    plt.tight_layout()
+
+
 for u in goodUnits:
-    fig = plt.figure(figsize=(10,10))
-    gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
-    template = unitData[u]['template']
-    ymin = template.min()
-    ymax = template.max()
-    for ind,ch in enumerate(template):
-        chX,chY = kilosortData['channel_positions'][ind]
-        i = probeRows-1-np.where(probeY==chY)[0][0]
-        j = np.where(probeX==chX)[0][0]
-        ax = fig.add_subplot(gs[i,j])
-        clr = 'r' if ind==unitData[u]['peakChan'] else 'k'
-        ax.plot(ch,color=clr,lw=2)
-        for side in ('right','top','left','bottom'):
-            ax.spines[side].set_visible(False)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlim([31,52])
-        ax.set_ylim([ymin,ymax])
-    plt.tight_layout()
-
-
-for u in [16]:#goodUnits:
     templateAmp = np.zeros((probeRows,probeCols))
     for ind,ch in enumerate(unitData[u]['template']):
         chX,chY = kilosortData['channel_positions'][ind]
-        i = probeRows-1-np.where(probeY==chY)[0][0]
+        i = np.where(probeY==chY)[0][0]
         j = np.where(probeX==chX)[0][0]
         templateAmp[i,j] = ch.min()
         
-    fig = plt.figure(figsize=(6,8))
+    fig = plt.figure(figsize=(3,8))
     ax = fig.add_subplot(1,1,1)
-    im = ax.imshow(templateAmp,cmap='gray')
+    im = ax.imshow(templateAmp,cmap='gray',origin='lower')
     cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title('template amplitude')
+    ax.set_title(expLabel+', Unit '+str(u)+'\n'+'template amplitude')
     plt.tight_layout()
     
 
@@ -282,8 +286,9 @@ cmap = np.ones((len(optoLevels),3))
 cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
 preTime = 0.5
 windowDur = 2
-for u in [16]:#goodUnits:
+for u in goodUnits:
     fig = plt.figure(figsize=(8,8))
+    fig.text(0.5,0.99,expLabel+', Probe '+probeLabel+', Unit '+str(u),ha='center',va='top')
     gs = matplotlib.gridspec.GridSpec(2,len(optoConditions))
     for j,condition in enumerate(optoConditions):
         ax = fig.add_subplot(gs[0,j])
@@ -293,6 +298,9 @@ for u in [16]:#goodUnits:
         wf[preSamples:preSamples+waveform.size] = waveform
         t = np.arange(0,windowDur,1/optoSampleRate)-preTime
         ax.plot(t,wf,'k')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
         ax.set_xlim([-preTime,windowDur-preTime])
         ax.set_ylabel('Stimulus level (normalized)')
         
@@ -307,8 +315,9 @@ for u in [16]:#goodUnits:
         ax.set_xlim([-preTime,windowDur-preTime])
         ax.set_xlabel('Time from opto onset (s)')
         ax.set_ylabel('Spikes/s')
-        ax.legend()     
+        ax.legend()
     plt.tight_layout()
+
 
 
 
