@@ -6,11 +6,13 @@ Created on Sat Sep 12 15:52:39 2020
 """
 
 import os
+import re
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.rcParams['pdf.fonttype']=42
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+matplotlib.rcParams['pdf.fonttype'] = 42
 import fileIO
 from sync import sync
 import ecephys
@@ -60,7 +62,7 @@ def getPSTH(spikes,startTimes,windowDur,binSize=0.01,avg=True):
 
 
 
-probeLabel = 'C'
+probeLabel = 'D'
 
 probeDataDir = fileIO.getDir('select probe data directory')
 
@@ -137,22 +139,22 @@ ax.set_title('raw std')
 plt.tight_layout()
 
 
-fig = plt.figure(figsize=(10,10))
-channelsToPlot = [219,220]
-samplesToPlot = slice(12000,22000)
-ymin = rawData[channelsToPlot,samplesToPlot].min()
-ymax = rawData[channelsToPlot,samplesToPlot].max()
-for i,ch in enumerate(channelsToPlot):
-    ax = fig.add_subplot(len(channelsToPlot),1,i+1)
-    ax.plot(rawData[ch,samplesToPlot],'k')
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.set_ylim([ymin,ymax])
-    ax.set_ylabel('uV')
-    if i==len(channelsToPlot)-1:
-        ax.set_xlabel('Sample')
-    ax.set_title('ch '+str(ch))
-plt.tight_layout()
+#fig = plt.figure(figsize=(10,10))
+#channelsToPlot = [219,220]
+#samplesToPlot = slice(12000,22000)
+#ymin = rawData[channelsToPlot,samplesToPlot].min()
+#ymax = rawData[channelsToPlot,samplesToPlot].max()
+#for i,ch in enumerate(channelsToPlot):
+#    ax = fig.add_subplot(len(channelsToPlot),1,i+1)
+#    ax.plot(rawData[ch,samplesToPlot],'k')
+#    for side in ('right','top'):
+#        ax.spines[side].set_visible(False)
+#    ax.set_ylim([ymin,ymax])
+#    ax.set_ylabel('uV')
+#    if i==len(channelsToPlot)-1:
+#        ax.set_xlabel('Sample')
+#    ax.set_title('ch '+str(ch))
+#plt.tight_layout()
 
 
 
@@ -217,7 +219,7 @@ for u in unitIDs:
         unitData[u]['peakToTrough'] = np.nan
     else:
         peakInd = np.argmin(peakTemplate)
-        unitData[u]['peakToTrough'] = np.argmax(peakTemplate[peakInd:])/(probeSampleRate/1000)
+        unitData[u]['peakToTrough'] = np.argmax(peakTemplate[peakInd:])/probeSampleRate[0]*1000
     
     #check if this unit is noise
     tempNorm = peakTemplate/np.max(np.absolute(peakTemplate))
@@ -282,6 +284,7 @@ optoOnTimes,optoOffTimes = get_sync_line_data(syncDataset,'opto_stim')
 
 optoConditions = np.unique(optoPklData['opto_conditions'])
 optoLevels = np.unique(optoPklData['opto_levels'])
+
 cmap = np.ones((len(optoLevels),3))
 cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
 preTime = 0.5
@@ -320,4 +323,73 @@ for u in goodUnits:
 
 
 
+# summary pdf
+pdf = PdfPages(os.path.join(os.path.dirname(probeDataDir),expLabel+'_probe'+probeLabel+'_summary.pdf'))
 
+for u in goodUnits:
+    fig = plt.figure(figsize=(8,8))
+    gs = matplotlib.gridspec.GridSpec(3,3)
+    fig.text(0.99,0.99,expLabel+', Probe '+probeLabel+', Unit '+str(u),ha='right',va='top',fontsize=10)
+    
+    ax = fig.add_subplot(gs[0,1])
+    template = unitData[u]['template'][unitData[u]['peakChan']]
+    t = (np.arange(template.size)-template.size//2)/probeSampleRate*1000
+    ax.plot(t,template,'k')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlabel('Time (ms)')
+    ax.set_title('peak to trough '+str(round(unitData[u]['peakToTrough'],2))+' ms',fontsize=10)
+    
+    templateAmp = np.zeros((probeRows,probeCols))
+    for ind,ch in enumerate(unitData[u]['template']):
+        chX,chY = kilosortData['channel_positions'][ind]
+        i = np.where(probeY==chY)[0][0]
+        j = np.where(probeX==chX)[0][0]
+        templateAmp[i,j] = ch.min()
+    ax = fig.add_subplot(gs[0:3,0])
+    im = ax.imshow(templateAmp,cmap='gray',origin='lower')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    cb.ax.tick_params(labelsize=8)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title('template amplitude',fontsize=10)
+    
+    cmap = np.ones((len(optoLevels),3))
+    cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
+    preTime = 0.5
+    windowDur = 2
+    for j,condition in enumerate(optoConditions):
+        ax = fig.add_subplot(gs[1,j+1])
+        waveform = optoPklData['opto_waveforms'][condition]
+        wf = np.zeros(int(windowDur*optoSampleRate))
+        preSamples = int(preTime*optoSampleRate)
+        wf[preSamples:preSamples+waveform.size] = waveform
+        t = np.arange(0,windowDur,1/optoSampleRate)-preTime
+        ax.plot(t,wf,'k')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim([-preTime,windowDur-preTime])
+        if j==0:
+            ax.set_ylabel('Stimulus level (normalized)')
+        
+        ax = fig.add_subplot(gs[2,j+1])
+        for level,clr in zip(optoLevels,cmap):
+            optoTrials = (optoPklData['opto_conditions']==condition) & (optoPklData['opto_levels']==level)
+            psth,t = getPSTH(unitData[u]['spikeTimes'],optoOnTimes[optoTrials]-preTime,windowDur,binSize=0.01)
+            ax.plot(t-preTime,psth,color=clr,label=str(level)+' V')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim([-preTime,windowDur-preTime])
+        ax.set_xlabel('Time from opto onset (s)')
+        if j==0:
+            ax.set_ylabel('Spikes/s')
+            ax.legend(loc='upper right',fontsize=8)
+    
+    plt.tight_layout()
+    fig.savefig(pdf,format='pdf')
+    plt.close(fig)
+    
+pdf.close()
