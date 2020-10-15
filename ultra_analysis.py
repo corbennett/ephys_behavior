@@ -62,7 +62,7 @@ def getPSTH(spikes,startTimes,windowDur,binSize=0.01,avg=True):
 
 
 
-probeLabel = 'D'
+probeLabel = 'C'
 
 probeDataDir = fileIO.getDir('select probe data directory')
 
