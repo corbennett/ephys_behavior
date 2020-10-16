@@ -122,10 +122,9 @@ for ch,d in enumerate(rawData[:,:300000]):
     i = ch//probeCols
     probeMean[i,j] = d.mean()
     probeStd[i,j] = d.std()
-    if j==7:
+    j += 1
+    if j==probeCols:
         j = 0
-    else:
-        j += 1
 
 fig = plt.figure(figsize=(2,10))
 ax = fig.add_subplot(2,1,1)
@@ -231,30 +230,56 @@ goodUnits = np.array([u for u in unitData if unitData[u]['label']=='good' and un
 goodUnits = goodUnits[np.argsort([unitData[u]['peakChan'] for u in goodUnits])]
 
 
+# get mean waveforms
+preSamples = 25
+postSamples = 55
+n = 1000
+for u in goodUnits:
+    w = np.zeros((nChannels,preSamples+postSamples))
+    uind = np.where(kilosortData['spike_clusters']==u)[0]
+    spikes = kilosortData['spike_times'][uind].flatten()
+    for s in np.random.choice(spikes,n):
+        w += rawData[:,int(s-preSamples):int(s+postSamples)]
+    w /= n
+    unitData[u]['waveform'] = w
+    
+    
+# optotagging data
+optoPklFile = fileIO.getFile()
+optoPklData = pd.read_pickle(optoPklFile)
+
+optoSampleRate = 5000
+
+optoOnTimes,optoOffTimes = get_sync_line_data(syncDataset,'opto_stim')
+
+optoConditions = np.unique(optoPklData['opto_conditions'])
+optoLevels = np.unique(optoPklData['opto_levels'])
+
 
 # plot templates
-#for u in goodUnits:
-#    fig = plt.figure(figsize=(10,10))
-#    gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
-#    template = unitData[u]['template']
-#    ymin = template.min()
-#    ymax = template.max()
-#    for ind,ch in enumerate(template):
-#        chX,chY = kilosortData['channel_positions'][ind]
-#        i = probeRows-1-np.where(probeY==chY)[0][0]
-#        j = np.where(probeX==chX)[0][0]
-#        ax = fig.add_subplot(gs[i,j])
-#        clr = 'r' if ind==unitData[u]['peakChan'] else 'k'
-#        ax.plot(ch,color=clr,lw=2)
-#        for side in ('right','top','left','bottom'):
-#            ax.spines[side].set_visible(False)
-#        ax.set_xticks([])
-#        ax.set_yticks([])
-#        ax.set_xlim([31,52])
-#        ax.set_ylim([ymin,ymax])
-#    plt.tight_layout()
+for u in goodUnits:
+    fig = plt.figure(figsize=(10,10))
+    gs = matplotlib.gridspec.GridSpec(probeRows,probeCols)
+    template = unitData[u]['template']
+    ymin = template.min()
+    ymax = template.max()
+    for ind,ch in enumerate(template):
+        chX,chY = kilosortData['channel_positions'][ind]
+        i = probeRows-1-np.where(probeY==chY)[0][0]
+        j = np.where(probeX==chX)[0][0]
+        ax = fig.add_subplot(gs[i,j])
+        clr = 'r' if ind==unitData[u]['peakChan'] else 'k'
+        ax.plot(ch,color=clr,lw=2)
+        for side in ('right','top','left','bottom'):
+            ax.spines[side].set_visible(False)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim([31,52])
+        ax.set_ylim([ymin,ymax])
+    plt.tight_layout()
 
 
+# plot template amplitude
 for u in goodUnits:
     templateAmp = np.zeros((probeRows,probeCols))
     for ind,ch in enumerate(unitData[u]['template']):
@@ -271,20 +296,9 @@ for u in goodUnits:
     ax.set_yticks([])
     ax.set_title(expLabel+', Unit '+str(u)+'\n'+'template amplitude')
     plt.tight_layout()
-    
+ 
 
-
-# optotagging 
-optoPklFile = fileIO.getFile()
-optoPklData = pd.read_pickle(optoPklFile)
-
-optoSampleRate = 5000
-
-optoOnTimes,optoOffTimes = get_sync_line_data(syncDataset,'opto_stim')
-
-optoConditions = np.unique(optoPklData['opto_conditions'])
-optoLevels = np.unique(optoPklData['opto_levels'])
-
+# plot opto response
 cmap = np.ones((len(optoLevels),3))
 cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
 preTime = 0.5
@@ -327,40 +341,64 @@ for u in goodUnits:
 pdf = PdfPages(os.path.join(os.path.dirname(probeDataDir),expLabel+'_probe'+probeLabel+'_summary.pdf'))
 
 for u in goodUnits:
-    fig = plt.figure(figsize=(8,8))
-    gs = matplotlib.gridspec.GridSpec(3,3)
-    fig.text(0.99,0.99,expLabel+', Probe '+probeLabel+', Unit '+str(u),ha='right',va='top',fontsize=10)
+    fig = plt.figure(figsize=(10,8))
+    gs = matplotlib.gridspec.GridSpec(3,4)
+    fig.text(0.75,0.99,expLabel+', Probe '+probeLabel+', Unit '+str(u),ha='center',va='top',fontsize=10)
     
-    ax = fig.add_subplot(gs[0,1])
-    template = unitData[u]['template'][unitData[u]['peakChan']]
-    t = (np.arange(template.size)-template.size//2)/probeSampleRate*1000
-    ax.plot(t,template,'k')
+    ax = fig.add_subplot(gs[0,2])
+    w = unitData[u]['waveform']
+    peakCh = np.unravel_index(np.argmin(w),w.shape)[0]
+    t = (np.arange(w.shape[1])-w.shape[1]//2)/probeSampleRate*1000
+    ax.plot(t,w[peakCh],'k')
     for side in ('right','top'):
         ax.spines[side].set_visible(False)
     ax.tick_params(direction='out',top=False,right=False)
     ax.set_xlabel('Time (ms)')
-    ax.set_title('peak to trough '+str(round(unitData[u]['peakToTrough'],2))+' ms',fontsize=10)
+    
+    ax = fig.add_subplot(gs[0,3])
+    ax.imshow(unitData[u]['waveform'],cmap='gray',origin='lower')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    cb.ax.tick_params(labelsize=8)
+    ax.set_xticks([0,30,60])
+    ax.set_xticklabels([0,1,2])
+    ax.set_xlabel('Time (ms)')
+    ax.set_ylabel('Channel')
     
     templateAmp = np.zeros((probeRows,probeCols))
-    for ind,ch in enumerate(unitData[u]['template']):
+    for ind,template in enumerate(unitData[u]['template']):
         chX,chY = kilosortData['channel_positions'][ind]
         i = np.where(probeY==chY)[0][0]
         j = np.where(probeX==chX)[0][0]
-        templateAmp[i,j] = ch.min()
+        templateAmp[i,j] = template.min()
     ax = fig.add_subplot(gs[0:3,0])
     im = ax.imshow(templateAmp,cmap='gray',origin='lower')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title('template amplitude',fontsize=10)
+    
+    amp = np.zeros((probeRows,probeCols))
+    j = 0
+    for ch,w in enumerate(unitData[u]['waveform']):
+        i = ch//probeCols
+        amp[i,j] = min(0,w.min())
+        j += 1
+        if j==probeCols:
+            j = 0
+    ax = fig.add_subplot(gs[0:3,1])
+    im = ax.imshow(amp,cmap='gray',origin='lower')
     cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
     cb.ax.tick_params(labelsize=8)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title('template amplitude',fontsize=10)
+    ax.set_title('waveform amplitude',fontsize=10)
     
     cmap = np.ones((len(optoLevels),3))
     cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
     preTime = 0.5
     windowDur = 2
     for j,condition in enumerate(optoConditions):
-        ax = fig.add_subplot(gs[1,j+1])
+        ax = fig.add_subplot(gs[1,j+2])
         waveform = optoPklData['opto_waveforms'][condition]
         wf = np.zeros(int(windowDur*optoSampleRate))
         preSamples = int(preTime*optoSampleRate)
@@ -374,7 +412,7 @@ for u in goodUnits:
         if j==0:
             ax.set_ylabel('Stimulus level (normalized)')
         
-        ax = fig.add_subplot(gs[2,j+1])
+        ax = fig.add_subplot(gs[2,j+2])
         for level,clr in zip(optoLevels,cmap):
             optoTrials = (optoPklData['opto_conditions']==condition) & (optoPklData['opto_levels']==level)
             psth,t = getPSTH(unitData[u]['spikeTimes'],optoOnTimes[optoTrials]-preTime,windowDur,binSize=0.01)
