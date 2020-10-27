@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.rcParams['pdf.fonttype'] = 42
 import fileIO
-import visual_behavior
+import visual_behavior.analyze
 
 
 
