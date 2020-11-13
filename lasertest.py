@@ -12,77 +12,60 @@ import matplotlib.pyplot as plt
 import fileIO
 from sync import sync
 import probeSync
-from visual_behavior.translator.core import create_extended_dataframe
-from visual_behavior.translator.foraging2 import data_to_change_detection_core
 
 
-dataDir = 'Z:\\'
-
-syncFile = fileIO.getFile('choose sync file',dataDir,'*.h5')
+syncFile = fileIO.getFile('choose sync file',fileType='*.h5')
 syncDataset = sync.Dataset(syncFile)
 
-pklFile = fileIO.getFile('choose pkl file',dataDir,'*.pkl')
+pklFile = fileIO.getFile('choose pkl file',fileType='*.pkl')
 pkl = pd.read_pickle(pklFile)
 
+params = pkl['items']['behavior']['params']
 
-core_data = data_to_change_detection_core(pkl)
-        
-trials = create_extended_dataframe(
-    trials=core_data['trials'],
-    metadata=core_data['metadata'],
-    licks=core_data['licks'],
-    time=core_data['time'])
+frameRate = 60
 
-
-frameRising, frameFalling = probeSync.get_sync_line_data(syncDataset, 'stim_vsync')
+frameRising, frameFalling = probeSync.get_sync_line_data(syncDataset, 'vsync_stim')
 vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
-monitorLag = 0.036
-frameAppearTimes = vsyncTimes + monitorLag  
-laserStartTimes = probeSync.get_sync_line_data(syncDataset, 'opto_sweep')[0]
+monitorLag = params['laser_params']['monitor_lag']/frameRate
+frameAppearTimes = vsyncTimes + monitorLag
 
+laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=11)
 
 trialLog = pkl['items']['behavior']['trial_log']
-laserTrials = pkl['items']['behavior']['layzer_trials']
-
-laserFrameTimes = vsyncTimes[[trial['actual_layzer_frame'] for trial in laserTrials if 'actual_layzer_frame' in trial]]
-
-changeTimes = frameAppearTimes[[trial['stimulus_changes'][0][-1] for trial in trialLog if len(trial['stimulus_changes'])>0]]
-
+laserLog = pkl['items']['behavior']['layzer_trials']
 changeLog = pkl['items']['behavior']['stimuli']['images']['change_log']
 
+catchTrials = []
+laserTrials = []
 changeTimes = []
 laserFrameTimes = []
-for trial,laser in zip(trialLog,laserTrials):
-    if len(trial['stimulus_changes'])>0:
-        changeTimes.append(frameAppearTimes[trial['stimulus_changes'][0][-1]])
-        if 'actual_layzer_frame' in laser:
-            laserFrameTimes.append(vsyncTimes[laser['actual_layzer_frame']])
-        else:
-            laserFrameTimes.append(np.nan)
+for trial,laser in zip(trialLog,laserLog):
+    catchTrials.append(trial['trial_params']['catch'])
+    for event,epoch,t,frame in trial['events']:
+        if event in ('stimulus_changed','sham_change'):
+            changeTimes.append(frameAppearTimes[frame])
+    if 'actual_layzer_frame' in laser:
+        laserTrials.append(True)
+        laserFrameTimes.append(vsyncTimes[laser['actual_layzer_frame']])
     else:
-        break
+        laserTrials.append(False)
+        laserFrameTimes.append(np.nan)
   
-changeFrames = []          
-for trial in trialLog:
-    if len(trial['stimulus_changes'])>0:
-        changeFrames.append(trial['stimulus_changes'][0][-1])
-    else:
-        changeFrames.append(np.nan)
-        
-laserChangeFrames = [trial['actual_change_frame'] for trial in laserTrials]
 
+laserOnFromChange,laserOffFromChange = [t-np.array(changeTimes)[laserTrials] for t in (laserRising,laserFalling)]
 
-laserChangeTimes = frameAppearTimes[laserChangeFrames]
+binWidth = 0.001
 
-isLaserTrial = ['actual_layzer_frame' in trial for trial in laserTrials]
-
-
-[(a,b) for a,b in zip(changeFrames,laserChangeFrames)]
-
-[(a,b) for a,b in zip(laserStartTimes,laserFrameTimes)]
-            
-            
-plt.hist(np.array(laserStartTimes)-laserChangeTimes[isLaserTrial],bins=np.arange(-1,1,0.001))
+for t,xlbl in zip((laserRising,laserFalling),('onset','offset')):
+    offset = t-np.array(changeTimes)[laserTrials]
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    ax.hist(offset,bins=np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
+    ax.set_ylabel('Count')
 
 
 
