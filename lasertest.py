@@ -21,6 +21,9 @@ pklFile = fileIO.getFile('choose pkl file',fileType='*.pkl')
 pkl = pd.read_pickle(pklFile)
 
 params = pkl['items']['behavior']['params']
+if params['periodic_flash'] is not None:
+    flashDur,grayDur = params['periodic_flash']
+    flashInterval = flashDur + grayDur
 
 frameRate = 60
 
@@ -53,6 +56,70 @@ for trial,laser in zip(trialLog,laserLog):
     else:
         laserTrials.append(False)
         laserFrameTimes.append(np.nan)
+        
+        
+trialStartTimes = np.full(len(trialLog),np.nan)
+trialStartFrames = np.full(len(trialLog),np.nan)
+trialEndTimes = np.full(len(trialLog),np.nan)
+abortedTrials = np.zeros(len(trialLog),dtype=bool)
+abortTimes = np.full(len(trialLog),np.nan)
+scheduledChangeTimes = np.full(len(trialLog),np.nan)
+changeTimes = np.full(len(trialLog),np.nan)
+changeFrames = np.full(len(trialLog),np.nan)
+changeTrials = np.zeros(len(trialLog),dtype=bool)
+catchTrials = np.zeros(len(trialLog),dtype=bool)
+preChangeImage = ['' for _ in range(len(trialLog))]
+changeImage = ['' for _ in range(len(trialLog))]
+rewardTimes = np.full(len(trialLog),np.nan)
+autoReward = np.zeros(len(trialLog),dtype=bool)
+hit = np.zeros(len(trialLog),dtype=bool)
+miss = np.zeros(len(trialLog),dtype=bool)
+falseAlarm = np.zeros(len(trialLog),dtype=bool)
+correctReject = np.zeros(len(trialLog),dtype=bool)
+laserOffset = np.full(len(trialLog),np.nan)
+for i,(trial,laser) in enumerate(zip(trialLog,laserLog)):
+    events = [event[0] for event in trial['events']]
+    for event,epoch,t,frame in trial['events']:
+        if event=='trial_start':
+            trialStartTimes[i] = t
+            trialStartFrames[i] = frame
+        elif event=='trial_end':
+            trialEndTimes[i] = t
+        elif event=='stimulus_window' and epoch=='enter':
+            ct = trial['trial_params']['change_time']
+            if params['periodic_flash'] is not None:
+                ct *= flashInterval
+                ct -= params['pre_change_time']-flashInterval
+            scheduledChangeTimes[i] = t + ct
+        elif 'abort' in events:
+            if event=='abort':
+                abortedTrials[i] = True
+                abortTimes[i] = t
+        elif event in ('stimulus_changed','sham_change'):
+            changeTimes[i] = t
+            changeFrames[i] = frame
+        elif event=='hit':
+            hit[i] = True
+        elif event=='miss':
+            miss[i] = True 
+        elif event=='false_alarm':
+            falseAlarm[i] = True
+        elif event=='rejection':
+            correctReject[i] = True
+    if not abortedTrials[i]:
+        if trial['trial_params']['catch']:
+            catchTrials[i] = True
+        else:
+            if len(trial['stimulus_changes'])>0:
+                changeTrials[i] = True
+                preChangeImage[i] = trial['stimulus_changes'][0][0][0]
+                changeImage[i] = trial['stimulus_changes'][0][1][0]
+    if len(trial['rewards']) > 0:
+        rewardTimes[i] = trial['rewards'][0][1]
+        autoReward[i] = trial['trial_params']['auto_reward']
+    if 'actual_layzer_frame' in laser:
+        laserOffset[i] = laser['expected_layzer_frame_offset']
+        
   
 
 laserOnFromChange,laserOffFromChange = [t-np.array(changeTimes)[laserTrials] for t in (laserRising,laserFalling)]
@@ -85,8 +152,12 @@ for t,xlbl in zip((startToChange,timeBetweenChanges),('Time from trial start to 
     ax.set_ylabel('Count')
 
 
-
-
+offsets = np.unique(laserOffset)
+offsets = offsets[:np.where(np.isnan(offsets))[0][0]+1]
+for offset in offsets:
+    i = changeTrials
+    i = i & np.isnan(laserOffset) if np.isnan(offset) else i & (laserOffset==offset)
+    print(offset,hit[i].sum(),i.sum())
 
 
 
