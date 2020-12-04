@@ -38,24 +38,24 @@ trialLog = pkl['items']['behavior']['trial_log']
 laserLog = pkl['items']['behavior']['layzer_trials']
 changeLog = pkl['items']['behavior']['stimuli']['images']['change_log']
 
-trialStartTimes = []
-changeTimes = []
-catchTrials = []
-laserTrials = []
-laserFrameTimes = []
-for trial,laser in zip(trialLog,laserLog):
-    catchTrials.append(trial['trial_params']['catch'])
-    for event,epoch,t,frame in trial['events']:
-        if event=='trial_start':
-            trialStartTimes.append(vsyncTimes[frame])
-        elif event in ('stimulus_changed','sham_change'):
-            changeTimes.append(frameAppearTimes[frame])
-    if 'actual_layzer_frame' in laser:
-        laserTrials.append(True)
-        laserFrameTimes.append(vsyncTimes[laser['actual_layzer_frame']])
-    else:
-        laserTrials.append(False)
-        laserFrameTimes.append(np.nan)
+#trialStartTimes = []
+#changeTimes = []
+#catchTrials = []
+#laserTrials = []
+#laserFrameTimes = []
+#for trial,laser in zip(trialLog,laserLog): # not same length; don't do this
+#    catchTrials.append(trial['trial_params']['catch'])
+#    for event,epoch,t,frame in trial['events']:
+#        if event=='trial_start':
+#            trialStartTimes.append(vsyncTimes[frame])
+#        elif event in ('stimulus_changed','sham_change'):
+#            changeTimes.append(frameAppearTimes[frame])
+#    if 'actual_layzer_frame' in laser:
+#        laserTrials.append(True)
+#        laserFrameTimes.append(vsyncTimes[laser['actual_layzer_frame']])
+#    else:
+#        laserTrials.append(False)
+#        laserFrameTimes.append(np.nan)
         
         
 trialStartTimes = np.full(len(trialLog),np.nan)
@@ -76,8 +76,10 @@ hit = np.zeros(len(trialLog),dtype=bool)
 miss = np.zeros(len(trialLog),dtype=bool)
 falseAlarm = np.zeros(len(trialLog),dtype=bool)
 correctReject = np.zeros(len(trialLog),dtype=bool)
+laserTrials = np.zeros(len(trialLog),dtype=bool)
 laserOffset = np.full(len(trialLog),np.nan)
-for i,(trial,laser) in enumerate(zip(trialLog,laserLog)):
+laserFrameTimes = np.full(len(trialLog),np.nan)
+for i,trial in enumerate(trialLog):
     events = [event[0] for event in trial['events']]
     for event,epoch,t,frame in trial['events']:
         if event=='trial_start':
@@ -114,20 +116,25 @@ for i,(trial,laser) in enumerate(zip(trialLog,laserLog)):
                 changeTrials[i] = True
                 preChangeImage[i] = trial['stimulus_changes'][0][0][0]
                 changeImage[i] = trial['stimulus_changes'][0][1][0]
+        for laser in laserLog:
+            if 'actual_change_frame' in laser and 'actual_layzer_frame' in laser:
+                if laser['actual_change_frame']==changeFrames[i]:
+                    laserTrials[i] = True
+                    laserOffset[i] = laser['actual_layzer_frame']-laser['actual_change_frame']
+                    laserFrameTimes[i] = vsyncTimes[laser['actual_layzer_frame']]
+                    break
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
-    if 'actual_layzer_frame' in laser:
-        laserOffset[i] = laser['expected_layzer_frame_offset']
         
   
 
-laserOnFromChange,laserOffFromChange = [t-np.array(changeTimes)[laserTrials] for t in (laserRising,laserFalling)]
+laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[laserTrials].astype(int)] for t in (laserRising,laserFalling)]
 
 binWidth = 0.001
 
 for t,xlbl in zip((laserRising,laserFalling),('onset','offset')):
-    offset = t-np.array(changeTimes)[laserTrials]
+    offset = t-vsyncTimes[changeFrames[laserTrials].astype(int)]-monitorLag
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
     ax.hist(offset,bins=np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth))
@@ -151,13 +158,18 @@ for t,xlbl in zip((startToChange,timeBetweenChanges),('Time from trial start to 
     ax.set_xlabel(xlbl+' (s)')
     ax.set_ylabel('Count')
 
-
-offsets = np.unique(laserOffset)
-offsets = offsets[:np.where(np.isnan(offsets))[0][0]+1]
-for offset in offsets:
-    i = changeTrials
-    i = i & np.isnan(laserOffset) if np.isnan(offset) else i & (laserOffset==offset)
-    print(offset,hit[i].sum(),i.sum())
+offsets = list(set(laserOffset[~np.isnan(laserOffset)]))+[np.nan]
+x = offsets[:-1]+[offsets[-2]*2]
+ax = plt.subplot(1,1,1)
+for trials,resp,clr in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr'):
+    r = []
+    for offset in offsets:
+        i = trials & np.isnan(laserOffset) if np.isnan(offset) else trials & (laserOffset==offset)
+        r.append(resp[i].sum()/i.sum())
+        print(offset,resp[i].sum(),i.sum())
+    ax.plot(x,r,'o-',color=clr)
+ax.set_ylim([0,0.6])
+        
 
 
 
