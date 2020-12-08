@@ -14,6 +14,16 @@ from sync import sync
 import probeSync
 
 
+
+def getLickLatency(lickTimes,eventTimes,offset=0):
+    firstLickInd = np.searchsorted(lickTimes,eventTimes+offset)
+    noLicksAfter = firstLickInd==lickTimes.size
+    firstLickInd[noLicksAfter] = lickTimes.size-1
+    lickLat = lickTimes[firstLickInd]-eventTimes
+    lickLat[noLicksAfter] = np.nan
+    return lickLat
+
+
 pklFile = fileIO.getFile('choose pkl file',fileType='*.pkl')
 pkl = pd.read_pickle(pklFile)
 
@@ -98,6 +108,13 @@ for i,trial in enumerate(trialLog):
         rewardTimes[i] = trial['rewards'][0][1]
         autoReward[i] = trial['trial_params']['auto_reward']
         
+frameIntervals = pkl['items']['behavior']['intervalsms']/1000
+frameTimes = np.concatenate(([0],np.cumsum(frameIntervals)))
+frameTimes += trialStartTimes[0] - frameTimes[int(trialStartFrames[0])]
+
+lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
+lickTimes = frameTimes[lickFrames]
+        
 
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
@@ -121,6 +138,27 @@ ax.set_xlabel('Laser onset relative to change (ms)')
 ax.set_ylabel('Response rate')
 ax.legend()
 
+
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+for w in params['response_window']:
+    ax.plot([0,x[-1]],[w*1000]*2,'--',color='0.75')
+for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
+    r = []
+    for j,offset in enumerate(offsets):
+        i = trials & resp & np.isnan(laserOffset) if np.isnan(offset) else trials & resp & (laserOffset==offset)
+        r.append(1000*getLickLatency(lickTimes,changeTimes[i],params['response_window'][0]))
+        ax.plot(x[j]+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
+    ax.plot(x,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_ylim([0,900])
+ax.set_xticks(x)
+ax.set_xticklabels([int(i) for i in x[:-1]]+['no opto'])
+ax.set_xlabel('Laser onset relative to change (ms)')
+ax.set_ylabel('Reaction time (ms)')
+ax.legend()
 
 
 
