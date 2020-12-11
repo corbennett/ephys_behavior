@@ -119,8 +119,11 @@ lickTimes = frameTimes[lickFrames]
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
 offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
-x = (offsets-1)/frameRate*1000
-x[-1] = x[-2]*1.5
+if len(offsets)>1:
+    x = (offsets-1)/frameRate*1000
+    x[-1] = x[-2]*1.5
+else:
+    x = [0]
 for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
     r = []
     for offset in offsets:
