@@ -120,23 +120,24 @@ fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
 offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
 if len(offsets)>1:
-    x = (offsets-1)/frameRate*1000
-    x[-1] = x[-2]*1.5
+    xticks = (offsets-1)/frameRate*1000
+    xticks[-1] = xticks[-2]*1.5
 else:
-    x = [0]
-for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
+    xticks = [0]
+for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm'),(1.05,1.0)):
     r = []
-    for offset in offsets:
+    for offset,x in zip(offsets,xticks):
         i = trials & np.isnan(laserOffset) if np.isnan(offset) else trials & (laserOffset==offset)
-        r.append(resp[i].sum()/i.sum())
-        print(offset,resp[i].sum(),i.sum())
-    ax.plot(x,r,'o-',color=clr,label=lbl)
+        n = i.sum()
+        r.append(resp[i].sum()/n)
+        fig.text(x,txty,str(n),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
+    ax.plot(xticks,r,'o-',color=clr,label=lbl)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
 ax.set_ylim([0,1])
-ax.set_xticks(x)
-ax.set_xticklabels([int(i) for i in x[:-1]]+['no opto'])
+ax.set_xticks(xticks)
+ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
 ax.set_xlabel('Laser onset relative to change (ms)')
 ax.set_ylabel('Response rate')
 ax.legend()
@@ -148,16 +149,16 @@ for w in params['response_window']:
     ax.plot([0,x[-1]],[w*1000]*2,'--',color='0.75')
 for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
     r = []
-    for j,offset in enumerate(offsets):
+    for offset,x in zip(offsets,xticks):
         i = trials & resp & np.isnan(laserOffset) if np.isnan(offset) else trials & resp & (laserOffset==offset)
         r.append(1000*getLickLatency(lickTimes,changeTimes[i],params['response_window'][0]))
-        ax.plot(x[j]+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
-    ax.plot(x,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
+        ax.plot(x+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
+    ax.plot(xticks,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
 ax.tick_params(direction='out',top=False,right=False)
 ax.set_ylim([0,900])
-ax.set_xticks(x)
+ax.set_xticks(xticks)
 ax.set_xticklabels([int(i) for i in x[:-1]]+['no opto'])
 ax.set_xlabel('Laser onset relative to change (ms)')
 ax.set_ylabel('Reaction time (ms)')
