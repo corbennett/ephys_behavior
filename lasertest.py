@@ -57,7 +57,7 @@ hit = np.zeros(len(trialLog),dtype=bool)
 miss = np.zeros(len(trialLog),dtype=bool)
 falseAlarm = np.zeros(len(trialLog),dtype=bool)
 correctReject = np.zeros(len(trialLog),dtype=bool)
-laserTrials = np.zeros(len(trialLog),dtype=bool)
+laser = np.full(len(trialLog),np.nan)
 laserOffset = np.full(len(trialLog),np.nan)
 laserFrames = np.full(len(trialLog),np.nan)
 for i,trial in enumerate(trialLog):
@@ -97,12 +97,13 @@ for i,trial in enumerate(trialLog):
                 changeTrials[i] = True
                 preChangeImage[i] = trial['stimulus_changes'][0][0][0]
                 changeImage[i] = trial['stimulus_changes'][0][1][0]
-        for laser in laserLog:
-            if 'actual_change_frame' in laser and 'actual_layzer_frame' in laser:
-                if laser['actual_change_frame']==changeFrames[i]:
-                    laserTrials[i] = True
-                    laserOffset[i] = laser['actual_layzer_frame']-laser['actual_change_frame']
-                    laserFrames[i] = laser['actual_layzer_frame']
+        for laserTrial in laserLog:
+            if 'actual_change_frame' in laserTrial and 'actual_layzer_frame' in laserTrial:
+                if laserTrial['actual_change_frame']==changeFrames[i]:
+                    laserOffset[i] = laserTrial['actual_layzer_frame']-laserTrial['actual_change_frame']
+                    laserFrames[i] = laserTrial['actual_layzer_frame']
+                    if 'laser' in laserTrial:
+                        laser[i] = laserTrial['laser']
                     break
     if len(trial['rewards']) > 0:
         rewardTimes[i] = trial['rewards'][0][1]
@@ -116,31 +117,36 @@ lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
 lickTimes = frameTimes[lickFrames]
         
 
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1)
-offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
-if len(offsets)>1:
-    xticks = (offsets-1)/frameRate*1000
-    xticks[-1] = xticks[-2]*1.5
-else:
-    xticks = [0]
-for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm'),(1.05,1.0)):
-    r = []
-    for offset,x in zip(offsets,xticks):
-        i = trials & np.isnan(laserOffset) if np.isnan(offset) else trials & (laserOffset==offset)
-        n = i.sum()
-        r.append(resp[i].sum()/n)
-        fig.text(x,txty,str(n),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
-    ax.plot(xticks,r,'o-',color=clr,label=lbl)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_ylim([0,1])
-ax.set_xticks(xticks)
-ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
-ax.set_xlabel('Laser onset relative to change (ms)')
-ax.set_ylabel('Response rate')
-ax.legend()
+lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[~np.isnan(laser)])
+for las in lasers:
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
+    if len(offsets)>1:
+        xticks = (offsets-1)/frameRate*1000
+        xticks[-1] = xticks[-2]*1.5
+    else:
+        xticks = [0]
+    laserTrials = np.isnan(laser) | (laser==las)
+    for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm'),(1.05,1.0)):
+        r = []
+        for offset,x in zip(offsets,xticks):
+            offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
+            i = trials & laserTrials & offsetTrials
+            n = i.sum()
+            r.append(resp[i].sum()/n)
+            fig.text(x,txty,str(n),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
+        ax.plot(xticks,r,'o-',color=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_ylim([0,1])
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
+    ax.set_xlabel('Laser onset relative to change (ms)')
+    ax.set_ylabel('Response rate')
+    ax.set_title('laser '+str(int(las)))
+    ax.legend()
 
 
 fig = plt.figure()
@@ -173,22 +179,23 @@ frameRising, frameFalling = probeSync.get_sync_line_data(syncDataset, 'vsync_sti
 vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
 frameAppearTimes = vsyncTimes + monitorLag
 
-laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=11)  
-
-laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[laserTrials].astype(int)] for t in (laserRising,laserFalling)]
-
 binWidth = 0.001
-
-for t,xlbl in zip((laserRising,laserFalling),('onset','offset')):
-    offset = t-vsyncTimes[changeFrames[laserTrials].astype(int)]-monitorLag
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
-    ax.hist(offset,bins=np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth))
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(direction='out',top=False,right=False)
-    ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
-    ax.set_ylabel('Count')
+for i,ch in enumerate((11,1)):
+    laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)  
+    laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[laser==i].astype(int)] for t in (laserRising,laserFalling)]
+    fig = plt.figure(figsize=(6,6))
+    for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
+        offset = t-vsyncTimes[changeFrames[laser==i].astype(int)]-monitorLag
+        ax = fig.add_subplot(2,1,j+1)
+        ax.hist(offset,bins=np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth))
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
+        ax.set_ylabel('Count')
+        if j==0:
+            ax.set_title('laser '+str(i))
+    plt.tight_layout()
 
 
 ind = changeTrials | catchTrials
