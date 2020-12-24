@@ -120,6 +120,7 @@ lickTimes = frameTimes[lickFrames]
 lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[~np.isnan(laser)])
 for las in lasers:
     fig = plt.figure()
+    fig.text(0.5,0.99,'laser '+str(int(las)),va='top',ha='center',fontsize=10)
     ax = fig.add_subplot(1,1,1)
     offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
     if len(offsets)>1:
@@ -145,30 +146,30 @@ for las in lasers:
     ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
     ax.set_xlabel('Laser onset relative to change (ms)')
     ax.set_ylabel('Response rate')
-    ax.set_title('laser '+str(int(las)))
     ax.legend()
 
-
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1)
-for w in params['response_window']:
-    ax.plot([0,x[-1]],[w*1000]*2,'--',color='0.75')
-for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
-    r = []
-    for offset,x in zip(offsets,xticks):
-        i = trials & resp & np.isnan(laserOffset) if np.isnan(offset) else trials & resp & (laserOffset==offset)
-        r.append(1000*getLickLatency(lickTimes,changeTimes[i],params['response_window'][0]))
-        ax.plot(x+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
-    ax.plot(xticks,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_ylim([0,900])
-ax.set_xticks(xticks)
-ax.set_xticklabels([int(i) for i in x[:-1]]+['no opto'])
-ax.set_xlabel('Laser onset relative to change (ms)')
-ax.set_ylabel('Reaction time (ms)')
-ax.legend()
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    for w in params['response_window']:
+        ax.plot([0,xticks[-1]],[w*1000]*2,'--',color='0.75')
+    for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
+        r = []
+        for offset,x in zip(offsets,xticks):
+            offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
+            i = trials & resp & laserTrials & offsetTrials
+            r.append(1000*getLickLatency(lickTimes,changeTimes[i],params['response_window'][0]))
+            ax.plot(x+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
+        ax.plot(xticks,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_ylim([0,900])
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
+    ax.set_xlabel('Laser onset relative to change (ms)')
+    ax.set_ylabel('Reaction time (ms)')
+    ax.set_title('laser '+str(int(las)))
+    ax.legend()
 
 
 
@@ -181,21 +182,22 @@ frameAppearTimes = vsyncTimes + monitorLag
 
 binWidth = 0.001
 for i,ch in enumerate((11,1)):
-    laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)  
-    laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[laser==i].astype(int)] for t in (laserRising,laserFalling)]
-    fig = plt.figure(figsize=(6,6))
-    for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
-        offset = t-vsyncTimes[changeFrames[laser==i].astype(int)]-monitorLag
-        ax = fig.add_subplot(2,1,j+1)
-        ax.hist(offset,bins=np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth))
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
-        ax.set_ylabel('Count')
-        if j==0:
-            ax.set_title('laser '+str(i))
-    plt.tight_layout()
+    laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)
+    if any(laserRising):
+        laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[laser==i].astype(int)] for t in (laserRising,laserFalling)]
+        fig = plt.figure(figsize=(6,6))
+        for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
+            offset = t-vsyncTimes[changeFrames[laser==i].astype(int)]-monitorLag
+            ax = fig.add_subplot(2,1,j+1)
+            ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth),color='k')
+            for side in ('right','top'):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,right=False)
+            ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
+            ax.set_ylabel('Count')
+            if j==0:
+                ax.set_title('laser '+str(i))
+        plt.tight_layout()
 
 
 ind = changeTrials | catchTrials
