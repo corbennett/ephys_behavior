@@ -2307,6 +2307,20 @@ f = fileIO.saveFile(fileType='*.csv')
 df.to_csv(f)
 
 
+fig = plt.figure(facecolor='w',figsize=(6,6))
+ax = plt.subplot(1,1,1)
+for regionAccuracy,regionCorr,clr,lbl in zip(decoderAccuracy,decoderMouseCorr,hierColors,regionLabels):
+    ax.plot(regionAccuracy,regionCorr,'o',mec=clr,mfc=clr,label=lbl)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlabel('Decoder accuracy')
+ax.set_ylabel('Correlation of decoder confidence and mouse behavior')
+ax.legend()
+plt.tight_layout()
+
+
+
 ## analysis of population sdfs
     
 # plot hit and false alarm rates and reaction times by image
