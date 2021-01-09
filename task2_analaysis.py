@@ -152,6 +152,8 @@ trialColors = {
                'correct reject': (1,1,0)
               }
 
+grayDurs = np.array([np.nan]) if all(np.isnan(grayDur)) else np.unique(grayDur[~np.isnan(grayDur)])
+
 
 # task parameters
 def printParam(ax,x,y,key,val):
@@ -188,20 +190,23 @@ timeFromChangeToTrialEnd = trialEndTimes - changeTimes
 timeFromAbortToTrialEnd = trialEndTimes - abortTimes
 
 fig = plt.figure(figsize=(7,8))
-ax = fig.add_subplot(4,1,1)
-xlim = [0,round(np.nanmax(timeToChange[~abortedTrials]))+1]
-ax.hist(timeToChange[changeTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='g',label='change (n='+str(changeTrials.sum())+')')
-ax.hist(timeToChange[catchTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='r',label='catch (n='+str(catchTrials.sum())+')')
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim(xlim)
-ax.set_xlabel('Time to change/catch from trial start (s)')
-ax.set_ylabel('Trials')
-ax.set_title(params['stage'])
-ax.legend()
+for i,gray in enumerate(grayDurs):
+    ax = fig.add_subplot(grayDurs.size+3,1,i+1)
+    trials = np.ones(grayDur.size,dtype=bool) if np.isnan(gray) else grayDur==gray
+    xlim = [0,round(np.nanmax(timeToChange[trials & (~abortedTrials)]))+1]
+    ax.hist(timeToChange[trials & changeTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='g',label='change (n='+str(changeTrials[trials].sum())+')')
+    ax.hist(timeToChange[trials & catchTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='r',label='catch (n='+str(catchTrials[trials].sum())+')')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim(xlim)
+    ax.set_xlabel('Time to change/catch from trial start (s)')
+    ax.set_ylabel('Trials')
+    if not np.isnan(gray):
+        ax.set_title('inter-flash gray = '+str(gray)+' s')
+    ax.legend()
 
-ax = fig.add_subplot(4,1,2)
+ax = fig.add_subplot(grayDurs.size+3,1,grayDurs.size+1)
 xlim = [round(interTrialInterval.min())-1,round(interTrialInterval.max())+1]
 ax.hist(interTrialInterval,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
@@ -211,7 +216,7 @@ ax.set_xlim(xlim)
 ax.set_xlabel('Inter-trial interval (start to start) (s)')
 ax.set_ylabel('Trials')
 
-ax = fig.add_subplot(4,1,3)
+ax = fig.add_subplot(grayDurs.size+3,1,grayDurs.size+2)
 changeToEnd = timeFromChangeToTrialEnd[~abortedTrials]
 abortToEnd = timeFromAbortToTrialEnd[abortedTrials] if abortedTrials.sum()>0 else np.full(len(trialLog),np.nan)
 xlim = [round(min(np.nanmin(changeToEnd),np.nanmin(abortToEnd)))-1,round(max(np.nanmax(changeToEnd),np.nanmax(abortToEnd)))+1]
@@ -223,7 +228,7 @@ ax.set_xlim(xlim)
 ax.set_xlabel('Time from change/catch to trial end (includes response window + random gray) (s)')
 ax.set_ylabel('Trials')
 
-ax = fig.add_subplot(4,1,4)
+ax = fig.add_subplot(grayDurs.size+3,1,grayDurs.size+3)
 if not np.all(np.isnan(abortToEnd)):
     ax.hist(abortToEnd,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
@@ -334,7 +339,6 @@ if makeSummaryPDF:
 
 # running
 fig = plt.figure(figsize=(6,8))
-grayDurs = np.unique(grayDur[~np.isnan(grayDur)])
 ax = fig.add_subplot(grayDurs.size+1,1,1)
 ax.plot(frameTimes/60,runSpeed,'k')
 for side in ('right','top'):
@@ -461,8 +465,9 @@ home = np.unique(homeOri[changeTrials])
 oris = np.unique(changeOri[changeTrials])
 if len(home)>1 or len(oris)>1:
     for gray in grayDurs:
+        grayTrials = np.ones(grayDur.size,dtype=bool) if np.isnan(gray) else grayDur==gray
         for ho in home:
-            trials = (grayDur==gray) & (homeOri==ho)
+            trials = grayTrials & (homeOri==ho)
             oriNtrials = []
             oriDelta = []
             oriFracCorr = []
