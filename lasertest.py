@@ -34,6 +34,7 @@ while True:
     else:
         break
 
+expDate = []
 params = []   
 trialStartTimes = []
 trialStartFrames = []
@@ -60,6 +61,7 @@ lickTimes = []
         
 for f in pklFiles:       
     pkl = pd.read_pickle(f)
+    expDate.append(str(pkl['start_time'].date()))
 
     params.append(pkl['items']['behavior']['params'])
     if params[-1]['periodic_flash'] is not None:
@@ -151,7 +153,8 @@ for f in pklFiles:
     lickTimes.append(frameTimes[lickFrames])
         
 
-def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,changeTimes,lickTimes):
+def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,changeTimes,lickTimes,date=None):
+    date = '' if date is None else date+' '
     if isinstance(params,list):
         respWin = params[0]['response_window']
         laser = np.concatenate(laser)
@@ -167,7 +170,7 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
     lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[~np.isnan(laser)])
     for las in lasers:
         fig = plt.figure()
-        fig.text(0.5,0.99,'laser '+str(int(las)),va='top',ha='center',fontsize=10)
+        fig.text(0.5,0.99,date+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
         ax = fig.add_subplot(1,1,1)
         offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
         if len(offsets)>1:
@@ -220,7 +223,7 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
 
 
 for i,_ in enumerate(pklFiles):
-    plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],changeTimes[i],lickTimes[i])
+    plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],changeTimes[i],lickTimes[i],expDate[i])
 
 plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,changeTimes,lickTimes)
 
