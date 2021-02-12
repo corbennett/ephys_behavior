@@ -194,7 +194,7 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
         ax.set_ylim([0,1])
         ax.set_xticks(xticks)
         ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
-        ax.set_xlabel('Laser onset relative to change (ms)')
+        ax.set_xlabel('LED onset relative to change (ms)')
         ax.set_ylabel('Response rate')
         ax.legend()
 
@@ -216,9 +216,9 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
         ax.set_ylim([0,900])
         ax.set_xticks(xticks)
         ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
-        ax.set_xlabel('Laser onset relative to change (ms)')
+        ax.set_xlabel('LED onset relative to change (ms)')
         ax.set_ylabel('Reaction time (ms)')
-        ax.set_title('laser '+str(int(las)))
+        ax.set_title('LED '+str(int(las)))
         ax.legend()
 
 
@@ -229,34 +229,44 @@ plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm
 
 
 
+#
+syncFiles = []
+while True:
+    f = fileIO.getFile('choose sync file',fileType='*.h5')
+    if f!='':
+        syncFiles.append(f)
+    else:
+        break
 
-syncFile = fileIO.getFile('choose sync file',fileType='*.h5')
-syncDataset = sync.Dataset(syncFile)
+for i,f in enumerate(syncFiles):
+    syncDataset = sync.Dataset(f)
+    
+    frameRising, frameFalling = probeSync.get_sync_line_data(syncDataset, 'vsync_stim')
+    vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
+    frameAppearTimes = vsyncTimes + monitorLag
+    
+    binWidth = 0.001
+    for laserInd,ch in enumerate((11,1)):
+        laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)
+        if len(laserRising)>0:
+            laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[i][laser[i]==laserInd].astype(int)] for t in (laserRising,laserFalling)]
+            fig = plt.figure(figsize=(6,6))
+            for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
+                offset = t-vsyncTimes[changeFrames[i][laser[i]==laserInd].astype(int)]-monitorLag
+                ax = fig.add_subplot(2,1,j+1)
+                ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth),color='k')
+                for side in ('right','top'):
+                    ax.spines[side].set_visible(False)
+                ax.tick_params(direction='out',top=False,right=False)
+                ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
+                ax.set_ylabel('Count')
+                if j==0:
+                    ax.set_title('laser '+str(laserInd))
+            plt.tight_layout()
 
-frameRising, frameFalling = probeSync.get_sync_line_data(syncDataset, 'vsync_stim')
-vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
-frameAppearTimes = vsyncTimes + monitorLag
-
-binWidth = 0.001
-for i,ch in enumerate((11,1)):
-    laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)
-    if any(laserRising):
-        laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[laser==i].astype(int)] for t in (laserRising,laserFalling)]
-        fig = plt.figure(figsize=(6,6))
-        for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
-            offset = t-vsyncTimes[changeFrames[laser==i].astype(int)]-monitorLag
-            ax = fig.add_subplot(2,1,j+1)
-            ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth),color='k')
-            for side in ('right','top'):
-                ax.spines[side].set_visible(False)
-            ax.tick_params(direction='out',top=False,right=False)
-            ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
-            ax.set_ylabel('Count')
-            if j==0:
-                ax.set_title('laser '+str(i))
-        plt.tight_layout()
 
 
+#
 ind = changeTrials | catchTrials
 startToChange = changeTimes[ind]-trialStartTimes[ind]
 timeBetweenChanges = np.diff(changeTimes[ind])
