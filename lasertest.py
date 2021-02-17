@@ -58,6 +58,7 @@ laser = []
 laserOffset = []
 laserFrames = []
 lickTimes = []
+engaged = []
         
 for f in pklFiles:       
     pkl = pd.read_pickle(f)
@@ -151,9 +152,14 @@ for f in pklFiles:
     
     lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
     lickTimes.append(frameTimes[lickFrames])
+    
+    outcomeTimes = np.zeros(len(trialLog))
+    outcomeTimes[abortedTrials[-1]] = abortTimes[-1][abortedTrials[-1]]
+    outcomeTimes[~abortedTrials[-1]] = changeTimes[-1][~abortedTrials[-1]]
+    engaged.append(np.array([np.sum(hit[-1][(outcomeTimes>t-60) & (outcomeTimes<t+60)]) > 1 for t in outcomeTimes]))
         
 
-def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,changeTimes,lickTimes,date=None):
+def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes,date=None):
     date = '' if date is None else date+' '
     if isinstance(params,list):
         respWin = params[0]['response_window']
@@ -163,6 +169,7 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
         catchTrials = np.concatenate(catchTrials)
         hit = np.concatenate(hit)
         falseAlarm = np.concatenate(falseAlarm)
+        engaged = np.cocatenate(engaged)
         lickLatency = np.concatenate([getLickLatency(lt,ct,respWin[0]) for ct,lt in zip(changeTimes,lickTimes)])
     else:
         respWin = params['response_window']
@@ -184,9 +191,11 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
             for offset,x in zip(offsets,xticks):
                 offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
                 i = trials & laserTrials & offsetTrials
+                ntotal = i.sum()
+                i = i & engaged
                 n = i.sum()
                 r.append(resp[i].sum()/n)
-                fig.text(x,txty,str(n),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
+                fig.text(x,txty,str(n)+'/'+str(ntotal),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
             ax.plot(xticks,r,'o-',color=clr,label=lbl)
         for side in ('right','top'):
             ax.spines[side].set_visible(False)
@@ -223,9 +232,9 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
 
 
 for i,_ in enumerate(pklFiles):
-    plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],changeTimes[i],lickTimes[i],expDate[i])
+    plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],engaged[i],changeTimes[i],lickTimes[i],expDate[i])
 
-plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,changeTimes,lickTimes)
+plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes)
 
 
 
