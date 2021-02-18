@@ -134,14 +134,6 @@ for f in pklFiles:
                     changeTrials[-1][i] = True
                     preChangeImage[-1][i] = trial['stimulus_changes'][0][0][0]
                     changeImage[-1][i] = trial['stimulus_changes'][0][1][0]
-            for laserTrial in laserLog:
-                if 'actual_change_frame' in laserTrial and 'actual_layzer_frame' in laserTrial:
-                    if laserTrial['actual_change_frame']==changeFrames[-1][i]:
-                        laserOffset[-1][i] = laserTrial['actual_layzer_frame']-laserTrial['actual_change_frame']
-                        laserFrames[-1][i] = laserTrial['actual_layzer_frame']
-                        if 'laser' in laserTrial:
-                            laser[-1][i] = laserTrial['laser']
-                        break
         if len(trial['rewards']) > 0:
             rewardTimes[-1][i] = trial['rewards'][0][1]
             autoReward[-1][i] = trial['trial_params']['auto_reward']
@@ -157,7 +149,21 @@ for f in pklFiles:
     outcomeTimes[abortedTrials[-1]] = abortTimes[-1][abortedTrials[-1]]
     outcomeTimes[~abortedTrials[-1]] = changeTimes[-1][~abortedTrials[-1]]
     engaged.append(np.array([np.sum(hit[-1][(outcomeTimes>t-60) & (outcomeTimes<t+60)]) > 1 for t in outcomeTimes]))
-        
+    
+    for laserTrial in laserLog:
+        if 'actual_change_frame' in laserTrial and 'actual_layzer_frame' in laserTrial:
+            i = laserTrial['trial']
+            laserOffset[-1][i] = laserTrial['actual_layzer_frame']-laserTrial['actual_change_frame']
+            laserFrames[-1][i] = laserTrial['actual_layzer_frame']
+            if 'laser' in laserTrial:
+                laser[-1][i] = laserTrial['laser']
+
+
+for i,_ in enumerate(pklFiles):
+    plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],engaged[i],changeTimes[i],lickTimes[i],expDate[i])
+
+plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes)
+
 
 def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes,date=None):
     date = '' if date is None else date+' '
@@ -229,12 +235,6 @@ def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseA
         ax.set_ylabel('Reaction time (ms)')
         ax.set_title('LED '+str(int(las)))
         ax.legend()
-
-
-for i,_ in enumerate(pklFiles):
-    plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],engaged[i],changeTimes[i],lickTimes[i],expDate[i])
-
-plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes)
 
 
 
