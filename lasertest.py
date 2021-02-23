@@ -6,6 +6,9 @@ Created on Wed Dec  4 11:26:01 2019
 """
 
 from __future__ import division
+import os
+import re
+import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -24,6 +27,99 @@ def getLickLatency(lickTimes,eventTimes,offset=0):
     return lickLat
 
 
+def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes,label=None,sessions=None,led=None,showReactionTimes=False):
+    ntrials = []
+    hitRate = []
+    label = '' if label is None else label+' '
+    if isinstance(params,list):
+        respWin = params[0]['response_window']
+        ld = []
+        for i,j in zip(sessions,led):
+            ld.append(laser[i].copy())
+            k = laser[i]==j
+            ld[-1][k] = 10
+            ld[-1][(~np.isnan(laser[i])) & (~k)] = 99
+        laser = np.concatenate(ld)
+#        laser = np.concatenate([laser[i] for i in sessions])
+        laserOffset = np.concatenate([laserOffset[i] for i in sessions])
+        changeTrials = np.concatenate([changeTrials[i] for i in sessions])
+        catchTrials = np.concatenate([catchTrials[i] for i in sessions])
+        hit = np.concatenate([hit[i] for i in sessions])
+        falseAlarm = np.concatenate([falseAlarm[i] for i in sessions])
+        engaged = np.concatenate([engaged[i] for i in sessions])
+        lickLatency = np.concatenate([getLickLatency(lt,ct,respWin[0]) for i,(ct,lt) in enumerate(zip(changeTimes,lickTimes)) if i in sessions])
+    else:
+        respWin = params['response_window']
+        lickLatency = getLickLatency(lickTimes,changeTimes,respWin[0])
+    lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[(~np.isnan(laser)) & (laser<11)])
+    for las in lasers:
+        fig = plt.figure()
+        fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
+        ax = fig.add_subplot(1,1,1)
+        offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
+        if len(offsets)>1:
+            xticks = (offsets-1)/frameRate*1000
+            xticks[-1] = xticks[-2]*1.5
+        else:
+            xticks = [0]
+        laserTrials = np.isnan(laser) | (laser==las)
+        for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm'),(1.05,1.0)):
+            if lbl=='hit':
+                ntrials.append([])
+            r = []
+            for j,(offset,x) in enumerate(zip(offsets,xticks)):
+                offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
+                i = trials & laserTrials & offsetTrials
+                ntotal = i.sum()
+                if lbl=='hit':
+                    ntrials[-1].append(ntotal)
+                else:
+                    ntrials[-1][j] += ntotal
+                i = i & engaged
+                n = i.sum()
+                r.append(resp[i].sum()/n)
+                fig.text(x,txty,str(n)+'/'+str(ntotal),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
+            if lbl=='hit':
+                hitRate.append(r)
+            ax.plot(xticks,r,'o-',color=clr,label=lbl)
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_ylim([0,1])
+        ax.set_xticks(xticks)
+        ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
+        ax.set_xlabel('LED onset relative to change (ms)')
+        ax.set_ylabel('Response rate')
+        ax.legend()
+        
+        if showReactionTimes:
+            fig = plt.figure()
+            ax = fig.add_subplot(1,1,1)
+            for w in respWin:
+                ax.plot([0,xticks[-1]],[w*1000]*2,'--',color='0.75')
+            for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
+                r = []
+                for offset,x in zip(offsets,xticks):
+                    offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
+                    i = trials & resp & laserTrials & offsetTrials
+                    r.append(1000*lickLatency[i])
+                    ax.plot(x+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
+                ax.plot(xticks,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
+            for side in ('right','top'):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,right=False)
+            ax.set_ylim([0,900])
+            ax.set_xticks(xticks)
+            ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
+            ax.set_xlabel('LED onset relative to change (ms)')
+            ax.set_ylabel('Reaction time (ms)')
+            ax.set_title('LED '+str(int(las)))
+            ax.legend()
+            
+    return ntrials,hitRate
+
+
+
 frameRate = 60
 
 pklFiles = []
@@ -33,6 +129,19 @@ while True:
         pklFiles.append(f)
     else:
         break
+
+    
+f = fileIO.getFile('choose experiments file',fileType='*.xlsx')
+exps = pd.read_excel(f)
+mouseDir = os.path.dirname(f)
+pklFiles = []
+led0Regions = []
+led1Regions = []
+for i,row in exps.iterrows():
+    pklFiles.append(glob.glob(os.path.join(mouseDir,re.sub('[.]','',row['date']),'*.pkl'))[0])
+    led0Regions.append(row['led 0'])
+    led1Regions.append(row['led 1'])
+
 
 expDate = []
 params = []   
@@ -161,116 +270,37 @@ for f in pklFiles:
 ntrials = []
 hitRate = []
 for i,_ in enumerate(pklFiles):
-    n,hr = plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],engaged[i],changeTimes[i],lickTimes[i],expDate[i])
+    n,hr = plotPerformance(params[i],laser[i],laserOffset[i],changeTrials[i],catchTrials[i],hit[i],falseAlarm[i],engaged[i],changeTimes[i],lickTimes[i],label=expDate[i])
     ntrials.append(n)
     hitRate.append(hr)
 
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1)  
-regions = [['lateral','medial'],['lateral','medial'],['lateral','V1'],['V1','medial'],['lateral','medial']]
-clr = {'lateral':'m','V1':'k','medial':'g'}
-lbls = []
-for n,hr,reg in zip(ntrials,hitRate,regions):
-    for las in (0,1):
-        for onset,mfc in zip((0,1),(clr[reg[las]],'none')):
-            lbl = reg[las]+' '+str(int(onset*83)) + ' ms'
-            if lbl in lbls:
-                lbl = None
-            else:
-                lbls.append(lbl)
-            ax.plot(sum(n[las][:2]),hr[las][onset],'o',mec=clr[reg[las]],mfc=mfc,label=lbl)
-ax.set_xlabel('total laser trials')
-ax.set_ylabel('hit rate on change trials')
-ax.legend(loc='lower left')
+
+regions = np.unique([r for r in led0Regions+led1Regions if str(r)!='nan'])
+for reg in regions:
+    sessions,led = zip(*[(i,j) for j,ledReg in enumerate((led0Regions,led1Regions)) for i,r in enumerate(ledReg) if r==reg])
+    n,hr = plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes,label=reg,sessions=sessions,led=led)
 
 
 n,hr = plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes)
 
 
-def plotPerformance(params,laser,laserOffset,changeTrials,catchTrials,hit,falseAlarm,engaged,changeTimes,lickTimes,date=None,showReactionTimes=False):
-    ntrials = []
-    hitRate = []
-    
-    date = '' if date is None else date+' '
-    if isinstance(params,list):
-        respWin = params[0]['response_window']
-        laser = np.concatenate(laser)
-        laserOffset = np.concatenate(laserOffset)
-        changeTrials = np.concatenate(changeTrials)
-        catchTrials = np.concatenate(catchTrials)
-        hit = np.concatenate(hit)
-        falseAlarm = np.concatenate(falseAlarm)
-        engaged = np.concatenate(engaged)
-        lickLatency = np.concatenate([getLickLatency(lt,ct,respWin[0]) for ct,lt in zip(changeTimes,lickTimes)])
-    else:
-        respWin = params['response_window']
-        lickLatency = getLickLatency(lickTimes,changeTimes,respWin[0])
-    lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[~np.isnan(laser)])
-    for las in lasers:
-        fig = plt.figure()
-        fig.text(0.5,0.99,date+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
-        ax = fig.add_subplot(1,1,1)
-        offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
-        if len(offsets)>1:
-            xticks = (offsets-1)/frameRate*1000
-            xticks[-1] = xticks[-2]*1.5
-        else:
-            xticks = [0]
-        laserTrials = np.isnan(laser) | (laser==las)
-        for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm'),(1.05,1.0)):
-            if lbl=='hit':
-                ntrials.append([])
-            r = []
-            for j,(offset,x) in enumerate(zip(offsets,xticks)):
-                offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
-                i = trials & laserTrials & offsetTrials
-                ntotal = i.sum()
-                if lbl=='hit':
-                    ntrials[-1].append(ntotal)
-                else:
-                    ntrials[-1][j] += ntotal
-                i = i & engaged
-                n = i.sum()
-                r.append(resp[i].sum()/n)
-                fig.text(x,txty,str(n)+'/'+str(ntotal),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
-            if lbl=='hit':
-                hitRate.append(r)
-            ax.plot(xticks,r,'o-',color=clr,label=lbl)
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_ylim([0,1])
-        ax.set_xticks(xticks)
-        ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
-        ax.set_xlabel('LED onset relative to change (ms)')
-        ax.set_ylabel('Response rate')
-        ax.legend()
-        
-        if showReactionTimes:
-            fig = plt.figure()
-            ax = fig.add_subplot(1,1,1)
-            for w in respWin:
-                ax.plot([0,xticks[-1]],[w*1000]*2,'--',color='0.75')
-            for trials,resp,clr,lbl in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm')):
-                r = []
-                for offset,x in zip(offsets,xticks):
-                    offsetTrials = np.isnan(laserOffset) if np.isnan(offset) else laserOffset==offset
-                    i = trials & resp & laserTrials & offsetTrials
-                    r.append(1000*lickLatency[i])
-                    ax.plot(x+np.zeros(len(r[-1])),r[-1],'o',mec=clr,mfc='none')
-                ax.plot(xticks,[np.nanmean(y) for y in r],'o',mec=clr,mfc=clr,label=lbl)
-            for side in ('right','top'):
-                ax.spines[side].set_visible(False)
-            ax.tick_params(direction='out',top=False,right=False)
-            ax.set_ylim([0,900])
-            ax.set_xticks(xticks)
-            ax.set_xticklabels([int(i) for i in xticks[:-1]]+['no opto'])
-            ax.set_xlabel('LED onset relative to change (ms)')
-            ax.set_ylabel('Reaction time (ms)')
-            ax.set_title('LED '+str(int(las)))
-            ax.legend()
-            
-    return ntrials,hitRate
+#fig = plt.figure()
+#ax = fig.add_subplot(1,1,1)  
+#regions = [['lateral','medial'],['lateral','medial'],['lateral','V1'],['V1','medial'],['lateral','medial']]
+#clr = {'lateral':'m','V1':'k','medial':'g'}
+#lbls = []
+#for n,hr,reg in zip(ntrials,hitRate,regions):
+#    for las in (0,1):
+#        for onset,mfc in zip((0,1),(clr[reg[las]],'none')):
+#            lbl = reg[las]+' '+str(int(onset*83)) + ' ms'
+#            if lbl in lbls:
+#                lbl = None
+#            else:
+#                lbls.append(lbl)
+#            ax.plot(sum(n[las][:2]),hr[las][onset],'o',mec=clr[reg[las]],mfc=mfc,label=lbl)
+#ax.set_xlabel('total laser trials')
+#ax.set_ylabel('hit rate on change trials')
+#ax.legend(loc='lower left')
 
 
 
