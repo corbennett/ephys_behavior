@@ -34,14 +34,17 @@ def plotPerformance(params,laser,laserOffset,laserAmp,changeTrials,catchTrials,h
     if isinstance(params,list):
         respWin = params[0]['response_window']
         monitorLag = params[0]['laser_params']['monitor_lag']
-        ld = []
-        for i,j in zip(sessions,led):
-            ld.append(laser[i].copy())
-            k = laser[i]==j
-            ld[-1][k] = 10
-            ld[-1][(~np.isnan(laser[i])) & (~k)] = 99
-        laser = np.concatenate(ld)
-#        laser = np.concatenate([laser[i] for i in sessions])
+        if sessions is None:
+            sessions = list(range(len(params)))
+            laser = np.concatenate([laser[i] for i in sessions])
+        else:
+            ld = []
+            for i,j in zip(sessions,led):
+                ld.append(laser[i].copy())
+                k = laser[i]==j
+                ld[-1][k] = 10
+                ld[-1][(~np.isnan(laser[i])) & (~k)] = 99
+            laser = np.concatenate(ld)
         laserOffset = np.concatenate([laserOffset[i] for i in sessions])
         laserAmp = np.concatenate([laserAmp[i] for i in sessions])
         changeTrials = np.concatenate([changeTrials[i] for i in sessions])
