@@ -73,7 +73,7 @@ def plotPerformance(params,laser,laserOffset,laserAmp,changeTrials,catchTrials,h
         xticks = list(amps)
         xticks[0] = 0
         xticklabels = ['no opto']+xticks[1:]
-        xlabel = 'LED amplidude (V)'
+        xlabel = 'LED input amplitude (V)'
     for las in lasers:
         fig = plt.figure()
         fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
