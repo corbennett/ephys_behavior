@@ -58,27 +58,27 @@ def plotPerformance(params,laser,laserOffset,laserAmp,changeTrials,catchTrials,h
         monitorLag = params['laser_params']['monitor_lag']
         lickLatency = getLickLatency(lickTimes,changeTimes,respWin[0])
     lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[(~np.isnan(laser)) & (laser<11)])
-    offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
-    amps = np.concatenate(([np.nan],np.unique(laserAmp[~np.isnan(laserAmp)])))
-    if np.sum(~np.isnan(offsets))>1:
-        xdata = laserOffset
-        xvals = offsets
-        xticks = (offsets-monitorLag)/frameRate*1000
-        xticks[-1] = xticks[-2]*1.5
-        xticklabels = [int(i) for i in xticks[:-1]]+['no opto']
-        xlabel = 'LED onset relative to change (ms)'
-    else:
-        xdata = laserAmp
-        xvals = amps
-        xticks = list(amps)
-        xticks[0] = 0
-        xticklabels = ['no opto']+xticks[1:]
-        xlabel = 'LED input amplitude (V)'
     for las in lasers:
-        fig = plt.figure()
-        fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
-        ax = fig.add_subplot(1,1,1)
         laserTrials = np.isnan(laser) | (laser==las)
+        offsets = np.concatenate((np.unique(laserOffset[~np.isnan(laserOffset)]),[np.nan]))
+        amps = np.concatenate(([np.nan],np.unique(laserAmp[laserTrials & (~np.isnan(laserAmp))])))
+        if np.sum(~np.isnan(offsets))>1:
+            xdata = laserOffset
+            xvals = offsets
+            xticks = (offsets-monitorLag)/frameRate*1000
+            xticks[-1] = xticks[-2]*1.5
+            xticklabels = [int(i) for i in xticks[:-1]]+['no opto']
+            xlabel = 'LED onset relative to change (ms)'
+        else:
+            xdata = laserAmp
+            xvals = amps
+            xticks = list(amps)
+            xticks[0] = 0
+            xticklabels = ['no opto']+xticks[1:]
+            xlabel = 'LED input amplitude (V)'
+            fig = plt.figure()
+            fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
+            ax = fig.add_subplot(1,1,1)
         for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),(hit,falseAlarm),'kr',('hit','false alarm'),(1.05,1.0)):
             if lbl=='hit':
                 ntrials.append([])
