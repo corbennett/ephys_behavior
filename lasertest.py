@@ -175,6 +175,7 @@ trialStartFrames = []
 trialEndTimes = []
 abortedTrials = []
 abortTimes = []
+abortFrames = []
 scheduledChangeTimes = []
 changeTimes = []
 changeFrames = []
@@ -194,6 +195,7 @@ laserFlashOffset = []
 laserFrameOffset = []
 laserOnFrame = []
 laserPower = []
+laserOnBeforeAbort = []
 lickTimes = []
 engaged = []
         
@@ -217,6 +219,7 @@ for f in pklFiles:
     trialEndTimes.append(np.full(len(trialLog),np.nan))
     abortedTrials.append(np.zeros(len(trialLog),dtype=bool))
     abortTimes.append(np.full(len(trialLog),np.nan))
+    abortFrames.append(np.full(len(trialLog),np.nan))
     scheduledChangeTimes.append(np.full(len(trialLog),np.nan))
     changeTimes.append(np.full(len(trialLog),np.nan))
     changeFrames.append(np.full(len(trialLog),np.nan))
@@ -236,6 +239,7 @@ for f in pklFiles:
     laserFrameOffset.append(np.full(len(trialLog),np.nan))
     laserOnFrame.append(np.full(len(trialLog),np.nan))
     laserPower.append(np.full(len(trialLog),np.nan))
+    laserOnBeforeAbort.append(np.zeros(len(trialLog),dtype=bool))
     
     for i,trial in enumerate(trialLog):
         events = [event[0] for event in trial['events']]
@@ -255,6 +259,7 @@ for f in pklFiles:
                 if event=='abort':
                     abortedTrials[-1][i] = True
                     abortTimes[-1][i] = t
+                    abortFrames[-1][i] = frame
             elif event in ('stimulus_changed','sham_change'):
                 changeTimes[-1][i] = t
                 changeFrames[-1][i] = frame
@@ -292,21 +297,22 @@ for f in pklFiles:
     
     expectedLaserOffsets = [int(x[0]*flashInterval*frameRate+x[1]+monitorLag*frameRate) for x in params[-1]['laser_params']['offset']]
     for laserTrial in laserLog:
-        if 'actual_change_frame' in laserTrial and 'actual_layzer_frame' in laserTrial:
+        if 'actual_layzer_frame' in laserTrial:
             i = laserTrial['trial']
-            laserOffset = laserTrial['actual_layzer_frame']-laserTrial['actual_change_frame']
-            if laserOffset in expectedLaserOffsets:
-                laserFrameOffset[-1][i] = laserOffset
-                laserFlashOffset[-1][i] = laserTrial['actual_layzer_flash']-laserTrial['actual_change_flash']
-                laserOnFrame[-1][i] = laserTrial['actual_layzer_frame']
-                if 'laser' in laserTrial:
-                    laser[-1][i] = laserTrial['laser']
-                    if 'amp' in laserTrial:
-                        laserAmp[-1][i] = laserTrial['amp']
-                        laserPower[-1][i] = laserPowerDict[laserTrial['laser']][laserTrial['amp']]
-                    else:
-                        laserAmp[-1][i] = np.nan
-                        laserPower[-1][i] = np.nan
+            laserOnFrame[-1][i] = laserTrial['actual_layzer_frame']
+            if 'laser' in laserTrial:
+                laser[-1][i] = laserTrial['laser']
+                if 'amp' in laserTrial:
+                    laserAmp[-1][i] = laserTrial['amp']
+                    laserPower[-1][i] = laserPowerDict[laserTrial['laser']][laserTrial['amp']]
+            if 'actual_change_frame' in laserTrial:
+                laserOffset = laserTrial['actual_layzer_frame']-laserTrial['actual_change_frame']
+                if laserOffset in expectedLaserOffsets:
+                    laserFrameOffset[-1][i] = laserOffset
+                    laserFlashOffset[-1][i] = laserTrial['actual_layzer_flash']-laserTrial['actual_change_flash']
+            else:
+                laserOnBeforeAbort[-1][i] = True
+                    
 
 ntrials = []
 hitRate = []
@@ -365,16 +371,17 @@ for i,f in enumerate(syncFiles):
     for laserInd,ch in enumerate((11,1)):
         laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)
         if len(laserRising)>0:
-            laserOnFromChange,laserOffFromChange = [t-vsyncTimes[changeFrames[i][laser[i]==laserInd].astype(int)] for t in (laserRising,laserFalling)]
+            laserTrials = laser[i]==laserInd
+            ct = vsyncTimes[changeFrames[i][laserTrials & (changeTrials[i] | catchTrials[i])].astype(int)]
             fig = plt.figure(figsize=(6,6))
             for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
-                offset = t-vsyncTimes[changeFrames[i][laser[i]==laserInd].astype(int)]-monitorLag
+                offset = t[~laserOnBeforeAbort[i][laserTrials]]-ct-monitorLag
                 ax = fig.add_subplot(2,1,j+1)
                 ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth),color='k')
                 for side in ('right','top'):
                     ax.spines[side].set_visible(False)
                 ax.tick_params(direction='out',top=False,right=False)
-                ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (s)')
+                ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (ms)')
                 ax.set_ylabel('Count')
                 if j==0:
                     ax.set_title('laser '+str(laserInd))
