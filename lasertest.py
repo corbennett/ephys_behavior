@@ -140,7 +140,7 @@ laserPowerDict = {
                   0: {0.26: 0.5, 0.43: 1, 0.77: 2,
                       0.81: 0.5, 1.79: 1, 2.76: 1.5, 3.74: 2, 4.71: 2.5},
                   1: {0.32: 0.5, 0.52: 1, 0.92: 2,
-                      0.38: 0.5, 0.6: 1, 0.83: 1.5, 1.05: 2, 1.28: 2.5}
+                      0.38: 0.5, 0.6: 1, 0.83: 1.5, 1.05: 2, 1.28: 2.5, 1.36: 2.5}
                  }
 
 frameRate = 60
@@ -367,7 +367,7 @@ for i,f in enumerate(syncFiles):
     vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
     frameAppearTimes = vsyncTimes + monitorLag
     
-    binWidth = 0.001
+    binWidth = 0.01
     for laserInd,ch in enumerate((11,1)):
         laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)
         if len(laserRising)>0:
@@ -377,7 +377,7 @@ for i,f in enumerate(syncFiles):
             for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
                 offset = t[~laserOnBeforeAbort[i][laserTrials]]-ct-monitorLag
                 ax = fig.add_subplot(2,1,j+1)
-                ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-0.001,round(max(offset),3)+0.001,binWidth),color='k')
+                ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-binWidth,round(max(offset),3)+binWidth,binWidth),color='k')
                 for side in ('right','top'):
                     ax.spines[side].set_visible(False)
                 ax.tick_params(direction='out',top=False,right=False)
