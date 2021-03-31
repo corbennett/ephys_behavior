@@ -194,7 +194,9 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
     changeTrials = np.concatenate([exps[i].changeTrials for i in sessions])
     catchTrials = np.concatenate([exps[i].catchTrials for i in sessions])
     hit = np.concatenate([exps[i].hit for i in sessions])
+    miss = np.concatenate([exps[i].miss for i in sessions])
     falseAlarm = np.concatenate([exps[i].falseAlarm for i in sessions])
+    correctReject = np.concatenate([exps[i].correctReject for i in sessions])
     postChangeHit = np.concatenate([exps[i].postChangeHit for i in sessions])
     postChangeFalseAlarm = np.concatenate([exps[i].postChangeFalseAlarm for i in sessions])
     engaged = np.concatenate([exps[i].engaged for i in sessions])
@@ -219,9 +221,9 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             xlabel = 'LED Power (mW)'
         fig = plt.figure(figsize=(6,9))
         fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
-        for a,(resps,flashLbl) in enumerate(zip(((hit,falseAlarm),(postChangeHit,postChangeFalseAlarm)),('change flash','post-change flash'))):
+        for a,(trialTypes,resps,flashLbl) in enumerate(zip(((changeTrials,catchTrials),(miss,correctReject)),((hit,falseAlarm),(postChangeHit,postChangeFalseAlarm)),('change flash','post-change flash'))):
             ax = fig.add_subplot(2,1,a+1)
-            for trials,resp,clr,lbl,txty in zip((changeTrials,catchTrials),resps,'kr',('hit','false alarm'),(1.05,1.0)):
+            for trials,resp,clr,lbl,txty in zip(trialTypes,resps,'kr',('hit','false alarm'),(1.05,1.0)):
                 r = []
                 for j,(xval,x) in enumerate(zip(xvals,xticks)):
                     xTrials = np.isnan(xdata) if np.isnan(xval) else xdata==xval
@@ -238,7 +240,8 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             ax.set_ylim([0,1])
             ax.set_xticks(xticks)
             ax.set_xticklabels(xticklabels)
-            ax.set_xlabel(xlabel)
+            if a==1:
+                ax.set_xlabel(xlabel)
             ax.set_ylabel('Response rate ('+flashLbl+')')
             ax.legend()
         
@@ -362,7 +365,7 @@ for i,(f,obj) in enumerate(zip(syncFiles,exps)):
             ct = vsyncTimes[obj.changeFrames[laserTrials & (obj.changeTrials | obj.catchTrials)].astype(int)]
             fig = plt.figure(figsize=(6,6))
             for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
-                offset = t[~obj.laserOnBeforeAbort[laserTrials]]-ct-exps[0].monitorLag
+                offset = t[~obj.laserOnBeforeAbort[laserTrials]]-(ct+obj.monitorLag/obj.frameRate)
                 ax = fig.add_subplot(2,1,j+1)
                 ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-binWidth,round(max(offset),3)+binWidth,binWidth),color='k')
                 for side in ('right','top'):
