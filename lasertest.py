@@ -80,11 +80,10 @@ class DocLaser():
                         ct *= flashInterval
                         ct -= self.params['pre_change_time']-flashInterval
                     self.scheduledChangeTimes[i] = t + ct
-                elif 'abort' in events:
-                    if event=='abort':
-                        self.abortedTrials[i] = True
-                        self.abortTimes[i] = t
-                        self.abortFrames[i] = frame
+                elif event=='abort':
+                    self.abortedTrials[i] = True
+                    self.abortTimes[i] = t
+                    self.abortFrames[i] = frame
                 elif event in ('stimulus_changed','sham_change'):
                     self.changeTimes[i] = t
                     self.changeFrames[i] = frame
@@ -92,7 +91,7 @@ class DocLaser():
                     self.hit[i] = True
                 elif event=='miss':
                     self.miss[i] = True 
-                elif event=='false_alarm':
+                elif event=='false_alarm' and 'rejection' not in events:
                     self.falseAlarm[i] = True
                 elif event=='rejection':
                     self.correctReject[i] = True
@@ -107,6 +106,9 @@ class DocLaser():
             if len(trial['rewards']) > 0:
                 self.rewardTimes[i] = trial['rewards'][0][1]
                 self.autoReward[i] = trial['trial_params']['auto_reward']
+                
+        self.omitFlashProb = pkl['items']['behavior']['stimuli']['images']['flash_omit_probability']
+        self.omitFlashFrames = pkl['items']['behavior']['stimuli']['images']['flashes_omitted']
                 
         self.laser = np.full(len(trialLog),np.nan)
         self.laserAmp = np.full(len(trialLog),np.nan)
@@ -137,8 +139,8 @@ class DocLaser():
         frameTimes = np.concatenate(([0],np.cumsum(frameIntervals)))
         frameTimes += self.trialStartTimes[0] - frameTimes[int(self.trialStartFrames[0])]
         
-        lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
-        self.lickTimes = frameTimes[lickFrames]
+        self.lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
+        self.lickTimes = frameTimes[self.lickFrames]
         
         self.postChangeHit = np.zeros(len(trialLog),dtype=bool)
         self.postChangeMiss = np.zeros(len(trialLog),dtype=bool)
