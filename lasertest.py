@@ -107,9 +107,6 @@ class DocLaser():
                 self.rewardTimes[i] = trial['rewards'][0][1]
                 self.autoReward[i] = trial['trial_params']['auto_reward']
                 
-        self.omitFlashProb = pkl['items']['behavior']['stimuli']['images']['flash_omit_probability']
-        self.omitFlashFrames = pkl['items']['behavior']['stimuli']['images']['flashes_omitted']
-                
         self.laser = np.full(len(trialLog),np.nan)
         self.laserAmp = np.full(len(trialLog),np.nan)
         self.laserFlashOffset = np.full(len(trialLog),np.nan)
@@ -134,6 +131,11 @@ class DocLaser():
                         self.laserFlashOffset[i] = laserTrial['actual_layzer_flash']-laserTrial['actual_change_flash']
                 else:
                     self.laserOnBeforeAbort[i] = True
+                    
+        outcomeTimes = np.zeros(len(trialLog))
+        outcomeTimes[self.abortedTrials] = self.abortTimes[self.abortedTrials]
+        outcomeTimes[~self.abortedTrials] = self.changeTimes[~self.abortedTrials]
+        self.engaged = np.array([np.sum(self.hit[(outcomeTimes>t-60) & (outcomeTimes<t+60)]) > 1 for t in outcomeTimes])
                 
         frameIntervals = pkl['items']['behavior']['intervalsms']/1000
         frameTimes = np.concatenate(([0],np.cumsum(frameIntervals)))
@@ -141,6 +143,15 @@ class DocLaser():
         
         self.lickFrames = pkl['items']['behavior']['lick_sensors'][0]['lick_events']
         self.lickTimes = frameTimes[self.lickFrames]
+        
+        self.omitFlashProb = pkl['items']['behavior']['stimuli']['images']['flash_omit_probability']
+        self.omitFlashFrames = pkl['items']['behavior']['stimuli']['images']['flashes_omitted']
+        self.omitFlashTimes = frameTimes[obj.omitFlashFrames]
+        self.postOmitLick = np.zeros(len(self.omitFlashFrames),dtype=bool)
+        for i,ft in enumerate(self.omitFlashTimes):
+            t = ft+flashInterval
+            if any((self.lickTimes > t+self.params['response_window'][0]) & (self.lickTimes < t+self.params['response_window'][1])):
+                self.postOmitLick[i] = True
         
         self.postChangeHit = np.zeros(len(trialLog),dtype=bool)
         self.postChangeMiss = np.zeros(len(trialLog),dtype=bool)
@@ -160,10 +171,6 @@ class DocLaser():
                     else:
                         self.postChangeCorrectReject[i] = True
         
-        outcomeTimes = np.zeros(len(trialLog))
-        outcomeTimes[self.abortedTrials] = self.abortTimes[self.abortedTrials]
-        outcomeTimes[~self.abortedTrials] = self.changeTimes[~self.abortedTrials]
-        self.engaged = np.array([np.sum(self.hit[(outcomeTimes>t-60) & (outcomeTimes<t+60)]) > 1 for t in outcomeTimes])
         
 
 def getLickLatency(lickTimes,eventTimes,offset=0):
@@ -201,6 +208,7 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
     correctReject = np.concatenate([exps[i].correctReject for i in sessions])
     postChangeHit = np.concatenate([exps[i].postChangeHit for i in sessions])
     postChangeFalseAlarm = np.concatenate([exps[i].postChangeFalseAlarm for i in sessions])
+    postOmitLick = np.concatenate([exps[i].postOmitLick for i in sessions])
     engaged = np.concatenate([exps[i].engaged for i in sessions])
     lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[(~np.isnan(laser)) & (laser<11)])
     for las in lasers:
@@ -225,6 +233,9 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
         fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
         for a,(trialTypes,resps,flashLbl) in enumerate(zip(((changeTrials,catchTrials),(miss,correctReject)),((hit,falseAlarm),(postChangeHit,postChangeFalseAlarm)),('change flash','post-change flash'))):
             ax = fig.add_subplot(2,1,a+1)
+            if a==1 and len(postOmitLick)>0:
+                omitLickProb = postOmitLick.sum()/postOmitLick.size
+                ax.plot([xticks[0],xticks[-1]],[omitLickProb]*2,'--',color='0.5')
             for trials,resp,clr,lbl,txty in zip(trialTypes,resps,'kr',('hit','false alarm'),(1.05,1.0)):
                 r = []
                 for j,(xval,x) in enumerate(zip(xvals,xticks)):
@@ -239,7 +250,7 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             for side in ('right','top'):
                 ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
-            ax.set_ylim([0,1])
+            ax.set_ylim([0,1.02])
             ax.set_xticks(xticks)
             ax.set_xticklabels(xticklabels)
             if a==1:
