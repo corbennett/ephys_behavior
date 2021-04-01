@@ -146,7 +146,7 @@ class DocLaser():
         
         self.omitFlashProb = pkl['items']['behavior']['stimuli']['images']['flash_omit_probability']
         self.omitFlashFrames = pkl['items']['behavior']['stimuli']['images']['flashes_omitted']
-        self.omitFlashTimes = frameTimes[obj.omitFlashFrames]
+        self.omitFlashTimes = frameTimes[self.omitFlashFrames]
         self.postOmitLick = np.zeros(len(self.omitFlashFrames),dtype=bool)
         for i,ft in enumerate(self.omitFlashTimes):
             t = ft+flashInterval
