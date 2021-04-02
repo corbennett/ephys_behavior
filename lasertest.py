@@ -23,9 +23,9 @@ class DocLaser():
     def __init__(self,pklPath):
         
         self.laserPowerDict = {
-                               0: {0.26: 0.5, 0.43: 1, 0.77: 2,
+                               0: {0.26: 0.5, 0.43: 1, 0.6: 1.5, 0.77: 2, 0.93: 2.5,
                                    0.81: 0.5, 1.79: 1, 2.76: 1.5, 3.74: 2, 4.71: 2.5},
-                               1: {0.32: 0.5, 0.52: 1, 0.92: 2,
+                               1: {0.32: 0.5, 0.52: 1, 0.72: 1.5, 0.92: 2, 1.11: 2.5,
                                    0.38: 0.5, 0.6: 1, 0.83: 1.5, 1.05: 2, 1.28: 2.5,
                                    0.4: 0.5, 0.64: 1, 0.76: 1.25, 0.88: 1.5, 1.12: 2, 1.36: 2.5}
                               }
@@ -199,7 +199,7 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             ld[-1][(~np.isnan(exps[i].laser)) & (~k)] = 99
         laser = np.concatenate(ld)
     laserFrameOffset = np.concatenate([exps[i].laserFrameOffset for i in sessions])
-    laserAmp = np.concatenate([exps[i].laserAmp for i in sessions])
+    laserPower = np.concatenate([exps[i].laserPower for i in sessions])
     changeTrials = np.concatenate([exps[i].changeTrials for i in sessions])
     catchTrials = np.concatenate([exps[i].catchTrials for i in sessions])
     hit = np.concatenate([exps[i].hit for i in sessions])
@@ -214,7 +214,7 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
     for las in lasers:
         laserTrials = np.isnan(laser) | (laser==las)
         offsets = np.concatenate((np.unique(laserFrameOffset[~np.isnan(laserFrameOffset)]),[np.nan]))
-        amps = np.concatenate(([np.nan],np.unique(laserAmp[laserTrials & (~np.isnan(laserAmp))])))
+        powers = np.concatenate(([np.nan],np.unique(laserPower[laserTrials & (~np.isnan(laserPower))])))
         if np.sum(~np.isnan(offsets))>1:
             xdata = laserFrameOffset
             xvals = offsets
@@ -223,20 +223,20 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             xticklabels = [int(i) for i in xticks[:-1]]+['no opto']
             xlabel = 'LED onset relative to change (ms)'
         else:
-            xdata = laserAmp
-            xvals = amps
-            xticks = list(amps)
+            xdata = laserPower
+            xvals = powers
+            xticks = list(powers)
             xticks[0] = 0
             xticklabels = ['no opto']+xticks[1:]
             xlabel = 'LED Power (mW)'
-        fig = plt.figure(figsize=(6,9))
+        fig = plt.figure(figsize=(6,8))
         fig.text(0.5,0.99,label+'laser '+str(int(las)),va='top',ha='center',fontsize=10)
         for a,(trialTypes,resps,flashLbl) in enumerate(zip(((changeTrials,catchTrials),(miss,correctReject)),((hit,falseAlarm),(postChangeHit,postChangeFalseAlarm)),('change flash','post-change flash'))):
             ax = fig.add_subplot(2,1,a+1)
             if a==1 and len(postOmitLick)>0:
                 omitLickProb = postOmitLick.sum()/postOmitLick.size
                 ax.plot([xticks[0],xticks[-1]],[omitLickProb]*2,'--',color='0.5')
-            for trials,resp,clr,lbl,txty in zip(trialTypes,resps,'kr',('hit','false alarm'),(1.05,1.0)):
+            for trials,resp,clr,lbl,txty in zip(trialTypes,resps,'kr',('change','catch'),(1.07,1.02)):
                 r = []
                 for j,(xval,x) in enumerate(zip(xvals,xticks)):
                     xTrials = np.isnan(xdata) if np.isnan(xval) else xdata==xval
@@ -252,9 +252,11 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             ax.tick_params(direction='out',top=False,right=False)
             ax.set_ylim([0,1.02])
             ax.set_xticks(xticks)
-            ax.set_xticklabels(xticklabels)
             if a==1:
+                ax.set_xticklabels(xticklabels)
                 ax.set_xlabel(xlabel)
+            else:
+                ax.set_xticklabels([])
             ax.set_ylabel('Response rate ('+flashLbl+')')
             ax.legend()
         
