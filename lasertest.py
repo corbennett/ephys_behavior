@@ -212,6 +212,8 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
     postOmitLick = np.concatenate([exps[i].postOmitLick for i in sessions])
     engaged = np.concatenate([exps[i].engaged for i in sessions])
     lasers = [np.nan] if all(np.isnan(laser)) else np.unique(laser[(~np.isnan(laser)) & (laser<11)])
+    hitRate = []
+    falseAlarmRate = []
     for las in lasers:
         laserTrials = np.isnan(laser) | (laser==las)
         offsets = np.concatenate((np.unique(laserFrameOffset[~np.isnan(laserFrameOffset)]),[np.nan]))
@@ -248,6 +250,11 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
                     r.append(resp[i].sum()/n)
                     fig.text(x,txty,str(n)+'/'+str(ntotal),color=clr,transform=ax.transData,va='bottom',ha='center',fontsize=8)
                 ax.plot(xticks,r,'o-',color=clr,label=lbl)
+                if a==0:
+                    if lbl=='change':
+                        hitRate.append(r)
+                    else:
+                        falseAlarmRate.append(r)
             for side in ('right','top'):
                 ax.spines[side].set_visible(False)
             ax.tick_params(direction='out',top=False,right=False)
@@ -285,6 +292,8 @@ def plotPerformance(exps,label=None,sessions=None,led=None,showReactionTimes=Fal
             ax.set_ylabel('Reaction time (ms)')
             ax.set_title('LED '+str(int(las)))
             ax.legend()
+            
+    return hitRate,falseAlarmRate
             
             
 def plotLicks(obj,preTime=1.5,postTime=0.75):
@@ -342,8 +351,13 @@ for i,row in exps.iterrows():
         led1Regions.append(row['led 1'])
 
 
+hitRate = []
+falseAlarmRate = []
 for obj in exps:
-    plotPerformance([obj],label=obj.expDate)
+    h,fa = plotPerformance([obj],label=obj.expDate)
+    hitRate.append(h)
+    falseAlarmRate.append(fa)
+    
     plotLicks(obj,preTime=1.5,postTime=1.5)
     
 
@@ -366,33 +380,46 @@ while True:
     else:
         break
 
+ledOnset = []
 for i,(f,obj) in enumerate(zip(syncFiles,exps)):
     syncDataset = sync.Dataset(f)
     
     frameRising, frameFalling = probeSync.get_sync_line_data(syncDataset, 'vsync_stim')
     vsyncTimes = frameFalling[1:] if frameFalling[0] < frameRising[0] else frameFalling
-    frameAppearTimes = vsyncTimes + obj.monitorLag
+    frameAppearTimes = vsyncTimes + obj.monitorLag/obj.frameRate
     
-    binWidth = 0.01
+    binWidth = 0.001
     for laserInd,ch in enumerate((11,1)):
         laserRising,laserFalling = probeSync.get_sync_line_data(syncDataset,channel=ch)
         if len(laserRising)>0:
             laserTrials = obj.laser==laserInd
-            ct = vsyncTimes[obj.changeFrames[laserTrials & (obj.changeTrials | obj.catchTrials)].astype(int)]
+            ct = frameAppearTimes[obj.changeFrames[laserTrials & (obj.changeTrials | obj.catchTrials)].astype(int)]
             fig = plt.figure(figsize=(6,6))
             for j,(t,xlbl) in enumerate(zip((laserRising,laserFalling),('onset','offset'))):
-                offset = t[~obj.laserOnBeforeAbort[laserTrials]]-(ct+obj.monitorLag/obj.frameRate)
+                timeFromChange = t[~obj.laserOnBeforeAbort[laserTrials]]-ct
+                if xlbl=='onset':
+                    ledOnset.append(timeFromChange)
                 ax = fig.add_subplot(2,1,j+1)
-                ax.hist(1000*offset,bins=1000*np.arange(round(min(offset),3)-binWidth,round(max(offset),3)+binWidth,binWidth),color='k')
+                ax.hist(1000*timeFromChange,bins=1000*np.arange(round(min(timeFromChange),3)-binWidth,round(max(timeFromChange),3)+binWidth,binWidth),color='k')
                 for side in ('right','top'):
                     ax.spines[side].set_visible(False)
                 ax.tick_params(direction='out',top=False,right=False)
-                ax.set_xlabel('Time from change on monitor to laser '+xlbl+' (ms)')
+                ax.set_xlabel('Time from change on monitor to led '+xlbl+' (ms)')
                 ax.set_ylabel('Count')
                 if j==0:
                     ax.set_title('laser '+str(laserInd))
             plt.tight_layout()
-
+            
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+onset = np.concatenate(ledOnset)
+ax.hist(1000*onset,bins=1000*np.arange(round(min(onset),3)-binWidth,round(max(onset),3)+binWidth,binWidth),color='k')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xlabel('Time from change on monitor to led onset (ms)')
+ax.set_ylabel('Count')
+plt.tight_layout()
 
 
 
