@@ -158,6 +158,23 @@ c[~imageChange] = 0
 preImgRespRate = r.sum(axis=1)/c.sum(axis=1)
 changeImgRespRate = r.sum(axis=2)/c.sum(axis=2)
 
+
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+r = respRate.mean(axis=0)
+im = ax.imshow(r,clim=[0,r.max()],cmap='gray')
+ax.set_xticks(np.arange(len(exps[0].labels)))
+ax.set_xticklabels(exps[0].labels,rotation=90)
+ax.set_xlabel('Pre Image (contrast)')
+ax.set_xlim([-0.5,len(exps[0].labels)-0.5])
+ax.set_yticks(np.arange(len(exps[0].labels)))
+ax.set_yticklabels(exps[0].labels)
+ax.set_ylabel('Change Image (contrast)')
+ax.set_ylim([len(exps[0].labels)-0.5,-0.5])
+ax.set_title('Response Rate')
+cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
+plt.tight_layout()
+
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
 ax.plot([0,1],[0,1],'--',color='0.5')
@@ -165,13 +182,13 @@ for rr,mfc,lbl in zip((preImgRespRate,changeImgRespRate),('none','k'),('pre imag
     ax.plot(rr[:,1::2].mean(axis=0),rr[:,::2].mean(axis=0),'o',mec='k',mfc=mfc,label=lbl)
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim([0,1.02])
 ax.set_ylim([0,1.02])
 ax.set_aspect('equal')
-ax.set_xlabel('High',fontsize=14)
-ax.set_ylabel('Low',fontsize=14)
-leg = ax.legend(loc='upper left',fontsize=10)
+ax.set_xlabel('100% contrast')
+ax.set_ylabel('40% contrast')
+leg = ax.legend(loc='upper left')
 plt.tight_layout()
 
 fig = plt.figure()
@@ -180,13 +197,15 @@ ax.plot([0,1],[0,1],'--',color='0.5')
 ax.plot(changeImgRespRate[:,1::2].mean(axis=1),rr[:,::2].mean(axis=1),'ko')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False,labelsize=12)
+ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlim([0,1.02])
 ax.set_ylim([0,1.02])
 ax.set_aspect('equal')
-ax.set_xlabel('High',fontsize=14)
-ax.set_ylabel('Low',fontsize=14)
+ax.set_xlabel('100% contrast')
+ax.set_ylabel('40% contrast')
 plt.tight_layout()
+
+
 
 
 
