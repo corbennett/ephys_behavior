@@ -7,6 +7,7 @@ Created on Fri Jan  7 17:20:54 2022
 
 import numpy as np
 import pandas as pd
+import scipy.stats
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -148,6 +149,77 @@ if len(behavFiles)>0:
         
         
 #
+hitRateLow = []
+hitRateHigh = []
+falseAlarmRate = []
+
+hitRateLow.append([])
+hitRateHigh.append([])
+falseAlarmRate.append([])
+for obj in exps[::-1]:
+    r = obj.respCount.copy()
+    r[~obj.imageChange] = 0
+    c = obj.trialCount.copy()
+    c[~obj.imageChange] = 0
+    hitRateLow[-1].append(r[0::2].sum()/c[0::2].sum())
+    hitRateHigh[-1].append(r[1::2].sum()/c[1::2].sum())
+    fa = np.eye(obj.respCount.shape[0]).astype(bool)
+    r = obj.respCount[fa]
+    c = obj.trialCount[fa]
+    falseAlarmRate[-1].append(r.sum()/c.sum())
+    
+dp = []
+for hr in (hitRateHigh,hitRateLow):
+    z = [scipy.stats.norm.ppf(r) for r in (hr,falseAlarmRate)]
+    dp.append(np.mean(z[0]-z[1],axis=0))
+
+    
+xlbl = ('20%','40%','60%','60%','60%')
+    
+fig = plt.figure(figsize=(6,9))
+ax = fig.add_subplot(3,1,1)
+ax.plot(np.mean(hitRateHigh,axis=0),'g',lw=2,label='high contrast')
+ax.plot(np.mean(hitRateLow,axis=0),'m',lw=2,label='low contrast')
+ax.plot(np.mean(falseAlarmRate,axis=0),'0.5',lw=2,label='no change')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xticks(np.arange(len(xlbl)))
+ax.set_xticklabels(xlbl)
+ax.set_ylim([0,1])
+ax.set_xlabel('Daily Low Contrast')
+ax.set_ylabel('Response Rate')
+ax.legend()
+plt.tight_layout()
+   
+ax = fig.add_subplot(3,1,2)
+ax.plot(dp[0],'g',lw=2,label='high contrast')
+ax.plot(dp[1],'m',lw=2,label='low contrast')
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xticks(np.arange(len(xlbl)))
+ax.set_xticklabels(xlbl)
+ax.set_ylim([0,3])
+ax.set_xlabel('Daily Low Contrast')
+ax.set_ylabel('d prime')
+ax.legend()
+plt.tight_layout()
+
+ax = fig.add_subplot(3,1,3)
+ax.plot(100*(1-dp[1]/dp[0]),'k',lw=2)
+for side in ('right','top'):
+    ax.spines[side].set_visible(False)
+ax.tick_params(direction='out',top=False,right=False)
+ax.set_xticks(np.arange(len(xlbl)))
+ax.set_xticklabels(xlbl)
+ax.set_ylim([45,75])
+ax.set_xlabel('Daily Low Contrast')
+ax.set_ylabel('% reduction in d prime')
+plt.tight_layout()
+        
+        
+#
 trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','respCount','imageChange')]
 respRate = respCount/trialCount
 
@@ -164,7 +236,7 @@ contrast = np.unique(contrast[~np.isnan(contrast)])
 
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
-r = respRate.mean(axis=0)
+r = np.nanmean(respRate,axis=0)
 im = ax.imshow(r,clim=[0,r.max()],cmap='gray')
 ax.set_xticks(np.arange(len(labels)))
 ax.set_xticklabels(labels,rotation=90)
