@@ -87,29 +87,33 @@ class DocData():
                     self.catchTrials[i] = True
                 else:
                     self.changeTrials[i] = True
-                self.preImage[i] = trial['stimulus_changes'][0][0][0]
-                self.postImage[i] = trial['stimulus_changes'][0][1][0]
-                self.preContrast[i] = trial['stimulus_changes'][0][0][1]['contrast']
-                self.postContrast[i] = trial['stimulus_changes'][0][1][1]['contrast']
-                self.preLabel[i] = self.preImage[i]+' ('+str(self.preContrast[i])+')'
-                self.postLabel[i] = self.postImage[i]+' ('+str(self.postContrast[i])+')'
+                if trial['stimulus_changes'][0][0][0] is not None:
+                    self.preImage[i] = trial['stimulus_changes'][0][0][0]
+                    self.postImage[i] = trial['stimulus_changes'][0][1][0]
+                    self.preContrast[i] = trial['stimulus_changes'][0][0][1]['contrast']
+                    self.postContrast[i] = trial['stimulus_changes'][0][1][1]['contrast']
+                    self.preLabel[i] = self.preImage[i]+' ('+str(self.preContrast[i])+')'
+                    self.postLabel[i] = self.postImage[i]+' ('+str(self.postContrast[i])+')'
                 
         self.engaged = np.array([np.sum(self.hit[self.changeTrials][(self.changeTimes[self.changeTrials]>t-60) & (self.changeTimes[self.changeTrials]<t+60)]) > 1 for t in self.changeTimes])
             
         self.labels = sorted(list(set(self.preLabel+self.postLabel))[1:])
         self.trialCount = np.zeros((len(self.labels),)*2)
-        self.respCount = self.trialCount.copy()
+        self.trialCountEngaged = self.trialCount.copy()
+        self.respCountEngaged = self.trialCount.copy()
         self.imageChange = self.trialCount.astype(bool)
         for i,postLbl in enumerate(self.labels):
             for j,preLbl in enumerate(self.labels):
                 img = [lbl[:lbl.find(' (')] for lbl in (preLbl,postLbl)]
                 if img[0] != img[1]:
                     self.imageChange[i,j] = True
-                for pre,post,h,fa,eng in zip(self.preLabel,self.postLabel,self.hit,self.falseAlarm,self.engaged):
-                    if pre==preLbl and post==postLbl and eng:
+                for pre,post,h,fa,ar,eng in zip(self.preLabel,self.postLabel,self.hit,self.falseAlarm,self.autoReward,self.engaged):
+                    if pre==preLbl and post==postLbl:
                         self.trialCount[i,j] += 1
-                        self.respCount[i,j] += h or fa
-        self.respRate = self.respCount/self.trialCount
+                        if not ar and eng:
+                            self.trialCountEngaged[i,j] += 1
+                            self.respCountEngaged[i,j] += h or fa
+        self.respRateEngaged = self.respCountEngaged/self.trialCountEngaged
     
     def plotSummary(self):
         for d,lbl in zip((self.trialCount,self.respRate),('Trials','Response Rate')):
@@ -151,7 +155,7 @@ if len(behavFiles)>0:
         
 
 #
-trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','respCount','imageChange')]
+trialCountAll,trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','trialCountEngaged','respCountEngaged','imageChange')]
 respRate = respCount/trialCount
 
 labels = [obj.labels for obj in exps]
@@ -159,7 +163,7 @@ labels = [obj.labels for obj in exps]
 index = []
 for lbls in labels:
     index.append([])
-    index[-1].append(lbls.index('im115_r (0.6)'))
+    index[-1].append(lbls.index('im115_r (0.7)'))
     index[-1].append(lbls.index('im115_r (1.0)'))
     index[-1].append(lbls.index('im047_r (1.0)'))
     index[-1] += [i for i in range(4) if i not in index[-1]]
@@ -175,6 +179,34 @@ changeImgRespRate = r.sum(axis=2)/c.sum(axis=2)
 imgs = np.unique(exps[0].preImage)[1:]
 contrast = exps[0].preContrast
 contrast = np.unique(contrast[~np.isnan(contrast)])
+
+
+rr = []
+for r,ind in zip(respRate,index):
+    r = r[ind,:]
+    r = r[:,ind]
+    rr.append(r)
+r = np.nanmean(rr,axis=0)
+lbls = np.array(labels[0])[index[0]]
+lbls[-1] = 'novel (1.0)'
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1)
+im = ax.imshow(r,clim=[0,1],cmap='magma')
+for i in range(len(lbls)):
+    for j in range(len(lbls)):
+        ax.text(j,i,str(round(r[i,j],2)),color='w',ha='center',va='center')
+ax.set_xticks(np.arange(len(lbls)))
+ax.set_xticklabels(lbls,rotation=90)
+ax.set_xlabel('Pre Image (contrast)')
+ax.set_xlim([-0.5,len(lbls)-0.5])
+ax.set_yticks(np.arange(len(lbls)))
+ax.set_yticklabels(lbls)
+ax.set_ylabel('Change Image (contrast)')
+ax.set_ylim([len(lbls)-0.5,-0.5])
+ax.set_title('Response Rate')
+cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
+plt.tight_layout()
+
 
 for r,c,lbls,ind in zip(respCount,trialCount,labels,index):
     r = r[ind,:]
@@ -199,34 +231,29 @@ for r,c,lbls,ind in zip(respCount,trialCount,labels,index):
     ax.set_title('Response Rate')
     cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
     plt.tight_layout()
-
-
-r = np.nanmean(respRate,axis=0)
-r = r[ind,:]
-r = r[:,ind]
-lbls = np.array(labels[0])[ind]
-lbls[-1] = 'novel (1.0)'
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1)
-im = ax.imshow(r,clim=[0,1],cmap='magma')
-for i in range(len(lbls)):
-    for j in range(len(lbls)):
-        ax.text(j,i,str(round(r[i,j],2)),color='w',ha='center',va='center')
-ax.set_xticks(np.arange(len(lbls)))
-ax.set_xticklabels(lbls,rotation=90)
-ax.set_xlabel('Pre Image (contrast)')
-ax.set_xlim([-0.5,len(lbls)-0.5])
-ax.set_yticks(np.arange(len(lbls)))
-ax.set_yticklabels(lbls)
-ax.set_ylabel('Change Image (contrast)')
-ax.set_ylim([len(lbls)-0.5,-0.5])
-ax.set_title('Response Rate')
-cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
-plt.tight_layout()
-
-
-
-
+    
+    
+for c,lbls,ind in zip(trialCountAll,labels,index):
+    c = c[ind,:]
+    c = c[:,ind]
+    lbls = np.array(lbls)[ind]
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    im = ax.imshow(c,cmap='magma')
+    for i in range(len(lbls)):
+        for j in range(len(lbls)):
+            ax.text(j,i,str(int(c[i,j])),color='w',ha='center',va='center')
+    ax.set_xticks(np.arange(len(lbls)))
+    ax.set_xticklabels(lbls,rotation=90)
+    ax.set_xlabel('Pre Image (contrast)')
+    ax.set_xlim([-0.5,len(lbls)-0.5])
+    ax.set_yticks(np.arange(len(lbls)))
+    ax.set_yticklabels(lbls)
+    ax.set_ylabel('Change Image (contrast)')
+    ax.set_ylim([len(lbls)-0.5,-0.5])
+    ax.set_title('Response Rate')
+    cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
+    plt.tight_layout()
 
 
 
