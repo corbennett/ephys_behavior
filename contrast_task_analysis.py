@@ -99,8 +99,7 @@ class DocData():
             
         self.labels = sorted(list(set(self.preLabel+self.postLabel))[1:])
         self.trialCount = np.zeros((len(self.labels),)*2)
-        self.trialCountEngaged = self.trialCount.copy()
-        self.respCountEngaged = self.trialCount.copy()
+        self.respCount = self.trialCount.copy()
         self.imageChange = self.trialCount.astype(bool)
         for i,postLbl in enumerate(self.labels):
             for j,preLbl in enumerate(self.labels):
@@ -108,12 +107,10 @@ class DocData():
                 if img[0] != img[1]:
                     self.imageChange[i,j] = True
                 for pre,post,h,fa,ar,eng in zip(self.preLabel,self.postLabel,self.hit,self.falseAlarm,self.autoReward,self.engaged):
-                    if pre==preLbl and post==postLbl:
+                    if pre==preLbl and post==postLbl and not ar:
                         self.trialCount[i,j] += 1
-                        if not ar and eng:
-                            self.trialCountEngaged[i,j] += 1
-                            self.respCountEngaged[i,j] += h or fa
-        self.respRateEngaged = self.respCountEngaged/self.trialCountEngaged
+                        self.respCount[i,j] += h or fa
+        self.respRate = self.respCount/self.trialCount
     
     def plotSummary(self):
         for d,lbl in zip((self.trialCount,self.respRate),('Trials','Response Rate')):
@@ -155,7 +152,7 @@ if len(behavFiles)>0:
         
 
 #
-trialCountAll,trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','trialCountEngaged','respCountEngaged','imageChange')]
+trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','respCount','imageChange')]
 respRate = respCount/trialCount
 
 labels = [obj.labels for obj in exps]
@@ -232,11 +229,6 @@ for r,c,lbls,ind in zip(respCount,trialCount,labels,index):
     cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
     plt.tight_layout()
     
-    
-for c,lbls,ind in zip(trialCountAll,labels,index):
-    c = c[ind,:]
-    c = c[:,ind]
-    lbls = np.array(lbls)[ind]
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
     im = ax.imshow(c,cmap='magma')
@@ -251,7 +243,7 @@ for c,lbls,ind in zip(trialCountAll,labels,index):
     ax.set_yticklabels(lbls)
     ax.set_ylabel('Change Image (contrast)')
     ax.set_ylim([len(lbls)-0.5,-0.5])
-    ax.set_title('Response Rate')
+    ax.set_title('Trial Count')
     cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
     plt.tight_layout()
 
