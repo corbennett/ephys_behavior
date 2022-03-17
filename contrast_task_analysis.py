@@ -44,6 +44,7 @@ class DocData():
         self.changeFrames = np.full(nTrials,np.nan)
         self.changeTrials = np.zeros(nTrials,dtype=bool)
         self.catchTrials = np.zeros(nTrials,dtype=bool)
+        self.warmupTrials = np.zeros(nTrials,dtype=bool)
         self.rewardTimes = np.full(nTrials,np.nan)
         self.autoReward = np.zeros(nTrials,dtype=bool)
         self.hit = np.zeros(nTrials,dtype=bool)
@@ -79,6 +80,8 @@ class DocData():
                     self.falseAlarm[i] = True
                 elif event=='rejection':
                     self.correctReject[i] = True
+            if 'warmup' in trial['trial_params']:
+                self.warmupTrials[i] = trial['trial_params']['warmup']
             if len(trial['rewards']) > 0:
                 self.rewardTimes[i] = trial['rewards'][0][1]
                 self.autoReward[i] = trial['trial_params']['auto_reward']
@@ -99,18 +102,21 @@ class DocData():
             
         self.labels = sorted(list(set(self.preLabel+self.postLabel))[1:])
         self.trialCount = np.zeros((len(self.labels),)*2)
-        self.respCount = self.trialCount.copy()
+        self.trialCountEngaged = self.trialCount.copy()
+        self.respCountEngaged = self.trialCount.copy()
         self.imageChange = self.trialCount.astype(bool)
         for i,postLbl in enumerate(self.labels):
             for j,preLbl in enumerate(self.labels):
                 img = [lbl[:lbl.find(' (')] for lbl in (preLbl,postLbl)]
                 if img[0] != img[1]:
                     self.imageChange[i,j] = True
-                for pre,post,h,fa,ar,eng in zip(self.preLabel,self.postLabel,self.hit,self.falseAlarm,self.autoReward,self.engaged):
-                    if pre==preLbl and post==postLbl and not ar:
+                for pre,post,h,fa,wu,ar,eng in zip(self.preLabel,self.postLabel,self.hit,self.falseAlarm,self.warmupTrials,self.autoReward,self.engaged):
+                    if pre==preLbl and post==postLbl and not wu:
                         self.trialCount[i,j] += 1
-                        self.respCount[i,j] += h or fa
-        self.respRate = self.respCount/self.trialCount
+                        if not ar and eng:
+                            self.trialCountEngaged[i,j] += 1
+                            self.respCountEngaged[i,j] += h or fa
+        self.respRate = self.respCountEngaged/self.trialCountEngaged
     
     def plotSummary(self):
         for d,lbl in zip((self.trialCount,self.respRate),('Trials','Response Rate')):
@@ -131,7 +137,8 @@ class DocData():
             ax.set_ylim([len(self.labels)-0.5,-0.5])
             ax.set_title(lbl+' (x = no image identity change)')
             cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
-            plt.tight_layout()  
+            plt.tight_layout()
+# end DocData
 
 
 # get data
@@ -152,7 +159,7 @@ if len(behavFiles)>0:
         
 
 #
-trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','respCount','imageChange')]
+trialCountAll,trialCount,respCount,imageChange = [np.array([getattr(obj,attr) for obj in exps]) for attr in ('trialCount','trialCountEngaged','respCountEngaged','imageChange')]
 respRate = respCount/trialCount
 
 labels = [obj.labels for obj in exps]
@@ -228,13 +235,17 @@ for r,c,lbls,ind in zip(respCount,trialCount,labels,index):
     ax.set_title('Response Rate')
     cb = plt.colorbar(im,ax=ax,fraction=0.02,pad=0.15)
     plt.tight_layout()
-    
+
+
+for c,lbls,ind in zip(trialCountAll,labels,index):
+    c = c[ind,:]
+    c = c[:,ind]    
     fig = plt.figure()
     ax = fig.add_subplot(1,1,1)
-    im = ax.imshow(c,cmap='magma')
+    im = ax.imshow(c,cmap='gray')
     for i in range(len(lbls)):
         for j in range(len(lbls)):
-            ax.text(j,i,str(int(c[i,j])),color='w',ha='center',va='center')
+            ax.text(j,i,str(int(c[i,j])),color='r',ha='center',va='center')
     ax.set_xticks(np.arange(len(lbls)))
     ax.set_xticklabels(lbls,rotation=90)
     ax.set_xlabel('Pre Image (contrast)')
