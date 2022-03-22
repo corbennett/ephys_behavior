@@ -634,7 +634,7 @@ def plotLFPNoise(obj,agarChRange=None,timeRange=[0,10]):
         ax.set_ylabel('Noise')
         
         
-def lickTriggeredLFP(obj, agarChRange=None, timeRange=[0,2000], windowBefore=0.5, windowAfter=0.5, min_inter_lick_time = 0.5): 
+def lickTriggeredLFP(obj, agarChRange=None, timeRange=[0,600], windowBefore=0.5, windowAfter=0.5, min_inter_lick_time = 0.5): 
     first_lick_times = obj.lickTimes[np.insert(np.diff(obj.lickTimes)>=min_inter_lick_time, 0, True)]
     first_lick_times = first_lick_times[(first_lick_times>=timeRange[0])&(first_lick_times<=timeRange[1])]
     
@@ -642,35 +642,52 @@ def lickTriggeredLFP(obj, agarChRange=None, timeRange=[0,2000], windowBefore=0.5
     for pid in obj.probes_to_analyze:
         t = obj.lfp[pid]['time']
         d = obj.lfp[pid]['data']
-        
-        last_lick_ind = np.where(t<=first_lick_times[-1])[0][-1]
-        d = d[:last_lick_ind]
-        
         probeSampleRate = 1./np.median(np.diff(t))
         samplesBefore = int(round(windowBefore * probeSampleRate))
         samplesAfter = int(round(windowAfter * probeSampleRate))
+        
+        last_lick_ind = np.where(t<=first_lick_times[-1])[0][-1]
+        d = d[:last_lick_ind+samplesAfter]
+        
+
         if agarChRange is not None:
             agar = np.median(d[:,agarChRange[0]:agarChRange[1]],axis=1)
             d = d-agar[:,None]
         
-        lickTriggeredAv = np.full([first_lick_times.size, samplesBefore+samplesAfter, d.shape[1]])
+        lickTriggeredAv = np.full([first_lick_times.size, samplesBefore+samplesAfter, d.shape[1]], np.nan)
         for il, l in enumerate(first_lick_times):
-            lfp_lick_ind = np.where(t<=l)[0][-1]
-            lta = d[lfp_lick_ind-samplesBefore:lfp_lick_ind+samplesAfter]
-            lickTriggeredAv[il, :, :] = lta
+            if l > t[0]:
+                lfp_lick_ind = np.where(t<=l)[0][-1]
+                lta = d[lfp_lick_ind-samplesBefore:lfp_lick_ind+samplesAfter]
+                lickTriggeredAv[il, :, :] = lta
             
         
         
         
+        m = np.nanmean(lickTriggeredAv, axis=0)
+        fig, ax = plt.subplots(2,1)
+        fig.suptitle('Probe ' + pid)
+        ax[0].imshow(m.T, aspect='auto')
+        ax[0].axvline(samplesBefore, c='k')
+        ax[0].set_xlim([0, m.shape[0]])
+        ax[0].set_ylabel('channel')
         
         
+        lickTriggeredRunning = []
+        rsamplesBefore = int(round(windowBefore * 60))
+        rsamplesAfter = int(round(windowAfter*60))
+        for il, l in enumerate(first_lick_times):
+            if l > runTime[0]:
+                run_lick_ind = np.where(runTime<=l)[0][-1]
+                lta = running[run_lick_ind-rsamplesBefore: run_lick_ind+rsamplesAfter]
+                lickTriggeredRunning.append(lta)
+                
+        r = np.mean(lickTriggeredRunning, axis=0)
         
-        
-        
-        
-        
-        
-        
+        ax[1].plot(r, 'k')
+        ax[1].axvline(rsamplesBefore, c='k')
+        ax[1].set_xlim([0, r.shape[0]])
+        ax[1].set_ylabel('run speed')
         
         
         
