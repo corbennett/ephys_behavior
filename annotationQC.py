@@ -20,7 +20,7 @@ annotationInfo = pd.read_excel(r'C:\Users\svc_ccg\Desktop\VBN_annotation.xlsx')
 
 annotationPath = r'\\allen\programs\braintv\workgroups\neuralcoding\corbettb\VBN_production'
 
-for d in (r'\\allen\programs\mindscope\workgroups\np-behavior\processed_ALL\524760',):#annotationInfo['OPT directory']:
+for d in annotationInfo['OPT directory']:
     pdf = PdfPages(os.path.join(d,'annotation_qc_plots.pdf'))
     visModFiles = glob.glob(os.path.join(d,'channel_visual_modulation*.npy'))
     for f in visModFiles:
