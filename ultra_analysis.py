@@ -6,11 +6,13 @@ Created on Sat Sep 12 15:52:39 2020
 """
 
 import os
+import re
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.rcParams['pdf.fonttype']=42
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+matplotlib.rcParams['pdf.fonttype'] = 42
 import fileIO
 from sync import sync
 import ecephys
@@ -64,6 +66,10 @@ probeLabel = 'C'
 
 probeDataDir = fileIO.getDir('select probe data directory')
 
+expLabel = re.search('[0-9]{6}_[0-9]{8}',probeDataDir)
+if expLabel is not None:
+    expLabel = expLabel.group()
+
 
 pxiDict = {'A': 'slot2-probe1',
            'B': 'slot2-probe2',
@@ -116,39 +122,38 @@ for ch,d in enumerate(rawData[:,:300000]):
     i = ch//probeCols
     probeMean[i,j] = d.mean()
     probeStd[i,j] = d.std()
-    if j==7:
+    j += 1
+    if j==probeCols:
         j = 0
-    else:
-        j += 1
 
-fig = plt.figure(figsize=(3,10))
+fig = plt.figure(figsize=(2,10))
 ax = fig.add_subplot(2,1,1)
-im = ax.imshow(probeMean,cmap='gray')
+im = ax.imshow(probeMean,cmap='gray',origin='lower')
 cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
 ax.set_title('raw mean')
 ax = fig.add_subplot(2,1,2)
-im = ax.imshow(probeStd,cmap='gray')
+im = ax.imshow(probeStd,cmap='gray',origin='lower')
 cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
 ax.set_title('raw std')
 plt.tight_layout()
 
 
-fig = plt.figure(figsize=(10,10))
-channelsToPlot = [219,220]
-samplesToPlot = slice(12000,22000)
-ymin = rawData[channelsToPlot,samplesToPlot].min()
-ymax = rawData[channelsToPlot,samplesToPlot].max()
-for i,ch in enumerate(channelsToPlot):
-    ax = fig.add_subplot(len(channelsToPlot),1,i+1)
-    ax.plot(rawData[ch,samplesToPlot],'k')
-    for side in ('right','top'):
-        ax.spines[side].set_visible(False)
-    ax.set_ylim([ymin,ymax])
-    ax.set_ylabel('uV')
-    if i==len(channelsToPlot)-1:
-        ax.set_xlabel('Sample')
-    ax.set_title('ch '+str(ch))
-plt.tight_layout()
+#fig = plt.figure(figsize=(10,10))
+#channelsToPlot = [219,220]
+#samplesToPlot = slice(12000,22000)
+#ymin = rawData[channelsToPlot,samplesToPlot].min()
+#ymax = rawData[channelsToPlot,samplesToPlot].max()
+#for i,ch in enumerate(channelsToPlot):
+#    ax = fig.add_subplot(len(channelsToPlot),1,i+1)
+#    ax.plot(rawData[ch,samplesToPlot],'k')
+#    for side in ('right','top'):
+#        ax.spines[side].set_visible(False)
+#    ax.set_ylim([ymin,ymax])
+#    ax.set_ylabel('uV')
+#    if i==len(channelsToPlot)-1:
+#        ax.set_xlabel('Sample')
+#    ax.set_title('ch '+str(ch))
+#plt.tight_layout()
 
 
 
@@ -213,7 +218,7 @@ for u in unitIDs:
         unitData[u]['peakToTrough'] = np.nan
     else:
         peakInd = np.argmin(peakTemplate)
-        unitData[u]['peakToTrough'] = np.argmax(peakTemplate[peakInd:])/(probeSampleRate/1000)
+        unitData[u]['peakToTrough'] = np.argmax(peakTemplate[peakInd:])/probeSampleRate[0]*1000
     
     #check if this unit is noise
     tempNorm = peakTemplate/np.max(np.absolute(peakTemplate))
@@ -224,6 +229,31 @@ for u in unitIDs:
 goodUnits = np.array([u for u in unitData if unitData[u]['label']=='good' and unitData[u]['spikeRate']>0.1])
 goodUnits = goodUnits[np.argsort([unitData[u]['peakChan'] for u in goodUnits])]
 
+
+# get mean waveforms
+preSamples = 25
+postSamples = 55
+n = 1000
+for u in goodUnits:
+    w = np.zeros((nChannels,preSamples+postSamples))
+    uind = np.where(kilosortData['spike_clusters']==u)[0]
+    spikes = kilosortData['spike_times'][uind].flatten()
+    for s in np.random.choice(spikes,n):
+        w += rawData[:,int(s-preSamples):int(s+postSamples)]
+    w /= n
+    unitData[u]['waveform'] = w
+    
+    
+# optotagging data
+optoPklFile = fileIO.getFile()
+optoPklData = pd.read_pickle(optoPklFile)
+
+optoSampleRate = 5000
+
+optoOnTimes,optoOffTimes = get_sync_line_data(syncDataset,'opto_stim')
+
+optoConditions = np.unique(optoPklData['opto_conditions'])
+optoLevels = np.unique(optoPklData['opto_levels'])
 
 
 # plot templates
@@ -249,41 +279,33 @@ for u in goodUnits:
     plt.tight_layout()
 
 
-for u in [16]:#goodUnits:
+# plot template amplitude
+for u in goodUnits:
     templateAmp = np.zeros((probeRows,probeCols))
     for ind,ch in enumerate(unitData[u]['template']):
         chX,chY = kilosortData['channel_positions'][ind]
-        i = probeRows-1-np.where(probeY==chY)[0][0]
+        i = np.where(probeY==chY)[0][0]
         j = np.where(probeX==chX)[0][0]
         templateAmp[i,j] = ch.min()
         
-    fig = plt.figure(figsize=(6,8))
+    fig = plt.figure(figsize=(3,8))
     ax = fig.add_subplot(1,1,1)
-    im = ax.imshow(templateAmp,cmap='gray')
+    im = ax.imshow(templateAmp,cmap='gray',origin='lower')
     cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title('template amplitude')
+    ax.set_title(expLabel+', Unit '+str(u)+'\n'+'template amplitude')
     plt.tight_layout()
-    
+ 
 
-
-# optotagging 
-optoPklFile = fileIO.getFile()
-optoPklData = pd.read_pickle(optoPklFile)
-
-optoSampleRate = 5000
-
-optoOnTimes,optoOffTimes = get_sync_line_data(syncDataset,'opto_stim')
-
-optoConditions = np.unique(optoPklData['opto_conditions'])
-optoLevels = np.unique(optoPklData['opto_levels'])
+# plot opto response
 cmap = np.ones((len(optoLevels),3))
 cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
 preTime = 0.5
 windowDur = 2
-for u in [16]:#goodUnits:
+for u in goodUnits:
     fig = plt.figure(figsize=(8,8))
+    fig.text(0.5,0.99,expLabel+', Probe '+probeLabel+', Unit '+str(u),ha='center',va='top')
     gs = matplotlib.gridspec.GridSpec(2,len(optoConditions))
     for j,condition in enumerate(optoConditions):
         ax = fig.add_subplot(gs[0,j])
@@ -293,6 +315,9 @@ for u in [16]:#goodUnits:
         wf[preSamples:preSamples+waveform.size] = waveform
         t = np.arange(0,windowDur,1/optoSampleRate)-preTime
         ax.plot(t,wf,'k')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
         ax.set_xlim([-preTime,windowDur-preTime])
         ax.set_ylabel('Stimulus level (normalized)')
         
@@ -307,8 +332,102 @@ for u in [16]:#goodUnits:
         ax.set_xlim([-preTime,windowDur-preTime])
         ax.set_xlabel('Time from opto onset (s)')
         ax.set_ylabel('Spikes/s')
-        ax.legend()     
+        ax.legend()
     plt.tight_layout()
 
 
 
+# summary pdf
+pdf = PdfPages(os.path.join(os.path.dirname(probeDataDir),expLabel+'_probe'+probeLabel+'_summary.pdf'))
+
+for u in goodUnits:
+    fig = plt.figure(figsize=(10,8))
+    gs = matplotlib.gridspec.GridSpec(3,4)
+    fig.text(0.75,0.99,expLabel+', Probe '+probeLabel+', Unit '+str(u),ha='center',va='top',fontsize=10)
+    
+    ax = fig.add_subplot(gs[0,2])
+    w = unitData[u]['waveform']
+    peakCh = np.unravel_index(np.argmin(w),w.shape)[0]
+    t = (np.arange(w.shape[1])-w.shape[1]//2)/probeSampleRate*1000
+    ax.plot(t,w[peakCh],'k')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlabel('Time (ms)')
+    
+    ax = fig.add_subplot(gs[0,3])
+    ax.imshow(unitData[u]['waveform'],cmap='gray',origin='lower')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    cb.ax.tick_params(labelsize=8)
+    ax.set_xticks([0,30,60])
+    ax.set_xticklabels([0,1,2])
+    ax.set_xlabel('Time (ms)')
+    ax.set_ylabel('Channel')
+    
+    templateAmp = np.zeros((probeRows,probeCols))
+    for ind,template in enumerate(unitData[u]['template']):
+        chX,chY = kilosortData['channel_positions'][ind]
+        i = np.where(probeY==chY)[0][0]
+        j = np.where(probeX==chX)[0][0]
+        templateAmp[i,j] = template.min()
+    ax = fig.add_subplot(gs[0:3,0])
+    im = ax.imshow(templateAmp,cmap='gray',origin='lower')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title('template amplitude',fontsize=10)
+    
+    amp = np.zeros((probeRows,probeCols))
+    j = 0
+    for ch,w in enumerate(unitData[u]['waveform']):
+        i = ch//probeCols
+        amp[i,j] = min(0,w.min())
+        j += 1
+        if j==probeCols:
+            j = 0
+    ax = fig.add_subplot(gs[0:3,1])
+    im = ax.imshow(amp,cmap='gray',origin='lower')
+    cb = plt.colorbar(im,ax=ax,fraction=0.05,pad=0.04,shrink=0.5)
+    cb.ax.tick_params(labelsize=8)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title('waveform amplitude',fontsize=10)
+    
+    cmap = np.ones((len(optoLevels),3))
+    cmap[:,:2] = np.arange(0,1.01-1/len(optoLevels),1/len(optoLevels))[::-1,None]
+    preTime = 0.5
+    windowDur = 2
+    for j,condition in enumerate(optoConditions):
+        ax = fig.add_subplot(gs[1,j+2])
+        waveform = optoPklData['opto_waveforms'][condition]
+        wf = np.zeros(int(windowDur*optoSampleRate))
+        preSamples = int(preTime*optoSampleRate)
+        wf[preSamples:preSamples+waveform.size] = waveform
+        t = np.arange(0,windowDur,1/optoSampleRate)-preTime
+        ax.plot(t,wf,'k')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim([-preTime,windowDur-preTime])
+        if j==0:
+            ax.set_ylabel('Stimulus level (normalized)')
+        
+        ax = fig.add_subplot(gs[2,j+2])
+        for level,clr in zip(optoLevels,cmap):
+            optoTrials = (optoPklData['opto_conditions']==condition) & (optoPklData['opto_levels']==level)
+            psth,t = getPSTH(unitData[u]['spikeTimes'],optoOnTimes[optoTrials]-preTime,windowDur,binSize=0.01)
+            ax.plot(t-preTime,psth,color=clr,label=str(level)+' V')
+        for side in ('right','top'):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(direction='out',top=False,right=False)
+        ax.set_xlim([-preTime,windowDur-preTime])
+        ax.set_xlabel('Time from opto onset (s)')
+        if j==0:
+            ax.set_ylabel('Spikes/s')
+            ax.legend(loc='upper right',fontsize=8)
+    
+    plt.tight_layout()
+    fig.savefig(pdf,format='pdf')
+    plt.close(fig)
+    
+pdf.close()

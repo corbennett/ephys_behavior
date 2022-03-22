@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.rcParams['pdf.fonttype'] = 42
 import fileIO
-import visual_behavior
+import visual_behavior.analyze
 
 
 
@@ -54,12 +54,12 @@ pkl = pd.read_pickle(f)
 
 params = pkl['items']['behavior']['params']
 if params['periodic_flash'] is not None:
-    flashDur,grayDur = params['periodic_flash']
-    flashInterval = flashDur + grayDur
+    flashDur = params['periodic_flash'][0]
     
 trialLog = np.array(pkl['items']['behavior']['trial_log'][:-1])
 changeLog = pkl['items']['behavior']['stimuli']['grating']['change_log']
 
+grayDur = np.full(len(trialLog),np.nan)
 trialStartTimes = np.full(len(trialLog),np.nan)
 trialStartFrames = np.full(len(trialLog),np.nan)
 trialEndTimes = np.full(len(trialLog),np.nan)
@@ -79,6 +79,8 @@ miss = np.zeros(len(trialLog),dtype=bool)
 falseAlarm = np.zeros(len(trialLog),dtype=bool)
 correctReject = np.zeros(len(trialLog),dtype=bool)
 for i,trial in enumerate(trialLog):
+    if params['periodic_flash'] is not None:
+        grayDur[i] = trial['flash_gray_dur'] if 'flash_gray_dur' in trial else params['periodic_flash'][1]
     events = [event[0] for event in trial['events']]
     for event,epoch,t,frame in trial['events']:
         if event=='trial_start':
@@ -89,8 +91,8 @@ for i,trial in enumerate(trialLog):
         elif event=='stimulus_window' and epoch=='enter':
             ct = trial['trial_params']['change_time']
             if params['periodic_flash'] is not None:
-                ct *= flashInterval
-                ct -= params['pre_change_time']-flashInterval
+                ct *= flashDur+grayDur[i]
+                ct -= params['pre_change_time']-(flashDur+grayDur[i])
             scheduledChangeTimes[i] = t + ct
         elif 'abort' in events:
             if event=='abort':
@@ -150,6 +152,8 @@ trialColors = {
                'correct reject': (1,1,0)
               }
 
+grayDurs = np.array([np.nan]) if all(np.isnan(grayDur)) else np.unique(grayDur[~np.isnan(grayDur)])
+
 
 # task parameters
 def printParam(ax,x,y,key,val):
@@ -186,20 +190,23 @@ timeFromChangeToTrialEnd = trialEndTimes - changeTimes
 timeFromAbortToTrialEnd = trialEndTimes - abortTimes
 
 fig = plt.figure(figsize=(7,8))
-ax = fig.add_subplot(4,1,1)
-xlim = [0,round(np.nanmax(timeToChange[~abortedTrials]))+1]
-ax.hist(timeToChange[changeTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='g',label='change (n='+str(changeTrials.sum())+')')
-ax.hist(timeToChange[catchTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='r',label='catch (n='+str(catchTrials.sum())+')')
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim(xlim)
-ax.set_xlabel('Time to change/catch from trial start (s)')
-ax.set_ylabel('Trials')
-ax.set_title(params['stage'])
-ax.legend()
+for i,gray in enumerate(grayDurs):
+    ax = fig.add_subplot(grayDurs.size+3,1,i+1)
+    trials = np.ones(grayDur.size,dtype=bool) if np.isnan(gray) else grayDur==gray
+    xlim = [0,round(np.nanmax(timeToChange[trials & (~abortedTrials)]))+1]
+    ax.hist(timeToChange[trials & changeTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='g',label='change (n='+str(changeTrials[trials].sum())+')')
+    ax.hist(timeToChange[trials & catchTrials],bins=np.arange(xlim[0],xlim[1],0.17),color='r',label='catch (n='+str(catchTrials[trials].sum())+')')
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim(xlim)
+    ax.set_xlabel('Time to change/catch from trial start (s)')
+    ax.set_ylabel('Trials')
+    if not np.isnan(gray):
+        ax.set_title('inter-flash gray = '+str(gray)+' s')
+    ax.legend()
 
-ax = fig.add_subplot(4,1,2)
+ax = fig.add_subplot(grayDurs.size+3,1,grayDurs.size+1)
 xlim = [round(interTrialInterval.min())-1,round(interTrialInterval.max())+1]
 ax.hist(interTrialInterval,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
@@ -209,7 +216,7 @@ ax.set_xlim(xlim)
 ax.set_xlabel('Inter-trial interval (start to start) (s)')
 ax.set_ylabel('Trials')
 
-ax = fig.add_subplot(4,1,3)
+ax = fig.add_subplot(grayDurs.size+3,1,grayDurs.size+2)
 changeToEnd = timeFromChangeToTrialEnd[~abortedTrials]
 abortToEnd = timeFromAbortToTrialEnd[abortedTrials] if abortedTrials.sum()>0 else np.full(len(trialLog),np.nan)
 xlim = [round(min(np.nanmin(changeToEnd),np.nanmin(abortToEnd)))-1,round(max(np.nanmax(changeToEnd),np.nanmax(abortToEnd)))+1]
@@ -221,7 +228,7 @@ ax.set_xlim(xlim)
 ax.set_xlabel('Time from change/catch to trial end (includes response window + random gray) (s)')
 ax.set_ylabel('Trials')
 
-ax = fig.add_subplot(4,1,4)
+ax = fig.add_subplot(grayDurs.size+3,1,grayDurs.size+3)
 if not np.all(np.isnan(abortToEnd)):
     ax.hist(abortToEnd,bins=np.arange(xlim[0],xlim[1],0.17),color='k')
 for side in ('right','top'):
@@ -307,7 +314,7 @@ ax.legend()
 
 if params['periodic_flash'] is not None:
     ax = fig.add_subplot(2,1,2)
-    bins = np.arange(flashInterval/2,np.nanmax(timeToChange)+flashInterval/2,flashInterval)
+    bins = np.arange(0.125,np.nanmax(timeToChange)+0.125,0.25)
     ctBinInd = np.digitize(timeToChange,bins)
     for i in np.unique(ctBinInd[hit]):
         ind = hit & (ctBinInd==i)
@@ -332,7 +339,7 @@ if makeSummaryPDF:
 
 # running
 fig = plt.figure(figsize=(6,8))
-ax = fig.add_subplot(2,1,1)
+ax = fig.add_subplot(grayDurs.size+1,1,1)
 ax.plot(frameTimes/60,runSpeed,'k')
 for side in ('right','top'):
     ax.spines[side].set_visible(False)
@@ -340,35 +347,38 @@ ax.tick_params(direction='out',top=False,right=False)
 ax.set_xlabel('Time in session (min)')
 ax.set_ylabel('Running speed (cm/s)')
 
-ax = fig.add_subplot(2,1,2)
-if params['periodic_flash'] is not None:
-    preTime = 2*flashInterval + grayDur
-else:
-    preTime = 2
-postTime = params['response_window'][1] + params['no_stim_no_lick_randrange'][0]
-runPlotTime = np.arange(-preTime,postTime+0.01,0.01)
-trialSpeed = np.full((len(trialLog),len(runPlotTime)),np.nan)
-for i,ct in enumerate(changeTimes):
-    if not np.isnan(ct):
-        ind = (frameTimes>=ct-preTime) & (frameTimes<=ct+postTime)
-        trialSpeed[i] = np.interp(runPlotTime,frameTimes[ind]-ct,runSpeed[ind])
-for trials,lbl in zip((hit,miss,falseAlarm,correctReject),('hit','miss','false alarm','correct reject')):
-    m = trialSpeed[trials].mean(axis=0)
-    n = trials.sum()
-    s = trialSpeed[trials].std(axis=0)/(n**0.5)
-    ax.plot(runPlotTime,m,color=trialColors[lbl],label=lbl+' (n='+str(n)+')')
-    ax.fill_between(runPlotTime,m+s,m-s,color=trialColors[lbl],alpha=0.25)
-if params['periodic_flash'] is not None:
-    ylim = plt.get(ax,'ylim')
-    for t in np.arange(-3*flashInterval,flashDur,flashInterval):
-        ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=flashDur,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
-for side in ('right','top'):
-    ax.spines[side].set_visible(False)
-ax.tick_params(direction='out',top=False,right=False)
-ax.set_xlim([-preTime,postTime])
-ax.set_xlabel('Time from change/catch (s)')
-ax.set_ylabel('Running speed (cm/s)')
-ax.legend()
+for ind,gray in enumerate(grayDurs):
+    ax = fig.add_subplot(grayDurs.size+1,1,ind+2)
+    if params['periodic_flash'] is not None:
+        preTime = 2*(flashDur+gray) + gray
+    else:
+        preTime = 2
+    postTime = params['response_window'][1] + params['no_stim_no_lick_randrange'][0]
+    runPlotTime = np.arange(-preTime,postTime+0.01,0.01)
+    trialSpeed = np.full((len(trialLog),len(runPlotTime)),np.nan)
+    for i,ct in enumerate(changeTimes):
+        if not np.isnan(ct):
+            ind = (frameTimes>=ct-preTime) & (frameTimes<=ct+postTime)
+            trialSpeed[i] = np.interp(runPlotTime,frameTimes[ind]-ct,runSpeed[ind])
+    for trials,lbl in zip((hit,miss,falseAlarm,correctReject),('hit','miss','false alarm','correct reject')):
+        if grayDurs.size>1:
+            trials = trials & (grayDur==gray)
+        m = trialSpeed[trials].mean(axis=0)
+        n = trials.sum()
+        s = trialSpeed[trials].std(axis=0)/(n**0.5)
+        ax.plot(runPlotTime,m,color=trialColors[lbl],label=lbl+' (n='+str(n)+')')
+        ax.fill_between(runPlotTime,m+s,m-s,color=trialColors[lbl],alpha=0.25)
+    if params['periodic_flash'] is not None:
+        ylim = plt.get(ax,'ylim')
+        for t in np.arange(-3*(flashDur+gray),flashDur,flashDur+gray):
+            ax.add_patch(matplotlib.patches.Rectangle([t,ylim[0]],width=flashDur,height=ylim[1]-ylim[0],color='0.9',alpha=0.5,zorder=0))
+    for side in ('right','top'):
+        ax.spines[side].set_visible(False)
+    ax.tick_params(direction='out',top=False,right=False)
+    ax.set_xlim([-preTime,postTime])
+    ax.set_xlabel('Time from change/catch (s)')
+    ax.set_ylabel('Running speed (cm/s)')
+    ax.legend()
 
 plt.tight_layout()
 if makeSummaryPDF:
@@ -454,58 +464,61 @@ if makeSummaryPDF:
 home = np.unique(homeOri[changeTrials])
 oris = np.unique(changeOri[changeTrials])
 if len(home)>1 or len(oris)>1:
-    for ho in home:
-        oriNtrials = []
-        oriDelta = []
-        oriFracCorr = []
-        oriReactionTime = []
-        for ori in oris:
-            oriInd = (homeOri==ho) & (changeOri==ori)
-            if any(oriInd):
-                oriNtrials.append(oriInd.sum())
-                oriDelta.append(ori-ho)
-                oriFracCorr.append(np.sum(hit & oriInd)/oriNtrials[-1])
-                oriReactionTime.append((rewardTimes-changeTimes)[hit & oriInd])
-        
-        falseAlarmRate = falseAlarm[homeOri==ho].sum()/catchTrials[homeOri==ho].sum()
-        falseAlarmReactionTime = getLickLatency(lickTimes,changeTimes[falseAlarm],params['response_window'][0])
+    for gray in grayDurs:
+        grayTrials = np.ones(grayDur.size,dtype=bool) if np.isnan(gray) else grayDur==gray
+        for ho in home:
+            trials = grayTrials & (homeOri==ho)
+            oriNtrials = []
+            oriDelta = []
+            oriFracCorr = []
+            oriReactionTime = []
+            for ori in oris:
+                oriTrials = trials & (changeOri==ori)
+                if any(trials):
+                    oriNtrials.append(oriTrials.sum())
+                    oriDelta.append(ori-ho)
+                    oriFracCorr.append(np.sum(oriTrials & hit)/oriNtrials[-1])
+                    oriReactionTime.append((rewardTimes-changeTimes)[oriTrials & hit])
             
-        fig = plt.figure(figsize=(6,8))
-        ax = fig.add_subplot(2,1,1)
-        ax.plot([0,0],[0,1.05],'--',color='0.5',alpha=0.5)
-        for ori,fracCorr,n in zip(oriDelta,oriFracCorr,oriNtrials):
-            ax.plot(ori,fracCorr,'ko')
-            ax.text(ori,fracCorr+0.05,str(n),ha='center')
-        ax.plot(0,falseAlarmRate,'ko')
-        ax.text(0,falseAlarmRate+0.05,str(catchTrials[homeOri==ho].sum()),ha='center')
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        xmax = 1.05*max(np.abs(oriDelta))
-        ax.set_xlim(-xmax,xmax)
-        ax.set_ylim([0,1.05])
-        ax.set_ylabel('Response probability',fontsize=12)
-        ax.set_title('home ori: '+str(ho)+' (n='+str(np.sum(homeOri[changeTrials | catchTrials]==ho))+' + '+str(np.sum(abortedTrials & (homeOri==ho)))+' aborted trials)'+'\n'+'number of trials above each point',fontsize=10)
-            
-        ax = fig.add_subplot(2,1,2)
-        for ori,rt in zip(np.concatenate((oriDelta,[0])),oriReactionTime+[falseAlarmReactionTime]):
-            ax.plot([ori]*rt.size,rt,'o',mec='0.5',mfc='none',alpha=0.5)
-            m = rt.mean()
-            s = rt.std()/(rt.size**0.5)
-            ax.plot(ori,m,'ko')
-            ax.plot([ori]*2,[m-s,m+s],'k')
-        for side in ('right','top'):
-            ax.spines[side].set_visible(False)
-        ax.tick_params(direction='out',top=False,right=False)
-        ax.set_xlim(-xmax,xmax)
-        ylim = [0,params['response_window'][1]]
-        ax.plot([0,0],ylim,'--',color='0.5',alpha=0.5,zorder=0)
-        ax.set_ylim(ylim)
-        ax.set_ylabel('Reaction time (s)',fontsize=12)
-        ax.set_xlabel('$\Delta$ Orientation (degrees)',fontsize=12)
-        plt.tight_layout()
-        if makeSummaryPDF:
-            fig.savefig(pdf,format='pdf')
+            falseAlarmRate = falseAlarm[trials].sum()/catchTrials[trials].sum()
+            falseAlarmReactionTime = getLickLatency(lickTimes,changeTimes[trials & falseAlarm],params['response_window'][0])
+                
+            fig = plt.figure(figsize=(6,8))
+            ax = fig.add_subplot(2,1,1)
+            ax.plot([0,0],[0,1.05],'--',color='0.5',alpha=0.5)
+            for ori,fracCorr,n in zip(oriDelta,oriFracCorr,oriNtrials):
+                ax.plot(ori,fracCorr,'ko')
+                ax.text(ori,fracCorr+0.05,str(n),ha='center')
+            ax.plot(0,falseAlarmRate,'ko')
+            ax.text(0,falseAlarmRate+0.05,str(catchTrials[trials].sum()),ha='center')
+            for side in ('right','top'):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,right=False)
+            xmax = 1.05*max(np.abs(oriDelta))
+            ax.set_xlim(-xmax,xmax)
+            ax.set_ylim([0,1.05])
+            ax.set_ylabel('Response probability',fontsize=12)
+            ax.set_title('inter-flash gray duration = '+str(gray)+' s'+'\n'+'home ori: '+str(ho)+' (n='+str(np.sum(trials & (changeTrials | catchTrials)))+' + '+str(np.sum(trials & abortedTrials))+' aborted trials)',fontsize=10)
+                
+            ax = fig.add_subplot(2,1,2)
+            for ori,rt in zip(np.concatenate((oriDelta,[0])),oriReactionTime+[falseAlarmReactionTime]):
+                ax.plot([ori]*rt.size,rt,'o',mec='0.5',mfc='none',alpha=0.5)
+                m = rt.mean()
+                s = rt.std()/(rt.size**0.5)
+                ax.plot(ori,m,'ko')
+                ax.plot([ori]*2,[m-s,m+s],'k')
+            for side in ('right','top'):
+                ax.spines[side].set_visible(False)
+            ax.tick_params(direction='out',top=False,right=False)
+            ax.set_xlim(-xmax,xmax)
+            ylim = [0,params['response_window'][1]]
+            ax.plot([0,0],ylim,'--',color='0.5',alpha=0.5,zorder=0)
+            ax.set_ylim(ylim)
+            ax.set_ylabel('Reaction time (s)',fontsize=12)
+            ax.set_xlabel('$\Delta$ Orientation (degrees)',fontsize=12)
+            plt.tight_layout()
+            if makeSummaryPDF:
+                fig.savefig(pdf,format='pdf')
 
 
 # finalize pdf
