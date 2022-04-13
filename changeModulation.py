@@ -25,15 +25,17 @@ for exp in experiments:
     h5FilePath = glob.glob(os.path.join(hdf5dir, exp+'*'))[0]
     b.loadFromHDF5(h5FilePath) 
     
+    frameAppearTimes = b.passiveFrameAppearTimes
+    
     selectedTrials = (b.hit | b.miss)&(~b.ignore)
-    changeTimes = b.frameAppearTimes[np.array(b.trials['change_frame'][selectedTrials]).astype(int)+1] #add one to correct for change frame indexing problem
-    image_flash_times = b.frameAppearTimes[np.array(b.core_data['visual_stimuli']['frame'])]
+    changeTimes = frameAppearTimes[np.array(b.trials['change_frame'][selectedTrials]).astype(int)+1] #add one to correct for change frame indexing problem
+    image_flash_times = frameAppearTimes[np.array(b.core_data['visual_stimuli']['frame'])]
     image_id = np.array(b.core_data['visual_stimuli']['image_name'])
     preChangeIndices = np.searchsorted(image_flash_times, changeTimes)-1
     preChangeTimes = image_flash_times[preChangeIndices]
 
     
-    regionsOfInterest = ['VISam', 'VISpm', 'VISp', 'VISl', 'VISal', 'VISrl']
+    regionsOfInterest = ['VISam', 'VISpm', 'VISp', 'VISl', 'VISal', 'VISrl', 'VISpor', 'VISli']
     
     preTime = 0.25
     postTime = 0.5
@@ -42,17 +44,18 @@ for exp in experiments:
     for region in regionsOfInterest:
         pids, us = b.getUnitsByArea(region)
         
-        for pid, u in zip(pids,us):
-            spikes = b.units[pid][u]['times']
-            
-            if np.sum(spikes<3600)<3600: #exclude cells that fire below 1Hz during task
-                continue
-
-            changesdf, time = getSDF(spikes, changeTimes-preTime, preTime+postTime, sigma=0.001)            
-            regionDict[region]['changePSTH'].append(changesdf)
-
-            prechangesdf, time = getSDF(spikes, preChangeTimes-preTime, preTime+postTime, sigma=0.001)            
-            regionDict[region]['preChangePSTH'].append(prechangesdf)
+        if len(pids)>0:
+            for pid, u in zip(pids,us):
+                spikes = b.units[pid][u]['times']
+                
+                if np.sum(spikes<3600)<3600: #exclude cells that fire below 1Hz during task
+                    continue
+    
+                changesdf, time = getSDF(spikes, changeTimes-preTime, preTime+postTime, sigma=0.001)            
+                regionDict[region]['changePSTH'].append(changesdf)
+    
+                prechangesdf, time = getSDF(spikes, preChangeTimes-preTime, preTime+postTime, sigma=0.001)            
+                regionDict[region]['preChangePSTH'].append(prechangesdf)
     
     rds.append(regionDict)
 

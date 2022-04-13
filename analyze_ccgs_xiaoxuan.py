@@ -9,16 +9,19 @@ import numpy as np
 from matplotlib import pyplot as plt
 from analysis_utils import formatFigure
 
-mouseIDs = ('408528', '421323', '423744', '423745', '423749', '429084', '408527')
-dataDir = r"\\allen\programs\braintv\workgroups\nc-ophys\corbettb\ccg tensors\processed_ccgs"
+#mouseIDs = ('408528', '421323', '423744', '423745', '423749', '429084', '408527')
+dataDir = r"\\allen\programs\braintv\workgroups\neuralcoding\corbettb\ccg tensors\processed_ccgs"
 
+mouse_dirs = [m for m in os.listdir(dataDir) if os.path.isdir(os.path.join(dataDir,m))]
 areas = ('VISp', 'VISam', 'VISpm', 'VISl', 'VISrl', 'VISal')
 states = ('active', 'passive')
 ccg_array = [[[[] for _ in areas] for _ in areas] for _ in states]
 
-for mouse in mouseIDs:
+#for mouse in mouseIDs:
+for mouse in mouse_dirs:
     print('computing ccgs for mouse: ' + mouse)
-    mouseDir = glob.glob(os.path.join(dataDir, '*'+str(mouse)))[0]
+    #mouseDir = glob.glob(os.path.join(dataDir, '*'+str(mouse)))[0]
+    mouseDir = os.path.join(dataDir, mouse)
     
     ccfs = np.load(os.path.join(mouseDir, 'ccf_cortex.npy'))
     fr_active = np.load(os.path.join(mouseDir, 'FR_active_cortex.npy'))
@@ -51,21 +54,27 @@ for mouse in mouseIDs:
                     
                     
 ### analyze ccg_array across experiments ###
-figSaveDir = r"\\allen\programs\braintv\workgroups\nc-ophys\corbettb\SfN2019\ccg_traces"
-preWin = slice(186, 199)
-postWin = slice(200, 213)
-peakWin = slice(186, 213)
-baseline = slice(86, 186)
+figSaveDir = r"\\allen\programs\braintv\workgroups\neuralcoding\corbettb\ccgs for paper"
+preWin = slice(189, 199)
+postWin = slice(200, 210)
+peakWin = slice(189, 210)
+lagWin = slice(179, 220)
+#baseline = slice(86, 186)
+baseline = [slice(99, 149), slice(249, 299)]
 all_ccgs = [[],[]]
 ccg_mean_array = [[[[] for _ in areas] for _ in areas] for _ in states]
+ccg_lag_median_array = [[[[] for _ in areas] for _ in areas] for _ in states]
+ccg_lag_array = [[[[] for _ in areas] for _ in areas] for _ in states]
 ccg_peak_array = [[[[] for _ in areas] for _ in areas] for _ in states]
 ccg_lag_array = [[[[] for _ in areas] for _ in areas] for _ in states]
+ccg_count_array = [[[[] for _ in areas] for _ in areas] for _ in states]
 plot=True
+std_thresh=5
 for isrc, s in enumerate(areas):
     for itgt, t in enumerate(areas):
         if plot:
             fig, ax = plt.subplots()
-            fig.suptitle(s + ' to ' + t)
+            fig.suptitle(t + ' to ' + s)
         
         #find bad cells to exclude for passive and active
         badInds = []
@@ -84,13 +93,15 @@ for isrc, s in enumerate(areas):
             ccg_mean = np.vstack([these_ccgs[i] for i in np.arange(len(these_ccgs))])                
             
             ccg_mean = ccg_mean[goodInds]
-            ccg_mean_conv = np.array([np.convolve(c, np.ones(5), 'same')/5 for c in ccg_mean])
+            #ccg_mean_conv = np.array([np.convolve(c, np.ones(5), 'same')/5 for c in ccg_mean])
+            ccg_mean_conv = np.array(ccg_mean)
             
             
             for c in ccg_mean_conv:
-                baselinemean = np.nanmean(c[baseline])
-                baselinestd = np.nanstd(c[baseline])
-                goodccgs[istate].append(np.nanmax(c[peakWin])>baselinemean+baselinestd*3)
+                cbaseline = np.concatenate([c[b] for b in baseline])
+                baselinemean = np.nanmean(cbaseline)
+                baselinestd = np.nanstd(cbaseline)
+                goodccgs[istate].append(np.nanmax(c[peakWin])>baselinemean+baselinestd*std_thresh)
         goodccgs=np.array(goodccgs)
         good = goodccgs[0] | goodccgs[1]
         
@@ -110,11 +121,22 @@ for isrc, s in enumerate(areas):
             
             ccg_mean_array[istate][isrc][itgt] = thismean_conv
             
-            lag = np.sum(thismean[186:199]) - np.sum(thismean[200:213])
+            lag = np.mean(thismean[postWin]) - np.mean(thismean[preWin])
+            lags = [np.sum(c[postWin]) - np.sum(c[preWin]) for c in ccg_mean]
+            
+            ccg_count_array[istate][isrc][itgt] = len(lags)
+            #ccg_lag_median_array[istate][isrc][itgt] = np.nanmedian(lags)
             ccg_lag_array[istate][isrc][itgt] = lag
             
+            zeroBin = int((lagWin.stop - lagWin.start)/2)
+            peak_pos = np.array([np.argmax(c[lagWin]) for c in ccg_mean]) - zeroBin
             
-            ccg_peak_array[istate][isrc][itgt] = np.max(thismean_conv[175:225])
+            np.save(os.path.join(figSaveDir, t + 'to' + s + '_' + state + '_lagdist.npy'), peak_pos)
+            #ccg_lag_array[istate][isrc][itgt] = peak_pos
+            ccg_lag_median_array[istate][isrc][itgt] = np.nanmedian(peak_pos)
+            #ax.hist(peak_pos-10, bins=21)
+            
+            #ccg_peak_array[istate][isrc][itgt] = np.max(thismean_conv[175:225])
             all_ccgs[istate].append(thismean_conv)
             if plot:
                 x = np.linspace(-200, 200, 401)
@@ -124,12 +146,14 @@ for isrc, s in enumerate(areas):
                 if istate==1:
                     ax.text(-10, ax.get_ylim()[1]*0.9, 'n = ' + str(ccg_mean_conv.shape[0]))
                     formatFigure(fig, ax, xLabel='Time (ms)', yLabel='Coincidence per spike')
-#                    fig.savefig(os.path.join(figSaveDir, s + ' to ' + t + '.pdf'))
+                    fig.savefig(os.path.join(figSaveDir, t + ' to ' + s + '.pdf'))
                 
                 
 ccg_peak_array = np.array(ccg_peak_array)               
 ccg_lag_array = np.array(ccg_lag_array)
-               
+ccg_lag_median_array = np.array(ccg_lag_median_array)
+ccg_count_array = np.array(ccg_count_array)
+
 plt.figure()
 plt.plot(np.mean(all_ccgs[0],axis=0), 'r')
 plt.plot(np.mean(all_ccgs[1],axis=0), 'b')
@@ -150,6 +174,8 @@ ax.set_xticks(np.arange(len(areas)))
 ax.set_xticklabels(areas_hier)
 ax.set_yticks(np.arange(len(areas)))
 ax.set_yticklabels(areas_hier)
+ax.set_xlim([0-0.5, len(areas)-0.5])
+ax.set_ylim([0-0.5, len(areas)-0.5])
 plt.colorbar(im)
 
 fig, ax = plt.subplots()
@@ -158,6 +184,8 @@ ax.set_xticks(np.arange(len(areas)))
 ax.set_xticklabels(areas_hier)
 ax.set_yticks(np.arange(len(areas)))
 ax.set_yticklabels(areas_hier)
+ax.set_xlim([0-0.5, len(areas)-0.5])
+ax.set_ylim([0-0.5, len(areas)-0.5])
 plt.colorbar(im)
 
 
@@ -168,6 +196,8 @@ ax.set_xticks(np.arange(len(areas)))
 ax.set_xticklabels(areas_hier)
 ax.set_yticks(np.arange(len(areas)))
 ax.set_yticklabels(areas_hier)
+ax.set_xlim([0-0.5, len(areas)-0.5])
+ax.set_ylim([0-0.5, len(areas)-0.5])
 
 fig, ax = plt.subplots()
 im = ax.imshow(ccg_lag_array[1][hier_order][:, hier_order], cmap='bwr', clim=[-np.max(np.abs(ccg_lag_array)), np.max(np.abs(ccg_lag_array))])
@@ -175,7 +205,22 @@ plt.colorbar(im)
 ax.set_xticks(np.arange(len(areas)))
 ax.set_xticklabels(areas_hier)
 ax.set_yticks(np.arange(len(areas)))
-ax.set_yticklabels(areas_hier)                
+ax.set_yticklabels(areas_hier) 
+ax.set_xlim([0-0.5, len(areas)-0.5])
+ax.set_ylim([0-0.5, len(areas)-0.5])             
+
+
+ccg_lag_median_array_ordered = [c[hier_order][:, hier_order] for c in ccg_lag_median_array]
+ccg_lag_median_array_ordered = np.array(ccg_lag_median_array_ordered)
+fig, ax = plt.subplots()
+im = ax.imshow(ccg_lag_median_array_ordered[0], cmap='bwr', clim=[-np.max(np.abs(ccg_lag_median_array)), np.max(np.abs(ccg_lag_median_array))])
+plt.colorbar(im)
+ax.set_xticks(np.arange(len(areas)))
+ax.set_xticklabels(areas_hier)
+ax.set_yticks(np.arange(len(areas)))
+ax.set_yticklabels(areas_hier) 
+ax.set_xlim([0-0.5, len(areas)-0.5])
+ax.set_ylim([0-0.5, len(areas)-0.5])
 
 
 fig, ax = plt.subplots()
@@ -183,8 +228,33 @@ ax.plot(ccg_lag_array[0], ccg_lag_array[1], 'ko')
 ax.set_aspect('equal')
 xlims = ax.get_xlim()
 ax.plot(xlims, xlims, 'k--')
-                
-                
+
+fig, ax = plt.subplots()
+ax.plot(ccg_lag_median_array[0], ccg_lag_array[1], 'ko')
+ax.set_aspect('equal')
+xlims = ax.get_xlim()
+ax.plot(xlims, xlims, 'k--')
+
+import seaborn as sns
+ccg_count_array_ordered = [c[hier_order][:, hier_order] for c in ccg_count_array]
+ccg_count_array_ordered = np.array(ccg_count_array_ordered)
+fig, ax = plt.subplots()
+sns.heatmap(ccg_count_array[1][hier_order][:, hier_order], xticklabels=areas_hier, yticklabels=areas_hier,
+            square=True, cbar_kws={"shrink": .5}, linewidths=0.1, annot=True)
+ax.set_xlim([0, len(areas)])
+ax.set_ylim([0, len(areas)])
+              
+ 
+#SAVE RESULTS ###
+
+saveDir = r"\\allen\programs\braintv\workgroups\nc-ophys\corbettb\changeMod figure for npx platform paper\ccgs"
+np.save(os.path.join(saveDir, 'ccg_lags.npy'), ccg_lag_median_array_ordered)
+np.save(os.path.join(saveDir, 'ccg_counts.npy'), ccg_count_array_ordered)
+np.save(os.path.join(saveDir, 'ccg_meanoverwindows_onmean.npy'), np.array([c[hier_order][:, hier_order] for c in ccg_lag_array]))
+
+
+
+               
 #####Do analysis for every experiment separately##########               
 expIndex = np.zeros((len(areas), len(areas)), dtype=np.int)
 for exp, mouse in enumerate(mouseIDs):
