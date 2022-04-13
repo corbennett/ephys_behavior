@@ -5,6 +5,7 @@ Created on Fri Jan  7 17:20:54 2022
 @author: svc_ccg
 """
 
+import os
 import numpy as np
 import pandas as pd
 import scipy.stats
@@ -400,11 +401,6 @@ ax.set_ylim([35,65])
 ax.set_xlabel('Session')
 ax.set_ylabel('% reduction in d prime')
 plt.tight_layout()
-
-
-
-
-
 
 
 
